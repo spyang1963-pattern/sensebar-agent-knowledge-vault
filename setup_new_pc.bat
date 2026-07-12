@@ -114,32 +114,54 @@ if exist "%USERPROFILE%\.groq_api_key" (
 echo.
 
 :: ============================================
-:: Step 7: 克隆或更新專案
+:: Step 7: 安裝 GitHub CLI (gh)
 :: ============================================
-echo [7/8] 設定專案目錄...
+echo [7/10] 安裝 GitHub CLI...
+gh --version >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [INFO] GitHub CLI 未安裝，嘗試用 winget 安裝...
+    winget install --id GitHub.cli --accept-package-agreements --accept-source-agreements
+    if %errorlevel% neq 0 (
+        echo [WARN] GitHub CLI 安裝失敗，請手動安裝
+        echo 下載：https://cli.github.com/
+    ) else (
+        echo [OK] GitHub CLI 安裝完成
+    )
+) else (
+    echo [OK] GitHub CLI 已安裝
+)
+echo.
+
+:: ============================================
+:: Step 8: 克隆或更新專案
+:: ============================================
+echo [8/10] 設定專案目錄...
 set "PROJECT_DIR=D:\!!AI agent 專案夾\三師爸的 AI agent 學習 AI agent"
+set "REPO_URL=https://github.com/spyang1963-pattern/sensebar-agent-knowledge-vault.git"
 
 if exist "%PROJECT_DIR%\.git" (
     echo [INFO] 專案目錄已存在，執行 git pull...
     cd /d "%PROJECT_DIR%"
     git pull
 ) else (
-    echo [INFO] 專案目錄不存在，請手動克隆：
-    echo   cd "D:\!!AI agent 專案夾"
-    echo   git clone 你的遠端倉庫URL "三師爸的 AI agent 學習 AI agent"
-    echo.
-    echo 或者從這台筆電的 Git 倉庫設定遠端：
-    echo   在這台筆電上執行：
-    echo   cd "%PROJECT_DIR%"
-    echo   git remote add pc1 ssh://PC1的IP/D:/!!AI agent 專案夾/三師爸的 AI agent 學習 AI agent
-    echo   git remote add pc2 ssh://PC2的IP/D:/!!AI agent 專案夾/三師爸的 AI agent 學習 AI agent
+    echo [INFO] 專案目錄不存在，開始克隆...
+    if not exist "D:\!!AI agent 專案夾" mkdir "D:\!!AI agent 專案夾"
+    cd /d "D:\!!AI agent 專案夾"
+    git clone "%REPO_URL%" "三師爸的 AI agent 學習 AI agent"
+    if %errorlevel% neq 0 (
+        echo [ERR] 克隆失敗，請確認 Git 和網路連線正常
+        echo 手動執行：git clone %REPO_URL% "三師爸的 AI agent 學習 AI agent"
+    ) else (
+        echo [OK] 專案克隆完成
+        cd /d "%PROJECT_DIR%"
+    )
 )
 echo.
 
 :: ============================================
-:: Step 8: 設定 opencode
+:: Step 9: 設定 opencode
 :: ============================================
-echo [8/8] 檢查 opencode...
+echo [9/10] 檢查 opencode...
 opencode --version >nul 2>&1
 if %errorlevel% neq 0 (
     echo [INFO] opencode 未安裝
@@ -151,6 +173,18 @@ if %errorlevel% neq 0 (
 echo.
 
 :: ============================================
+:: Step 10: 設定 credential（git push 用）
+:: ============================================
+echo [10/10] 設定 Git credential...
+git config --global credential.helper store
+echo [OK] Git credential 已設定
+echo.
+echo [INFO] 首次 git push 時會要求輸入：
+echo   Username: spyang1963-pattern
+echo   Password: 貼上你的 GitHub Token
+echo.
+
+:: ============================================
 :: 完成
 :: ============================================
 echo ==========================================
@@ -158,11 +192,15 @@ echo   設定完成！
 echo ==========================================
 echo.
 echo 接下來：
-echo   1. 如果專案還沒克隆，請手動執行 git clone
-echo   2. 執行 cd "%PROJECT_DIR%"
-echo   3. 執行 opencode 開始使用
-echo   4. 首次使用建議跑一次：
+echo   1. 執行 cd "%PROJECT_DIR%"
+echo   2. 執行 opencode 開始使用
+echo   3. 首次使用建議跑一次：
 echo      python run_pipeline.py --help
+echo.
+echo 如果要同步專案（push/pull）：
+echo   首次 push 時會要求輸入：
+echo   Username: spyang1963-pattern
+echo   Password: 你的 GitHub Token
 echo.
 echo 遠端連線（從這台筆電連到這台）：
 echo   https://remotedesktop.google.com/access
