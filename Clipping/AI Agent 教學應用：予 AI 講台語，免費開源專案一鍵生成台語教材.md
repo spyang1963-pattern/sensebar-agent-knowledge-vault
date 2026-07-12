@@ -1,6 +1,6 @@
 # AI Agent 教學應用：予 AI 講台語，免費開源專案一鍵生成台語教材
 
-- 影片網址: https://www.youtube.com/watch?v=DESUN1Smf94
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=DESUN1Smf94)
 
 ---
 

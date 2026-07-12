@@ -1,6 +1,6 @@
 # Claude基本功EP09:免費Supabase串起你的資料庫_用自然語言操控資料庫，完全免費的開發新邏輯
 
-- 影片網址: https://www.youtube.com/watch?v=aRpZL-CyS7k
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=aRpZL-CyS7k)
 
 ---
 

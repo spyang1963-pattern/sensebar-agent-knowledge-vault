@@ -1,6 +1,6 @@
 # Claude基本功EP07 : 5 分鐘搞定！Claude 結合 Obsidian 第二大腦懶人包完整教學
 
-- 影片網址: https://www.youtube.com/watch?v=XrcQrD-Lf04
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=XrcQrD-Lf04)
 
 ---
 

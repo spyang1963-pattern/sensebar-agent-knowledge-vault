@@ -1,6 +1,6 @@
 # claude基本功EP11:把 GPT-Image 2.0 裝進 Claude_讓 Claude 擁有最強生圖引擎
 
-- 影片網址: https://www.youtube.com/watch?v=JqoZH5__gsk
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=JqoZH5__gsk)
 
 ---
 

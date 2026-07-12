@@ -1,6 +1,6 @@
 # Claude基本功EP02 :從入門到精通的 Skills 全攻略
 
-- 影片網址: https://www.youtube.com/watch?v=u3FvQCm5CO4
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=u3FvQCm5CO4)
 
 ---
 

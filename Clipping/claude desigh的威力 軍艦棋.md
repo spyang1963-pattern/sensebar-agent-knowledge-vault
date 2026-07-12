@@ -1,6 +1,6 @@
 # claude desigh的威力 軍艦棋
 
-- 影片網址: https://www.youtube.com/watch?v=RZMHdYar_DM
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=RZMHdYar_DM)
 
 ---
 

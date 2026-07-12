@@ -1,6 +1,6 @@
 # Claude基本功EP12:必看！快速掌握 Claude + Image 2 的三大神級教學應用
 
-- 影片網址: https://www.youtube.com/watch?v=dPA_S5PD7lU
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=dPA_S5PD7lU)
 
 ---
 

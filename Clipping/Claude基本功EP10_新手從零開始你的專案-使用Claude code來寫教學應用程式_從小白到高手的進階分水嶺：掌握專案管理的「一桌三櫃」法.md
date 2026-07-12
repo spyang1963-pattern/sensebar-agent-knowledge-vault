@@ -1,6 +1,6 @@
 # Claude基本功EP10:新手從零開始你的專案-使用Claude code來寫教學應用程式_從小白到高手的進階分水嶺：掌握專案管理的「一桌三櫃」法
 
-- 影片網址: https://www.youtube.com/watch?v=-wb0QKHcyds
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=-wb0QKHcyds)
 
 ---
 

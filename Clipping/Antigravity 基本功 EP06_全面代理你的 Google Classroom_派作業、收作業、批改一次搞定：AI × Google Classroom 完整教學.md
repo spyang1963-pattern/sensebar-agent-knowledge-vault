@@ -1,6 +1,6 @@
 # Antigravity 基本功 EP06:全面代理你的 Google Classroom_派作業、收作業、批改一次搞定：AI × Google Classroom 完整教學
 
-- 影片網址: https://www.youtube.com/watch?v=vYb87aqvBuE
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=vYb87aqvBuE)
 
 ---
 

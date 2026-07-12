@@ -1,6 +1,6 @@
 # 一次搞懂 AI 代理人的三件事_Agent_claude_code_feat_codex
 
-- 影片網址: https://www.youtube.com/watch?v=YpJQ1JNOqVg
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=YpJQ1JNOqVg)
 
 ---
 

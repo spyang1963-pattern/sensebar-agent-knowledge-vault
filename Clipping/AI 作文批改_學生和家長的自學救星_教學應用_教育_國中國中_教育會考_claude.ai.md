@@ -1,6 +1,6 @@
 # AI 作文批改_學生和家長的自學救星_教學應用_教育_國中國中_教育會考_claude.ai
 
-- 影片網址: https://www.youtube.com/watch?v=XRxJLfFwzOM
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=XRxJLfFwzOM)
 
 ---
 

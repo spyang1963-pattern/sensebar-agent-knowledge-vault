@@ -1,6 +1,6 @@
 # AntiGravity 基本功 EP04:一鍵將 Gems 全面升級成 Skill 的終極指南_懶人包大放送
 
-- 影片網址: https://www.youtube.com/watch?v=kmmYXntln_E
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=kmmYXntln_E)
 
 ---
 

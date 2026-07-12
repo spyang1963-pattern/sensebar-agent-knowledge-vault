@@ -1,6 +1,6 @@
 # GoogleAI基本功EP03：關於 AI 生圖的一切_生圖、改圖、資訊圖表一網打盡
 
-- 影片網址: https://www.youtube.com/watch?v=MGwKj_ia1jk
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=MGwKj_ia1jk)
 
 ---
 

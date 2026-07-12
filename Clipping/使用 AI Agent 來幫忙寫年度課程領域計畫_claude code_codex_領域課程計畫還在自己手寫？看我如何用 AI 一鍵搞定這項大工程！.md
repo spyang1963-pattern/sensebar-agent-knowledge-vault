@@ -1,6 +1,6 @@
 # 使用 AI Agent 來幫忙寫年度課程領域計畫_claude code/codex_領域課程計畫還在自己手寫？看我如何用 AI 一鍵搞定這項大工程！
 
-- 影片網址: https://www.youtube.com/watch?v=EnX8PGP1lNM
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=EnX8PGP1lNM)
 
 ---
 

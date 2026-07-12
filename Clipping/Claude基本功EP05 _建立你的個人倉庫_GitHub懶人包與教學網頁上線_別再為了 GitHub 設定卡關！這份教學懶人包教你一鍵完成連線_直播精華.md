@@ -1,6 +1,6 @@
 # Claude基本功EP05 :建立你的個人倉庫_GitHub懶人包與教學網頁上線_別再為了 GitHub 設定卡關！這份教學懶人包教你一鍵完成連線_直播精華
 
-- 影片網址: https://www.youtube.com/watch?v=4jnEiZJSEf0
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=4jnEiZJSEf0)
 
 ---
 

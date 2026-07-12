@@ -1,6 +1,6 @@
 # Claude基本功EP08 :用 Obsidian 打造 AI 筆記流_為什麼你的筆記總是沒用？打造會自動成長的 AI 第二大腦！
 
-- 影片網址: https://www.youtube.com/watch?v=b21TUOL1JdI
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=b21TUOL1JdI)
 
 ---
 

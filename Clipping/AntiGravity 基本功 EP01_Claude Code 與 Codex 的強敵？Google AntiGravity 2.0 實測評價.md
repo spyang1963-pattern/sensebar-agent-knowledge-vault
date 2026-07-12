@@ -1,6 +1,6 @@
 # AntiGravity 基本功 EP01:Claude Code 與 Codex 的強敵？Google AntiGravity 2.0 實測評價
 
-- 影片網址: https://www.youtube.com/watch?v=LyiiMVZE7uM
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=LyiiMVZE7uM)
 
 ---
 

@@ -1,58 +1,254 @@
-# AI Agent 專案工作藍圖 (Project Blueprint)
+# AI Agent 影片自動化生產線
 
-本專案旨在透過「動手實作」與「循序漸進」的方式，從零開始理解並學習 AI Agent 的核心概念與設計模式。
+## 快速開始（新 PC 安裝）
 
----
+1. 複製整個專案目錄到新 PC
+2. 執行 `setup.bat`（Windows）安裝所有依賴
+3. 到 https://console.groq.com 建立 API Key
+4. 執行 `python run_pipeline.py raw/課程/原始.mp4`
 
-## 學習與實作路線圖 (Roadmap)
+## 目錄結構
 
-### Stage 1: 基礎 ReAct (Reasoning & Action) Agent
-- **目標**：從零手寫 ReAct 循環，理解 Agent 如何自主思考、選擇工具、觀察結果。
-- **關鍵實作**：
-  - 設計 System Prompt 讓大模型理解 ReAct 規則 (Thought -> Action -> Observation)
-  - 提供簡單的自訂 Python 函數作為 Tool (如計算機、模擬搜尋)
-  - 實作 Agent Loop 控制器，解析模型輸出並調用 Tool
-  - 使用彩色終端輸出，視覺化展示思考過程
+```
+專案根目錄/
+├── run_pipeline.py              ← 一鍵執行完整流程
+├── setup.bat                    ← 新 PC 一鍵安裝
+├── opencode.json                ← opencode 設定
+├── AGENTS.md                    ← 本說明文件
+├── .opencode/skills/            ← 技能模組
+│   ├── smart-cut/               ← 智能剪輯
+│   ├── audio-to-srt/            ← 語音轉字幕
+│   └── cover-image/             ← 封面生成
+├── knowledge-base/              ← 知識庫
+│   ├── kb_query.py              ← 查詢工具
+│   └── traditional-kline/       ← 主題資料
+├── raw/                         ← 原始影片（放入此處）
+├── working/                     ← 暫存工作檔
+└── output/                      ← 最終輸出
+```
 
-### Stage 2: 工具與函數調用 (Function Calling)
-- **目標**：從正則表達式解析/純文字 Prompt 轉換成原生的 Function Calling 機制。
-- **關鍵實作**：
-  - 學習如何將 Python 函數轉換成 API 規範的 JSON Schema
-  - 使用 Gemini / OpenAI 的 Native Function Calling
-  - 提升工具調用的穩定性與結構化參數解析
+## 使用方式
 
-### Stage 3: 記憶與狀態管理 (Memory & State)
-- **目標**：讓 Agent 擁有短期記憶（對話歷史）與長期記憶（用戶偏好/外部資料庫）。
-- **關鍵實作**：
-  - 實作滑動視窗 (Sliding Window) 或摘要型記憶以避免 Token 爆炸
-  - 儲存對話歷史到本地 JSON / SQLite
-  - 建立簡單的用戶 Profile 記憶
+### 一鍵跑完整流程
+```powershell
+python run_pipeline.py raw/課程代號/原始.mp4
+```
 
-### Stage 4: 檢索增強生成 (RAG) 整合
-- **目標**：讓 Agent 能查閱外部私有文件，回答專業領域問題。
-- **關鍵實作**：
-  - 文件切片 (Chunking) 與向量化 (Embedding)
-  - 串接 Vector Database (如 ChromaDB, FAISS)
-  - 實作「檢索工具」供 Agent 自主調用
+### 查詢知識庫
+```powershell
+# 關鍵字搜尋
+python knowledge-base/kb_query.py "紅黑紅" --srt "output/課程/字幕.srt" --video "output/課程/剪輯後.mp4"
 
-### Stage 5: 多 Agent 協作 (Multi-Agent System)
-- **目標**：將複雜任務拆解，讓多個不同角色的 Agent 協同合作完成任務。
-- **關鍵實作**：
-  - 角色定義 (Role Playing) 與任務分配
-  - 實作路由機制 (Routing) 或群聊機制 (Group Chat)
-  - 引入人類反饋機制 (Human-in-the-loop)
+# 列出所有主題
+python knowledge-base/kb_query.py --list
 
----
+# 看特定主題
+python knowledge-base/kb_query.py --topic 03
 
-## 開發環境與架構
+# 開啟影片跳轉
+python knowledge-base/kb_query.py "紅黑紅" --srt "字幕.srt" --video "影片.mp4" --open
+```
 
-- **程式語言**：Python 3.10+
-- **核心依賴**：
-  - `google-generativeai` (使用 Gemini 作為大腦)
-  - `python-dotenv` (環境變數管理)
-  - `colorama` (終端機彩化)
-- **專案目錄架構**：
-  - `README.md` - 專案導覽與概念說明
-  - `agents.md` - 本工作藍圖
-  - `tools.py` - 自訂工具庫
-  - `simple_agent.py` - ReAct 核心邏輯
+### 手動跑各步驟
+```powershell
+# Step 1: 去靜音
+python .opencode/skills/smart-cut/scripts/smart_cut.py raw/課程/原始.mp4 --out working/課程/trimmed.mp4
+
+# Step 2: 語音轉字幕
+python .opencode/skills/audio-to-srt/scripts/transcribe_groq.py working/課程/trimmed.mp4 --out working/課程/raw.json
+
+# Step 3: 重新分段
+python .opencode/skills/audio-to-srt/scripts/resegment.py working/課程/raw.json --out working/課程/reseg.srt --audio working/課程/trimmed.mp4
+
+# Step 4: 術語校正
+python .opencode/skills/audio-to-srt/scripts/apply_vocab.py working/課程/reseg.srt --out working/課程/corrected.srt
+
+# Step 5: 驗證
+python .opencode/skills/audio-to-srt/scripts/validate_srt.py --raw working/課程/reseg.srt --clean working/課程/corrected.srt
+
+# Step 6: 產生純文字
+python .opencode/skills/audio-to-srt/scripts/srt_to_txt.py working/課程/corrected.srt --out working/課程/clean.txt
+
+# Step 7: 產生封面
+python .opencode/skills/cover-image/draw_free.py "doodle style, stock market" --name cover --outdir output/課程
+```
+
+## 前置需求
+
+- Python 3.10+
+- ffmpeg（在 PATH 中）
+- auto-editor（pip install auto-editor）
+- groq（pip install groq）
+- Groq API Key（免費：https://console.groq.com）
+- VLC（可選，用於影片播放跳轉）
+
+## API Key 設定
+
+```powershell
+# 方法一：環境變數
+$env:GROQ_API_KEY = "你的key"
+
+# 方法二：檔案（推薦）
+Set-Content "$env:USERPROFILE\.groq_api_key" "你的key"
+```
+
+## 封面生成
+
+使用免費 Pollinations.AI，不需要 API Key。
+如需使用付費 OpenAI 版本，設定：
+```powershell
+$env:OPENAI_API_KEY = "你的key"
+```
+
+## 注意事項
+
+- 影片名稱建議用英文或編號，避免中文路徑問題
+- 預設封面風格為簡潔版（手繪K線筆記本）
+- 知識庫查詢支援 12 個主題（傳統K線型態）
+- 每部影片約需 5-10 分鐘處理時間
+
+## 自動更新 @sensebar 知識庫
+
+### 自動化流程
+
+```
+新影片發布 → 偵測新影片 → 下載字幕 → 同步到知識庫
+                    ↓（無字幕時）
+              下載音訊 → Whisper 辨識 → 同步到知識庫
+```
+
+### 安裝步驟（新 PC）
+
+```powershell
+# 1. 安裝 Python 套件
+pip install yt-dlp groq plyer
+
+# 2. 設定 Groq API Key（免費）
+Set-Content "$env:USERPROFILE\.groq_api_key" "你的key"
+
+# 3. 測試
+python auto_update.py
+```
+
+### 設定 Windows 排程任務
+
+```powershell
+# 建立排程任務（每天 10:00 執行）
+$taskName = "SensebarAutoUpdate"
+$action = New-ScheduledTaskAction -Execute "D:\!!AI agent 專案夾\三師爸的 AI agent 學習 AI agent\auto_update.bat"
+$trigger = New-ScheduledTaskTrigger -Daily -At "10:00AM"
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd -AllowStartIfOnBatteries
+
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Description "每天自動檢查 @sensebar 新影片並更新知識庫" -Force
+```
+
+### 手動執行
+
+```powershell
+# 立即檢查更新
+python auto_update.py
+
+# 或執行批次檔
+auto_update.bat
+```
+
+### 設定檔 config.yaml
+
+```yaml
+channel:
+  url: "https://www.youtube.com/@sensebar"
+  keywords:
+    - "claude"
+    - "codex"
+    - "antigravity"
+    - "opencode"
+    - "agent"
+    - "googlea"
+
+output:
+  subtitle_langs:
+    - "zh-Hant"
+    - "zh-TW"
+    - "zh"
+    - "zh-Hans"
+    - "en"
+```
+
+### 自動排程（已設定）
+
+Windows 排程任務 `SensebarAutoUpdate`：
+- **執行時間**：每天早上 10:00
+- **執行內容**：自動檢查 @sensebar 頻道新影片
+- **處理邏輯**：
+  1. 嘗試下載 YouTube 字幕（免費、秒完）
+  2. 無字幕時下載音訊（比影片小 10 倍）
+  3. 用 Groq Whisper 辨識字幕
+  4. 自動清理暫存檔
+  5. 同步到 knowledge-base/youtube-clips
+- **日誌位置**：logs/update_YYYYMMDD_HHMMSS.txt
+- **通知方式**：桌面彈出視窗
+
+### 重要規則
+
+1. **改完檔名要跑 sync**
+   ```powershell
+   python sync_clipping.py
+   ```
+   - 自動重新配對 .md 和 .srt
+   - 自動同步到 knowledge-base/youtube-clips
+
+2. **不要手動改 SRT 檔名**
+   - 只改 .md 檔名，sync 會幫你配對
+   - SRT 會根據 .md 裡的 YouTube URL 自動對應
+
+3. **YouTube 連結要可點擊**
+   - 格式：`[YouTube](https://www.youtube.com/watch?v=VIDEO_ID)`
+   - 不是：`https://www.youtube.com/watch?v=VIDEO_ID`
+   - 不是：`<https://https://www.youtube.com/watch?v=VIDEO_ID>`
+
+4. **新影片加字幕**
+   - 自動化：跑 `python auto_update.py`（會自動處理）
+   - 手動：從 raw/ 找影片用 `run_pipeline.py` 處理
+
+## Obsidian 整理 Clipping 目錄
+
+### 重要規則
+
+1. **改完檔名要跑 sync**
+   ```powershell
+   python sync_clipping.py
+   ```
+   - 自動重新配對 .md 和 .srt
+   - 自動同步到 knowledge-base/youtube-clips
+
+2. **不要手動改 SRT 檔名**
+   - 只改 .md 檔名，sync 會幫你配對
+   - SRT 會根據 .md 裡的 YouTube URL 自動對應
+
+3. **YouTube 連結要可點擊**
+   - 格式：`[YouTube](https://www.youtube.com/watch?v=VIDEO_ID)`
+   - 不是：`https://www.youtube.com/watch?v=VIDEO_ID`
+   - 不是：`<https://www.youtube.com/watch?v=VIDEO_ID>`
+
+4. **新影片加字幕**
+   - 有影片檔：用 `run_pipeline.py` 處理
+   - 只有逐字稿：用 `generate_srt_from_clippings.py` 產生估計時間碼 SRT
+   - 沒有字幕：從 raw/ 找影片用 Whisper 辨識
+
+### 目錄結構
+
+```
+Clipping/
+├── *.md                    ← 逐字稿（含 YouTube URL + 字幕內容）
+├── *.srt                   ← 對應字幕檔
+└── _archive_no_transcript/ ← 無逐字稿的重複版本
+```
+
+### 常見問題
+
+| 問題 | 解決方法 |
+|------|----------|
+| .md 和 .srt 配對斷掉 | 跑 `python sync_clipping.py` |
+| YouTube 連結不能點 | 改成 `[YouTube](URL)` 格式 |
+| 無逐字稿的檔案 | 移到 `_archive_no_transcript/` |
+| knowledge-base 沒同步 | 跑 `python sync_clipping.py` |

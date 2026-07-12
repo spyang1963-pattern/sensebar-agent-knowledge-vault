@@ -1,6 +1,6 @@
 # GPT Codex 基本功 EP03：為你的 Agent 裝上第二大腦與程式倉庫_打造最強 AI 助理：手把手教你連接Github與Obsidian
 
-- 影片網址: https://www.youtube.com/watch?v=VEbBbFubCZ8
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=VEbBbFubCZ8)
 
 ---
 

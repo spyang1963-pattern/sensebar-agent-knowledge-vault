@@ -1,6 +1,6 @@
 # AI Agent 基本功 EP03：一句話讓 AI 幫你讀檔、寫程式、上網、做出成品
 
-- 影片網址: https://www.youtube.com/watch?v=b8YgyYGjJEU
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=b8YgyYGjJEU)
 
 ---
 

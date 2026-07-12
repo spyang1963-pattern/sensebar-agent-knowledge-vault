@@ -1,6 +1,6 @@
 # GoogleAI基本功EP06_使用Notebook LM的五大場景_Gemini 還是 Notebook LM？你其實一直選錯了
 
-- 影片網址: https://www.youtube.com/watch?v=CcS5YUmZPWk
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=CcS5YUmZPWk)
 
 ---
 

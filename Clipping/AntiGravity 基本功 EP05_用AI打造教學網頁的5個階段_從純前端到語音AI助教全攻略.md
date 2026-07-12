@@ -1,6 +1,6 @@
 # AntiGravity 基本功 EP05:用AI打造教學網頁的5個階段_從純前端到語音AI助教全攻略
 
-- 影片網址: https://www.youtube.com/watch?v=hRdQCQSozY0
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=hRdQCQSozY0)
 
 ---
 

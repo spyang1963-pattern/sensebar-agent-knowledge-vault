@@ -1,128 +1,150 @@
-import yt_dlp
+#!/usr/bin/env python3
+"""從 Clipping 目錄的所有 .md 檔案中提取 YouTube URL，下載字幕到 knowledge-base。"""
+
 import os
 import re
-import glob
-import time
+import subprocess
 import sys
+import json
+from pathlib import Path
+from collections import defaultdict
 
-# Reconfigure stdout to use UTF-8
-sys.stdout.reconfigure(encoding='utf-8')
+BASE = Path(__file__).parent
+CLIPPING_DIR = BASE / "Clipping"
+KB_DIR = BASE / "knowledge-base"
+WORKING_DIR = BASE / "working"
 
-# Paths
-script_dir = os.path.dirname(os.path.abspath(__file__))
-urls_file = os.path.join(script_dir, "sensebar_ai_urls.txt")
-# 建立三層知識庫結構
-clipping_dir = os.path.join(script_dir, "Clipping")
-creation_dir = os.path.join(script_dir, "創作庫")
-knowledge_dir = os.path.join(script_dir, "知識庫")
-for d in [clipping_dir, creation_dir, knowledge_dir]:
-    os.makedirs(d, exist_ok=True)
-sub_dir = clipping_dir
-os.makedirs(sub_dir, exist_ok=True)
+def extract_youtube_id(url: str) -> str | None:
+    m = re.search(r'(?:youtube\.com/watch\?v=|youtu\.be/)([A-Za-z0-9_-]{11})', url)
+    return m.group(1) if m else None
 
-# Read URLs
-with open(urls_file, "r", encoding="utf-8") as f:
-    urls = [line.strip() for line in f if line.strip()]
+def scan_clippings():
+    """回傳 {video_id: [(md_path, title), ...]}"""
+    videos = defaultdict(list)
+    for md in CLIPPING_DIR.rglob("*.md"):
+        text = md.read_text(encoding="utf-8", errors="replace")
+        for line in text.splitlines():
+            m = re.search(r'(https?://(?:www\.)?youtube\.com/watch\?v=[A-Za-z0-9_-]+|https?://youtu\.be/[A-Za-z0-9_-]+)', line)
+            if m:
+                vid = extract_youtube_id(m.group(0))
+                if vid:
+                    title = md.stem
+                    videos[vid].append((md, title))
+                break
+    return videos
 
-def make_safe_filename(title):
-    safe = re.sub(r'[\\/*?:"<>|]', "_", title)
-    safe = safe.strip().strip('.')
-    return safe
+def check_existing_srt(video_id: str) -> bool:
+    """檢查是否已有字幕"""
+    for sub_dir in [KB_DIR, WORKING_DIR]:
+        for srt in sub_dir.rglob(f"*{video_id}*.srt"):
+            return True
+    return False
 
-def parse_vtt(vtt_path):
-    with open(vtt_path, "r", encoding="utf-8") as f:
-        lines = f.readlines()
-    
-    cleaned = []
-    last_line = ""
-    for line in lines:
-        line = line.strip()
-        if not line or line.startswith("WEBVTT") or line.startswith("Kind:") or line.startswith("Language:") or "-->" in line:
+def download_subtitle(video_id: str, title: str, out_dir: Path) -> bool:
+    """用 yt-dlp 下載字幕"""
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_template = str(out_dir / f"{video_id}_%(lang)s.%(ext)s")
+
+    cmd = [
+        "yt-dlp",
+        "--write-auto-sub",
+        "--write-sub",
+        "--sub-lang", "zh-Hant,zh-TW,zh,zh-Hans,en",
+        "--sub-format", "srt",
+        "--skip-download",
+        "-o", out_template,
+        "--no-overwrites",
+        "--ignore-errors",
+        url
+    ]
+
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    return result.returncode == 0
+
+def find_downloaded_srt(video_id: str, out_dir: Path) -> Path | None:
+    """找到下載的 SRT"""
+    for srt in out_dir.glob(f"{video_id}_*.srt"):
+        return srt
+    return None
+
+def organize_srt(srt_path: Path, video_id: str, titles: list) -> bool:
+    """將 SRT 放到 knowledge-base 對應目錄"""
+    kb_sub = KB_DIR / "youtube-subs"
+    kb_sub.mkdir(parents=True, exist_ok=True)
+
+    target = kb_sub / f"{video_id}.srt"
+    if target.exists():
+        print(f"  [SKIP] 已存在: {target.name}")
+        return True
+
+    import shutil
+    shutil.copy2(srt_path, target)
+    print(f"  [OK] {target.name}")
+
+    # 寫入對應的 md 資訊
+    info_path = kb_sub / f"{video_id}_info.md"
+    lines = [f"# {video_id}\n"]
+    lines.append(f"\n## 影片連結\nhttps://www.youtube.com/watch?v={video_id}\n")
+    lines.append(f"\n## 關聯 Clipping\n")
+    for md_path, t in titles:
+        lines.append(f"- [{t}]({md_path.relative_to(BASE)})\n")
+    info_path.write_text("".join(lines), encoding="utf-8")
+    return True
+
+def main():
+    print("=== 掃描 Clipping 目錄 ===")
+    videos = scan_clippings()
+    print(f"找到 {len(videos)} 個不重複的 YouTube 影片\n")
+
+    need_download = []
+    has_sub = 0
+    for vid, titles in sorted(videos.items()):
+        if check_existing_srt(vid):
+            has_sub += 1
             continue
-        line = re.sub(r'<[^>]+>', '', line)
-        line = line.strip()
-        if not line:
-            continue
-        if line == last_line:
-            continue
-        cleaned.append(line)
-        last_line = line
-        
-    return "\n".join(cleaned)
+        need_download.append((vid, titles))
 
-# yt-dlp configurations
-ydl_opts = {
-    'skip_download': True,
-    'writesubtitles': True,
-    'writeautomaticsubtitles': True,
-    'subtitleslangs': ['zh-Hant', 'zh-TW', 'zh', 'en'],
-    'subtitlesformat': 'vtt',
-    'outtmpl': os.path.join(sub_dir, 'temp_sub.%(ext)s'),
-    'quiet': True,
-    'no_warnings': True,
-}
+    print(f"已有字幕: {has_sub}")
+    print(f"需要下載: {len(need_download)}\n")
 
-print(f"Total videos to process: {len(urls)}")
+    if not need_download:
+        print("所有影片都已有字幕！")
+        return
 
-for idx, url in enumerate(urls):
-    print(f"[{idx+1}/{len(urls)}] Fetching metadata for {url}...")
-    
-    try:
-        with yt_dlp.YoutubeDL({'quiet': True, 'no_warnings': True}) as ydl:
-            info_dict = ydl.extract_info(url, download=False)
-            title = info_dict.get('title', f"video_{idx+1}")
-    except Exception as e:
-        print(f"  Error fetching metadata for {url}: {e}")
-        continue
+    temp_dir = WORKING_DIR / "yt-subs-temp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
 
-    safe_title = make_safe_filename(title)
-    out_md_path = os.path.join(sub_dir, f"{safe_title}.md")
-    
-    if os.path.exists(out_md_path):
-        print(f"  [Skip] Already exists: {safe_title}.md")
-        continue
+    success = 0
+    fail = 0
+    skip = 0
 
-    for f in glob.glob(os.path.join(sub_dir, "temp_sub.*")):
+    for i, (vid, titles) in enumerate(need_download, 1):
+        title_short = titles[0][1][:60]
+        print(f"[{i}/{len(need_download)}] {title_short}...")
+        print(f"  Video ID: {vid}")
+
         try:
-            os.remove(f)
-        except:
-            pass
+            ok = download_subtitle(vid, titles[0][1], temp_dir)
+            srt = find_downloaded_srt(vid, temp_dir) if ok else None
 
-    print(f"  Downloading subtitles for: {title}...")
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.extract_info(url, download=True)
-            
-        sub_files = glob.glob(os.path.join(sub_dir, "temp_sub.*.vtt"))
-        
-        if not sub_files:
-            print("  No subtitles found.")
-            md_content = f"# {title}\n\n- 影片網址: {url}\n\n*(此影片未提供字幕)*\n"
-            with open(out_md_path, "w", encoding="utf-8") as f:
-                f.write(md_content)
-            continue
-            
-        sub_file = sub_files[0]
-        cleaned_text = parse_vtt(sub_file)
-        
-        md_content = f"# {title}\n\n"
-        md_content += f"- 影片網址: {url}\n\n"
-        md_content += "---\n\n"
-        md_content += cleaned_text + "\n"
-        
-        with open(out_md_path, "w", encoding="utf-8") as f:
-            f.write(md_content)
-        print(f"  [Success] Saved to: {safe_title}.md")
-        
-    except Exception as e:
-        print(f"  Error downloading subtitles for {title}: {e}")
-        
-    for f in glob.glob(os.path.join(sub_dir, "temp_sub.*")):
-        try:
-            os.remove(f)
-        except:
-            pass
+            if srt:
+                organize_srt(srt, vid, titles)
+                success += 1
+            else:
+                print(f"  [WARN] 無可用字幕")
+                skip += 1
+        except subprocess.TimeoutExpired:
+            print(f"  [ERROR] 超時")
+            fail += 1
+        except Exception as e:
+            print(f"  [ERROR] {e}")
+            fail += 1
 
-    time.sleep(2)
+    print(f"\n=== 完成 ===")
+    print(f"成功: {success}")
+    print(f"無字幕: {skip}")
+    print(f"失敗: {fail}")
 
-print("\nAll tasks completed!")
+if __name__ == "__main__":
+    main()

@@ -1,6 +1,6 @@
 # 2,000 個檔案瞬間整齊_Claude_Cowork 到底多可怕？AI 時代必備！Claude Cowork 桌面版安裝與應用全攻略
 
-- 影片網址: https://www.youtube.com/watch?v=X7LPU5q8mn4
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=X7LPU5q8mn4)
 
 ---
 

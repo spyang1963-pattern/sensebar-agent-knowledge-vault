@@ -1,6 +1,6 @@
 # GPT Codex 基本功 EP05：Codex 超好用的五個隱藏功能
 
-- 影片網址: https://www.youtube.com/watch?v=GDL5IMXqEKo
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=GDL5IMXqEKo)
 
 ---
 

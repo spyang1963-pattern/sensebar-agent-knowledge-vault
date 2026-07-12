@@ -1,6 +1,6 @@
 # Claude基本功EP04 : NotebookLM 進階應用五大情境_跨工具神操作：從 NotebookLM 自動同步到 Obsidian 與 GitHub
 
-- 影片網址: https://www.youtube.com/watch?v=hr6pgjEUFj4
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=hr6pgjEUFj4)
 
 ---
 

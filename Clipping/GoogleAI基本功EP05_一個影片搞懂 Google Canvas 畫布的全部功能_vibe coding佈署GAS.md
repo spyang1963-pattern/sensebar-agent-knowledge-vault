@@ -1,6 +1,6 @@
 # GoogleAI基本功EP05:一個影片搞懂 Google Canvas 畫布的全部功能_vibe coding佈署GAS
 
-- 影片網址: https://www.youtube.com/watch?v=VyV2GJSzwkY
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=VyV2GJSzwkY)
 
 ---
 

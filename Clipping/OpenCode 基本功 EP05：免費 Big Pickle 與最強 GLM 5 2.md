@@ -1,6 +1,6 @@
 # OpenCode 基本功 EP05：免費 Big Pickle 與最強 GLM 5 2
 
-- 影片網址: https://www.youtube.com/watch?v=F_eMaWlxAtU
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=F_eMaWlxAtU)
 
 ---
 

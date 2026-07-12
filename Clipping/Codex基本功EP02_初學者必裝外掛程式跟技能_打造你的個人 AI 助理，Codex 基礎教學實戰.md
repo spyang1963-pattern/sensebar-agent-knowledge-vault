@@ -1,6 +1,6 @@
 # Codex基本功EP02:初學者必裝外掛程式跟技能_打造你的個人 AI 助理，Codex 基礎教學實戰
 
-- 影片網址: https://www.youtube.com/watch?v=5FM_O66g2Ng
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=5FM_O66g2Ng)
 
 ---
 

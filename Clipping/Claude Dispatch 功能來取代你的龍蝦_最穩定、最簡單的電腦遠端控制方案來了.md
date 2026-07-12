@@ -1,6 +1,6 @@
 # Claude Dispatch 功能來取代你的龍蝦_最穩定、最簡單的電腦遠端控制方案來了
 
-- 影片網址: https://www.youtube.com/watch?v=64O1LSpGJYI
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=64O1LSpGJYI)
 
 ---
 

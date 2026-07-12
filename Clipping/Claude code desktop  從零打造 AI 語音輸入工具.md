@@ -1,6 +1,6 @@
 # Claude code desktop  從零打造 AI 語音輸入工具
 
-- 影片網址: https://www.youtube.com/watch?v=laSfvJmD5nc
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=laSfvJmD5nc)
 
 ---
 

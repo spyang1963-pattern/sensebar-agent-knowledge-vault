@@ -1,6 +1,6 @@
 # GoogleAI基本功EP02 AI搜索與深度研究_Google Deep Research 全攻略：從資料蒐集到報告生成一次搞定。
 
-- 影片網址: https://www.youtube.com/watch?v=WCmP7-WkmJE
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=WCmP7-WkmJE)
 
 ---
 

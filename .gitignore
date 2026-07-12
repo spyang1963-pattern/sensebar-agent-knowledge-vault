@@ -6,3 +6,10 @@ __pycache__/
 *.mp3
 temp_sub.*
 .obsidian/
+working/
+output/
+raw/
+*.vtt
+*.wav
+*.flac
+*.aac

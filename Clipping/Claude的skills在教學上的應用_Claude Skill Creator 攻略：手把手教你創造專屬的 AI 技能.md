@@ -1,6 +1,6 @@
 # Claude的skills在教學上的應用_Claude Skill Creator 攻略：手把手教你創造專屬的 AI 技能
 
-- 影片網址: https://www.youtube.com/watch?v=JXexdAckn38
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=JXexdAckn38)
 
 ---
 

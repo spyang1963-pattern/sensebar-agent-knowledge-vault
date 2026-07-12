@@ -1,6 +1,6 @@
 # GoogleAI基本功EP01:雙神器設定-讓新手也能秒上手
 
-- 影片網址: https://www.youtube.com/watch?v=aQEdqtgK47M
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=aQEdqtgK47M)
 
 ---
 

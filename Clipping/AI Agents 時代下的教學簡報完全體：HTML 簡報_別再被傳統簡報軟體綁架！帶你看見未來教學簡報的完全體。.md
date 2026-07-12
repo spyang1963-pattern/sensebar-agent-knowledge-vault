@@ -1,6 +1,6 @@
 # AI Agents 時代下的教學簡報完全體：HTML 簡報_別再被傳統簡報軟體綁架！帶你看見未來教學簡報的完全體。
 
-- 影片網址: https://www.youtube.com/watch?v=ZNdaQJOu8AU
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=ZNdaQJOu8AU)
 
 ---
 

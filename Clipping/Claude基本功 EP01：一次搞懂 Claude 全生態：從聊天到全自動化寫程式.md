@@ -1,6 +1,6 @@
 # Claude基本功 EP01：一次搞懂 Claude 全生態：從聊天到全自動化寫程式
 
-- 影片網址: https://www.youtube.com/watch?v=luRFvHW0SF8
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=luRFvHW0SF8)
 
 ---
 

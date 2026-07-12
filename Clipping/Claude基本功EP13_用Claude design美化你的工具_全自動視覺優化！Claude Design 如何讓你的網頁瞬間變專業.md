@@ -1,6 +1,6 @@
 # Claude基本功EP13:用Claude design美化你的工具_全自動視覺優化！Claude Design 如何讓你的網頁瞬間變專業
 
-- 影片網址: https://www.youtube.com/watch?v=3fCXzantTvI
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=3fCXzantTvI)
 
 ---
 

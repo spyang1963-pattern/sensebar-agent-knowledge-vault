@@ -1,6 +1,6 @@
 # Claude基本功EP03_連接你的notebookLM_AI效率大爆發
 
-- 影片網址: https://www.youtube.com/watch?v=YsUITwEXUnY
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=YsUITwEXUnY)
 
 ---
 

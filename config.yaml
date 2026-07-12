@@ -1,0 +1,33 @@
+# ============================================
+# YouTube 知識庫建立器 - 設定檔
+# ============================================
+# 只需修改這裡，其他腳本自動讀取
+
+# YouTube 頻道設定
+channel:
+  # 頻道網址（@後面是頻道名稱）
+  url: "https://www.youtube.com/@sensebar"
+  
+  # 篩選關鍵字（不区分大小寫）
+  keywords:
+    - "claude"
+    - "codex"
+    - "antigravity"
+    - "opencode"
+    - "agent"
+    - "googlea"
+
+# 輸出設定
+output:
+  # 字幕語言優先順序
+  subtitle_langs:
+    - "zh-Hant"
+    - "zh-TW"
+    - "zh"
+    - "en"
+  
+  # 知識庫資料夾名稱
+  folders:
+    clipping: "Clipping"
+    creation: "創作庫"
+    knowledge: "知識庫"

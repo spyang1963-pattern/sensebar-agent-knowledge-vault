@@ -1,6 +1,6 @@
 # 輕鬆自製AI網頁小工具：用Claude 3.5打造QR Code與縮網址神器！使用AI自製網頁小工具_教學應用_圖片分割工具
 
-- 影片網址: https://www.youtube.com/watch?v=h8l5gNvrStE
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=h8l5gNvrStE)
 
 ---
 

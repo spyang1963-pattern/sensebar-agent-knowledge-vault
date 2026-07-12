@@ -1,6 +1,6 @@
 # claude code x OpenAI Codex長出來的技能(skills)才是你的技能_你還在用舊版的 AI 機器人嗎？Agent 時代的真正玩法大公開
 
-- 影片網址: https://www.youtube.com/watch?v=n70bPQ7quPQ
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=n70bPQ7quPQ)
 
 ---
 

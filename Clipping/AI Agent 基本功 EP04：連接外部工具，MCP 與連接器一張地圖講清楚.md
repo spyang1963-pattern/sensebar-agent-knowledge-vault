@@ -1,6 +1,6 @@
 # AI Agent 基本功 EP04：連接外部工具，MCP 與連接器一張地圖講清楚
 
-- 影片網址: https://www.youtube.com/watch?v=-kIzGOf0bZA
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=-kIzGOf0bZA)
 
 ---
 

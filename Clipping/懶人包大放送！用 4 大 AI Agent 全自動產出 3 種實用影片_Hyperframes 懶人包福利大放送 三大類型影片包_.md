@@ -1,6 +1,6 @@
 # 懶人包大放送！用 4 大 AI Agent 全自動產出 3 種實用影片_Hyperframes 懶人包福利大放送 三大類型影片包_
 
-- 影片網址: https://www.youtube.com/watch?v=2B3U9bq2lsg
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=2B3U9bq2lsg)
 
 ---
 

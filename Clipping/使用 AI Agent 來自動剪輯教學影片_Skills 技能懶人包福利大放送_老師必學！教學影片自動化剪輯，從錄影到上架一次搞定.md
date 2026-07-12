@@ -1,6 +1,6 @@
 # 使用 AI Agent 來自動剪輯教學影片_Skills 技能懶人包福利大放送_老師必學！教學影片自動化剪輯，從錄影到上架一次搞定
 
-- 影片網址: https://www.youtube.com/watch?v=TU_Upg_whtk
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=TU_Upg_whtk)
 
 ---
 

@@ -1,6 +1,6 @@
 # Claude基本功EP06:用claude+notebookLM+Github打造你的專屬教學駕駛艙
 
-- 影片網址: https://www.youtube.com/watch?v=e6oMbuP3D2Q
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=e6oMbuP3D2Q)
 
 ---
 

@@ -1,6 +1,6 @@
 # GoogleAI基本功EP04 :升級你的 Gemini"一次搞懂 Storybook、Gem 與 OPAL"
 
-- 影片網址: https://www.youtube.com/watch?v=K8OUMk40hec
+- 影片網址: [YouTube](https://www.youtube.com/watch?v=K8OUMk40hec)
 
 ---
 
