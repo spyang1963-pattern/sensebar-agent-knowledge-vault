@@ -59,17 +59,16 @@ def scan_channel():
     log("掃描 @sensebar 頻道...")
     all_entries = []
     
-    for tab in ['videos', 'streams']:
-        url = f"{CHANNEL_URL}/{tab}"
-        ydl_opts = {'extract_flat': True, 'skip_download': True, 'quiet': True}
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-            entries = info.get('entries', [])
-            all_entries.extend(entries)
-            log(f"  {tab}: {len(entries)} 支")
-        except Exception as e:
-            log(f"  {tab} 失敗: {e}")
+    url = f"{CHANNEL_URL}/videos"
+    ydl_opts = {'extract_flat': True, 'skip_download': True, 'quiet': True}
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+        entries = info.get('entries', [])
+        all_entries.extend(entries)
+        log(f"  videos: {len(entries)} 支")
+    except Exception as e:
+        log(f"  videos 失敗: {e}")
     
     # 去重
     seen = set()
