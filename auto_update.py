@@ -36,6 +36,11 @@ def log(msg):
     timestamp = datetime.now().strftime("%H:%M:%S")
     print(f"[{timestamp}] {msg}")
 
+def safe_filename(name):
+    """移除 Windows 非法字元"""
+    illegal = r'[\\/:*?"<>|]'
+    return re.sub(illegal, '_', name)
+
 def notify(title, message, url=None):
     """Windows 桌面通知（使用 tkinter 彈出視窗）"""
     try:
@@ -234,7 +239,7 @@ def transcribe_with_whisper(audio_path, video_id):
 
 def create_clippling_md(video_id, title, srt_path):
     """建立 Clipping MD 檔案"""
-    md_path = CLIPPING / f"{title}.md"
+    md_path = CLIPPING / f"{safe_filename(title)}.md"
     
     # 從 SRT 提取純文字
     srt_content = srt_path.read_text(encoding="utf-8", errors="replace")
@@ -341,7 +346,7 @@ def main():
             if srt_path:
                 log(f"  使用 YouTube 字幕: {srt_path.name}")
                 # 複製到 Clipping
-                target_srt = CLIPPING / f"{title}.srt"
+                target_srt = CLIPPING / f"{safe_filename(title)}.srt"
                 shutil.copy2(srt_path, target_srt)
                 # 建立 MD
                 create_clippling_md(vid, title, srt_path)
@@ -357,7 +362,7 @@ def main():
                     srt_path = transcribe_with_whisper(audio_path, vid)
                     if srt_path:
                         # 複製到 Clipping
-                        target_srt = CLIPPING / f"{title}.srt"
+                        target_srt = CLIPPING / f"{safe_filename(title)}.srt"
                         shutil.copy2(srt_path, target_srt)
                         # 建立 MD
                         create_clippling_md(vid, title, srt_path)
