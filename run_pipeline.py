@@ -66,8 +66,17 @@ def main():
     if not video.exists():
         sys.exit(f"[ERR] 找不到影片：{video}")
 
-    slug = video.parent.name
-    working = ROOT / "working" / slug
+    # 使用影片的父目錄作為 working 和 output 的基礎
+    # 如果影片在 working/{course}/{task_slug}/ 下，則使用該目錄
+    # 否則使用 video.parent.name 作為 slug
+    if "working" in str(video.parent) and video.parent.parent.name != "working":
+        # 影片在 working/{course}/{task_slug}/ 下
+        working = video.parent
+        slug = video.parent.name
+    else:
+        slug = video.parent.name
+        working = ROOT / "working" / slug
+    
     output = ROOT / "output" / slug
     working.mkdir(parents=True, exist_ok=True)
     output.mkdir(parents=True, exist_ok=True)
@@ -86,7 +95,7 @@ def main():
     # Step 1: 智能剪輯
     if not args.skip_cut:
         ok = run(
-            [sys.executable, str(SKILLS / "smart-cut" / "scripts" / "smart_cut.py"),
+            [sys.executable, "-X", "utf8", str(SKILLS / "smart-cut" / "scripts" / "smart_cut.py"),
              str(video), "--out", str(trimmed)],
             "Step 1: 智能剪輯（去靜音）"
         )
@@ -101,7 +110,7 @@ def main():
     os.environ["GROQ_API_KEY"] = groq_key
 
     ok = run(
-        [sys.executable, str(SKILLS / "audio-to-srt" / "scripts" / "transcribe_groq.py"),
+        [sys.executable, "-X", "utf8", str(SKILLS / "audio-to-srt" / "scripts" / "transcribe_groq.py"),
          str(src_video), "--out", str(raw_json)],
         "Step 2: Groq Whisper 語音轉字幕"
     )
@@ -110,7 +119,7 @@ def main():
 
     # Step 3: 重新分段
     ok = run(
-        [sys.executable, str(SKILLS / "audio-to-srt" / "scripts" / "resegment.py"),
+        [sys.executable, "-X", "utf8", str(SKILLS / "audio-to-srt" / "scripts" / "resegment.py"),
          str(raw_json), "--out", str(reseg_srt), "--audio", str(src_video)],
         "Step 3: AI 重新分段"
     )
@@ -119,7 +128,7 @@ def main():
 
     # Step 4: 術語校正
     ok = run(
-        [sys.executable, str(SKILLS / "audio-to-srt" / "scripts" / "apply_vocab.py"),
+        [sys.executable, "-X", "utf8", str(SKILLS / "audio-to-srt" / "scripts" / "apply_vocab.py"),
          str(reseg_srt), "--out", str(corrected_srt)],
         "Step 4: 術語校正"
     )
@@ -128,7 +137,7 @@ def main():
 
     # Step 5: 驗證 SRT
     ok = run(
-        [sys.executable, str(SKILLS / "audio-to-srt" / "scripts" / "validate_srt.py"),
+        [sys.executable, "-X", "utf8", str(SKILLS / "audio-to-srt" / "scripts" / "validate_srt.py"),
          "--raw", str(reseg_srt), "--clean", str(corrected_srt)],
         "Step 5: 字幕驗證"
     )
@@ -137,7 +146,7 @@ def main():
 
     # Step 6: 產生純文字
     ok = run(
-        [sys.executable, str(SKILLS / "audio-to-srt" / "scripts" / "srt_to_txt.py"),
+        [sys.executable, "-X", "utf8", str(SKILLS / "audio-to-srt" / "scripts" / "srt_to_txt.py"),
          str(corrected_srt), "--out", str(clean_txt)],
         "Step 6: 產生純文字"
     )
