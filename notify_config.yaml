@@ -1,0 +1,15 @@
+# Worker 通知設定（獨立於 stock-monitor，不互相影響）
+line:
+  enabled: true
+  channel_access_token: "tptSa8HT7DCuMo8pz7taDvba+cDTSUsOTrgUXAPhXeGAz+UTL417VK6ugJzCUUIZGNdCh5eGJVwknIYrjs2Bi214ExRK/FJ6CvOE83oGR9DQ0BpbO0/2bJimckB/ZeaYE2dbK0s3ygM87nTYoyc7bgdB04t89/1O/w1cDnyilFU="
+  user_ids:
+    - "U22237069d5d57cdb8ea50c4c762e36df"
+
+email:
+  enabled: true
+  smtp_server: "smtp.gmail.com"
+  smtp_port: 587
+  sender_email: "spyang1963@gmail.com"
+  sender_password: "qodk pthc zklc lwrb"
+  recipients:
+    - "spyang1963@gmail.com"
