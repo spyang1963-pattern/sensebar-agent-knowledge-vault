@@ -47,7 +47,7 @@ def get_free_space_gb(path):
         return 0
 
 def run_pipeline(video_path, slug=None):
-    cmd = [sys.executable, str(PROJECT_ROOT / "run_pipeline.py"), video_path, "--skip-cut"]
+    cmd = [sys.executable, "-X", "utf8", str(PROJECT_ROOT / "run_pipeline.py"), video_path, "--skip-cut"]
     
     max_retries = 3
     for attempt in range(1, max_retries + 1):
@@ -143,6 +143,11 @@ def process_task(task):
     # 更新心跳：正在處理
     heartbeat.update(status="processing", current_task=tid)
     task_queue.update_task_status(tid, "processing")
+    try:
+        from scheduler import sync_shared_to_local
+        sync_shared_to_local()
+    except Exception:
+        pass
     
     # 健康檢查
     timer.step("health_check")
@@ -410,7 +415,7 @@ def main():
         # 過濾 pending 任務
         pending_tasks = [
             t for t in assigned_tasks
-            if t["task_info"]["status"] in ["assigned", "pending"]
+            if t.get("status") in ["assigned", "pending"] or t.get("task_info", {}).get("status") in ["assigned", "pending"]
         ]
         
         if args.id:
@@ -435,7 +440,12 @@ def main():
                 log(f"  跳過: 磁碟空間不足")
                 break
             
-            ok = process_task(task)
+            try:
+                ok = process_task(task)
+            except Exception as e:
+                log(f"  [FATAL] 任務異常: {e}")
+                ok = False
+            
             if ok:
                 success += 1
             else:

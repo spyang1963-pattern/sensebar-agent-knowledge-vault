@@ -333,7 +333,7 @@ def harvest():
         log("shared/tasks/ 目錄不存在")
         return
 
-    kb_dir = os.path.join(str(PROJECT_ROOT), "knowledge-base", "trading")
+    kb_dir = os.path.join(str(PROJECT_ROOT), "knowledge-base")
     os.makedirs(kb_dir, exist_ok=True)
 
     harvested = 0
@@ -469,21 +469,36 @@ def harvest():
                     clean_name = task_name[:-len(ext)]
                     break
 
-            # KB 路徑鏡像影音倉庫結構：用 video_relpath 決定位置
+            # KB 路徑：優先用 task_info.kb_subpath（使用者指定），否則自動計算
+            kb_subpath = ti.get("kb_subpath", "")
             video_relpath = ti.get("video_relpath", "")
-            if video_relpath:
+            if kb_subpath:
+                # 使用者指定的 KB 路徑
+                kb_subpath = kb_subpath.strip()
+                clean_name = os.path.splitext(os.path.basename(video_relpath) if video_relpath else task_name)[0]
+                dst_md = os.path.join(kb_dir, kb_subpath, f"{clean_name}.md")
+            elif video_relpath:
                 video_relpath = video_relpath.strip()
-                if os.path.isabs(video_relpath):
-                    video_rel = os.path.relpath(video_relpath, get_machine_paths()["videos"])
-                else:
-                    video_rel = video_relpath
-                kb_rel = os.path.splitext(video_rel)[0] + ".md"
-                dst_md = os.path.join(kb_dir, kb_rel)
+                # 預設放到 knowledge-base/{course}/{filename}.md
+                clean_name = os.path.splitext(os.path.basename(video_relpath))[0]
+                dst_md = os.path.join(kb_dir, course, f"{clean_name}.md")
             else:
                 dst_md = os.path.join(kb_course, f"{clean_name}.md")
+
+            # 在 ## 影片 加入完整影片路徑（純文字，方便複製貼上播放）
+            if full_md and "## 影片" in full_md:
+                import re as _re
+                video_link_match = _re.search(r'## 影片\n(.+?)(?=\n## |\Z)', full_md, _re.DOTALL)
+                if video_link_match:
+                    display_text = video_link_match.group(1).strip()
+                    vr = video_relpath.strip() if video_relpath else ""
+                    if vr and "file:///" not in full_md:
+                        vfp = os.path.join(get_machine_paths()["videos"], vr)
+                        full_md = full_md.replace("## 影片\n" + display_text, "## 影片\n" + vfp)
+
             if not os.path.exists(dst_md):
                 os.makedirs(os.path.dirname(dst_md), exist_ok=True)
-                with open(dst_md, 'w', encoding='utf-8') as f:
+                with open(dst_md, 'w', encoding="utf-8") as f:
                     f.write(full_md)
                 copied += 1
 

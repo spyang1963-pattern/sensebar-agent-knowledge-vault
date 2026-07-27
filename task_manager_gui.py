@@ -412,21 +412,10 @@ class TaskManagerGUI:
         except Exception as e:
             self.lbl_share_disk.config(text=f"更新失敗: {e}")
 
-        # 自動偵測本機 Worker 狀態
-        try:
-            from ipc import Heartbeat
-            hb = Heartbeat(MACHINE)
-            hb_data = hb.read(MACHINE)
-            if hb_data and hb_data.get("status") == "processing":
-                self.lbl_worker_status.config(text="🟢 工作中", fg="#a6e3a1")
-                self.btn_worker_join.config(text="☑ 停止工作指派", bg="#f38ba8", fg="#1e1e2e")
-                self._worker_active = True
-            else:
-                self.lbl_worker_status.config(text="⬜ 無任務", fg=COLOR_FG)
-                self.btn_worker_join.config(text="☐ 可加入任務", bg="#a6e3a1", fg="#1e1e2e")
-                self._worker_active = False
-        except Exception:
-            pass
+        # 自動偵測本機 Worker 狀態：預設不啟動，需手動按「可加入任務」
+        self.lbl_worker_status.config(text="⬜ 待命（按「可加入任務」啟動）", fg=COLOR_FG)
+        self.btn_worker_join.config(text="☐ 可加入任務", bg="#a6e3a1", fg="#1e1e2e")
+        self._worker_active = False
 
     def _add_worker(self):
         """新增 Worker：部署 + 註冊"""
@@ -590,6 +579,7 @@ class TaskManagerGUI:
         video_fields = [
             ("檔案路徑 * (本機或 UNC)", "path", ""),
             ("課程名稱", "course", "緊急課程"),
+            ("KB 收成路徑 (相對 knowledge-base/)", "kb_subpath", ""),
             ("指派給 (pc1/pc2/notebook)", "assigned", MACHINE),
             ("備註 (選填)", "note", ""),
         ]
@@ -601,6 +591,38 @@ class TaskManagerGUI:
             e.insert(0, default)
             e.pack(fill="x", padx=5, pady=(2, 0))
             video_entries[key] = e
+
+        # 路徑變更時自動帶入課程名稱和 KB 路徑
+        def auto_fill_from_path(*_):
+            p = video_entries["path"].get().strip()
+            if not p:
+                return
+            # 從路徑推斷課程名稱
+            base = r"D:\!!!!!理周學院老師"
+            if p.startswith(base):
+                rel = os.path.relpath(p, base)
+                parts = rel.split(os.sep)
+                if len(parts) > 1:
+                    course_name = parts[0]
+                else:
+                    course_name = os.path.splitext(parts[0])[0]
+            else:
+                course_name = os.path.basename(os.path.dirname(p))
+            # 清理課程名稱：去掉 !! 前綴和 - 後的副標題
+            clean_course = course_name.lstrip('!')
+            if '-' in clean_course:
+                clean_course = clean_course.split('-')[0].strip()
+            if video_entries["course"].get().strip() in ("", "緊急課程"):
+                video_entries["course"].delete(0, "end")
+                video_entries["course"].insert(0, clean_course)
+            # 自動帶入 KB 路徑：只帶課程名稱，讓使用者決定完整位置
+            kb_e = video_entries.get("kb_subpath")
+            if kb_e and not kb_e.get().strip():
+                kb_e.delete(0, "end")
+                kb_e.insert(0, clean_course)
+
+        video_entries["path"].bind("<FocusOut>", auto_fill_from_path)
+        video_entries["path"].bind("<Return>", auto_fill_from_path)
 
         tk.Label(video_frame, text="大小 (MB, 留空自動偵測)", bg=COLOR_BG,
                  fg=COLOR_FG, font=("Consolas", 10), anchor="w").pack(fill="x", padx=5, pady=(8, 0))
@@ -640,6 +662,14 @@ class TaskManagerGUI:
         task_type_var.trace("w", switch_type)
 
         def submit():
+            try:
+                _submit_impl()
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                messagebox.showerror("建立失敗", str(e))
+
+        def _submit_impl():
             t = task_type_var.get()
             data = load_task_status()
             counter = data.get("task_counter", 0) + 1
@@ -673,7 +703,11 @@ class TaskManagerGUI:
                                 full_path = os.path.join(root, f)
                                 # 從理周學院老師目錄開始的相對路徑
                                 base = r"D:\!!!!!理周學院老師"
-                                rel_path = os.path.relpath(full_path, base)
+                                try:
+                                    rel_path = os.path.relpath(full_path, base)
+                                except ValueError:
+                                    # 跨磁碟無法算相對路徑，用完整路徑
+                                    rel_path = full_path
                                 
                                 # 命名驗證
                                 parts = rel_path.split(os.sep)
@@ -736,6 +770,7 @@ class TaskManagerGUI:
                             "course": course,
                             "name": video_name,
                             "video_relpath": rel_path,
+                            "kb_subpath": video_entries["kb_subpath"].get().strip() or course,
                             "size_mb": round(size_mb, 1),
                             "needs_compress": size_mb > 24,
                             "note": note,
@@ -793,6 +828,7 @@ class TaskManagerGUI:
                         "course": course,
                         "name": os.path.basename(path),
                         "video_relpath": path,
+                        "kb_subpath": video_entries["kb_subpath"].get().strip() or course,
                         "size_mb": round(size_mb, 1),
                         "needs_compress": size_mb > 24,
                         "note": note,

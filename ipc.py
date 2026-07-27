@@ -32,8 +32,10 @@ class Heartbeat:
         }
         
         os.makedirs(os.path.dirname(self.heartbeat_file), exist_ok=True)
-        with open(self.heartbeat_file, "w", encoding="utf-8") as f:
+        tmp = self.heartbeat_file + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(heartbeat, f, indent=2)
+        os.replace(tmp, self.heartbeat_file)
         
         return heartbeat
     

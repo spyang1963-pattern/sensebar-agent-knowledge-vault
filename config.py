@@ -44,7 +44,7 @@ SHARED_ROOT = os.path.join(str(PROJECT_ROOT), "shared")
 # 各機器路徑配置
 MACHINE_PATHS = {
     "notebook": {
-        "videos": r"D:\!!!!!理周學院老師\察爾思",
+        "videos": r"D:\!!!!!理周學院老師",
         "output": os.path.join(LOCAL_ROOT, "output"),
         "working": os.path.join(LOCAL_ROOT, "working"),
         "logs": os.path.join(LOCAL_ROOT, "logs"),
@@ -91,13 +91,23 @@ def get_machine_role():
 def load_task_status():
     if not os.path.exists(TASK_STATUS_FILE):
         return {"generated_at": None, "task_counter": 0, "tasks": {}}
-    with open(TASK_STATUS_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(TASK_STATUS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, ValueError):
+        backup = TASK_STATUS_FILE + ".corrupt"
+        try:
+            os.replace(TASK_STATUS_FILE, backup)
+        except Exception:
+            pass
+        return {"generated_at": None, "task_counter": 0, "tasks": {}}
 
 def save_task_status(data):
     os.makedirs(os.path.dirname(TASK_STATUS_FILE), exist_ok=True)
-    with open(TASK_STATUS_FILE, "w", encoding="utf-8") as f:
+    tmp = TASK_STATUS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, TASK_STATUS_FILE)
 
 def log(msg):
     import sys as _sys
