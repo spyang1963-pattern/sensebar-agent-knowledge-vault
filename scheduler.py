@@ -420,7 +420,9 @@ def harvest():
         for output_task_root in output_dirs:
           try:
             kb_course = os.path.join(kb_dir, course)
-            os.makedirs(kb_course, exist_ok=True)
+            # 只在沒有 kb_subpath 時才建 course 目錄
+            if not ti.get("kb_subpath"):
+                os.makedirs(kb_course, exist_ok=True)
 
             copied = 0
             md_content = ""

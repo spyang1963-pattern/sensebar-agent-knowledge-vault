@@ -412,10 +412,10 @@ class TaskManagerGUI:
         except Exception as e:
             self.lbl_share_disk.config(text=f"更新失敗: {e}")
 
-        # 自動偵測本機 Worker 狀態：預設不啟動，需手動按「可加入任務」
-        self.lbl_worker_status.config(text="⬜ 待命（按「可加入任務」啟動）", fg=COLOR_FG)
-        self.btn_worker_join.config(text="☐ 可加入任務", bg="#a6e3a1", fg="#1e1e2e")
-        self._worker_active = False
+        # 自動偵測本機 Worker 狀態：只在非活動時顯示預設狀態
+        if not self._worker_active:
+            self.lbl_worker_status.config(text="⬜ 待命（按「可加入任務」啟動）", fg=COLOR_FG)
+            self.btn_worker_join.config(text="☐ 可加入任務", bg="#a6e3a1", fg="#1e1e2e")
 
     def _add_worker(self):
         """新增 Worker：部署 + 註冊"""
