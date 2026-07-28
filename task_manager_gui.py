@@ -569,6 +569,9 @@ class TaskManagerGUI:
         tk.Radiobutton(type_frame, text="YouTube", variable=task_type_var,
                        value="sensebar", bg=COLOR_BG, fg=COLOR_FG,
                        selectcolor=COLOR_BG, font=("Consolas", 10)).pack(side="left")
+        tk.Radiobutton(type_frame, text="燒字幕", variable=task_type_var,
+                       value="subtitle", bg=COLOR_BG, fg=COLOR_FG,
+                       selectcolor=COLOR_BG, font=("Consolas", 10)).pack(side="left", padx=10)
 
         container = tk.Frame(win, bg=COLOR_BG)
         container.pack(fill="both", expand=True, padx=10)
@@ -647,17 +650,86 @@ class TaskManagerGUI:
             e.pack(fill="x", padx=5, pady=(2, 0))
             yt_entries[key] = e
 
+        # 燒字幕表單
+        sub_frame = tk.Frame(container, bg=COLOR_BG)
+        sub_frame_inner = tk.Frame(sub_frame, bg=COLOR_BG)
+        sub_frame_inner.pack(fill="both", expand=True, padx=5)
+
+        # 來源選擇
+        tk.Label(sub_frame_inner, text="來源：", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10, "bold"), anchor="w").pack(fill="x", pady=(8, 0))
+        sub_source_var = tk.StringVar(value="completed")
+        tk.Radiobutton(sub_frame_inner, text="從已完成任務選", variable=sub_source_var, value="completed",
+                       bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
+                       font=("Consolas", 10)).pack(anchor="w")
+        tk.Radiobutton(sub_frame_inner, text="從知識庫 .md 選", variable=sub_source_var, value="kb",
+                       bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
+                       font=("Consolas", 10)).pack(anchor="w")
+
+        # 任務清單（之後動態填入）
+        tk.Label(sub_frame_inner, text="任務清單：", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10, "bold"), anchor="w").pack(fill="x", pady=(8, 0))
+        sub_listbox = tk.Listbox(sub_frame_inner, bg="#313244", fg=COLOR_FG,
+                                 font=("Consolas", 9), selectmode="multiple", height=6)
+        sub_listbox.pack(fill="both", expand=True)
+
+        # 輸出位置
+        tk.Label(sub_frame_inner, text="輸出位置：", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10, "bold"), anchor="w").pack(fill="x", pady=(8, 0))
+        sub_output_var = tk.StringVar(value="same_dir")
+        tk.Radiobutton(sub_frame_inner, text="同目錄（xxx_字幕.mp4）", variable=sub_output_var, value="same_dir",
+                       bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
+                       font=("Consolas", 10)).pack(anchor="w")
+        sub_custom_frame = tk.Frame(sub_frame_inner, bg=COLOR_BG)
+        sub_custom_frame.pack(fill="x")
+        tk.Radiobutton(sub_custom_frame, text="統一目錄：", variable=sub_output_var, value="custom_dir",
+                       bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
+                       font=("Consolas", 10)).pack(side="left")
+        sub_output_dir = tk.Entry(sub_custom_frame, font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
+                                  insertbackground=COLOR_FG, relief="flat")
+        sub_output_dir.insert(0, r"D:\字幕影片")
+        sub_output_dir.pack(side="left", fill="x", expand=True)
+
+        # 字幕樣式
+        tk.Label(sub_frame_inner, text="字幕樣式：", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10, "bold"), anchor="w").pack(fill="x", pady=(8, 0))
+        style_frame = tk.Frame(sub_frame_inner, bg=COLOR_BG)
+        style_frame.pack(fill="x")
+        tk.Label(style_frame, text="字型大小:", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10)).pack(side="left")
+        sub_fontsize = tk.Entry(style_frame, font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
+                                insertbackground=COLOR_FG, relief="flat", width=5)
+        sub_fontsize.insert(0, "24")
+        sub_fontsize.pack(side="left", padx=5)
+        tk.Label(style_frame, text="位置:", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10)).pack(side="left", padx=(10, 0))
+        sub_position = tk.StringVar(value="bottom")
+        tk.Radiobutton(style_frame, text="下", variable=sub_position, value="bottom",
+                       bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
+                       font=("Consolas", 10)).pack(side="left")
+        tk.Radiobutton(style_frame, text="上", variable=sub_position, value="top",
+                       bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
+                       font=("Consolas", 10)).pack(side="left")
+
         video_frame.pack(fill="both", expand=True)
         yt_frame.pack_forget()
+        sub_frame.pack_forget()
 
         def switch_type(*_):
             t = task_type_var.get()
             if t == "video":
                 video_frame.pack(fill="both", expand=True)
                 yt_frame.pack_forget()
-            else:
+                sub_frame.pack_forget()
+            elif t == "sensebar":
                 video_frame.pack_forget()
                 yt_frame.pack(fill="both", expand=True)
+                sub_frame.pack_forget()
+            else:  # subtitle
+                video_frame.pack_forget()
+                yt_frame.pack_forget()
+                sub_frame.pack(fill="both", expand=True)
+                _load_subtitle_list()
 
         task_type_var.trace("w", switch_type)
 
@@ -668,6 +740,49 @@ class TaskManagerGUI:
                 import traceback
                 traceback.print_exc()
                 messagebox.showerror("建立失敗", str(e))
+
+        def _load_subtitle_list():
+            """載入可燒字幕的任務清單"""
+            sub_listbox.delete(0, "end")
+            data = load_task_status()
+            source = sub_source_var.get()
+
+            if source == "completed":
+                # 從已完成任務中找有 SRT 的
+                for tid, ti in data.get("tasks", {}).items():
+                    if ti.get("status") != "completed":
+                        continue
+                    if ti.get("type") != "video":
+                        continue
+                    name = ti.get("name", "")
+                    video_relpath = ti.get("video_relpath", "")
+                    if not video_relpath:
+                        continue
+                    # 檢查 SRT 是否存在
+                    srt_path = video_relpath.rsplit(".", 1)[0] + ".srt"
+                    if os.path.exists(srt_path):
+                        sub_listbox.insert("end", f"{tid}: {name}")
+            else:
+                # 從知識庫找有逐字稿的 .md
+                kb_dir = os.path.join(str(PROJECT_ROOT), "knowledge-base")
+                for root, dirs, files in os.walk(kb_dir):
+                    for f in files:
+                        if not f.endswith(".md"):
+                            continue
+                        fpath = os.path.join(root, f)
+                        try:
+                            with open(fpath, "r", encoding="utf-8") as fh:
+                                content = fh.read(2000)  # 只讀前2000字
+                            if "## 影片" in content and "## 逐字稿" in content:
+                                # 提取影片路徑
+                                import re
+                                match = re.search(r"## 影片\n(.+?)(?=\n## |\Z)", content, re.DOTALL)
+                                if match:
+                                    video_path = match.group(1).strip()
+                                    if os.path.exists(video_path):
+                                        sub_listbox.insert("end", f"{f}|{video_path}")
+                        except Exception:
+                            pass
 
         def _submit_impl():
             t = task_type_var.get()
@@ -851,7 +966,7 @@ class TaskManagerGUI:
                     with open(shared_task_file, "w", encoding="utf-8") as f:
                         json.dump(shared_task, f, indent=2)
                     print_text = path
-            else:
+            elif t == "sensebar":
                 url = yt_entries["yt_url"].get().strip()
                 if not url:
                     messagebox.showerror("錯誤", "請輸入 YouTube 網址")
@@ -882,6 +997,77 @@ class TaskManagerGUI:
                     "machine": None,
                 }
                 print_text = url
+
+            elif t == "subtitle":
+                # 燒字幕任務
+                selected = sub_listbox.curselection()
+                if not selected:
+                    messagebox.showerror("錯誤", "請選擇至少一個任務")
+                    return
+                output_mode = sub_output_var.get()
+                output_dir = sub_output_dir.get().strip() if output_mode == "custom_dir" else None
+                font_size = sub_fontsize.get().strip() or "24"
+                position = sub_position.get()
+
+                created_count = 0
+                for idx in selected:
+                    item_text = sub_listbox.get(idx)
+                    if "|" in item_text:
+                        # KB 來源：filename|video_path
+                        md_name, video_path = item_text.split("|", 1)
+                        name = os.path.basename(video_path)
+                        srt_path = video_path.rsplit(".", 1)[0] + ".srt"
+                    else:
+                        # Completed task 來源：tid: name
+                        parts = item_text.split(": ", 1)
+                        src_tid = parts[0]
+                        name = parts[1] if len(parts) > 1 else ""
+                        src_task = data["tasks"].get(src_tid, {})
+                        video_path = src_task.get("video_relpath", "")
+                        srt_path = video_path.rsplit(".", 1)[0] + ".srt" if video_path else ""
+
+                    if not video_path or not os.path.exists(video_path):
+                        continue
+                    if not os.path.exists(srt_path):
+                        continue
+
+                    counter = data.get("task_counter", 0) + 1
+                    tid = str(counter)
+                    data["task_counter"] = counter
+
+                    data["tasks"][tid] = {
+                        "type": "subtitle",
+                        "status": "pending",
+                        "assigned_to": MACHINE,
+                        "priority": 0,
+                        "name": name,
+                        "video_path": video_path,
+                        "srt_path": srt_path,
+                        "output_mode": output_mode,
+                        "output_dir": output_dir,
+                        "font_size": int(font_size),
+                        "position": position,
+                        "note": "",
+                        "discovered_at": datetime.now().isoformat(),
+                        "started_at": None,
+                        "completed_at": None,
+                        "last_error": None,
+                        "machine": None,
+                    }
+
+                    shared_task = {
+                        "task_id": tid,
+                        "task_info": data["tasks"][tid],
+                        "status": "pending",
+                        "assigned_to": MACHINE,
+                    }
+                    shared_task_file = os.path.join(SHARED_ROOT, "tasks", f"task_{tid}.json")
+                    os.makedirs(os.path.dirname(shared_task_file), exist_ok=True)
+                    with open(shared_task_file, "w", encoding="utf-8") as f:
+                        json.dump(shared_task, f, indent=2)
+                    created_count += 1
+
+                print_text = f"已建立 {created_count} 個燒字幕任務"
 
             data["generated_at"] = datetime.now().isoformat()
             save_task_status(data)

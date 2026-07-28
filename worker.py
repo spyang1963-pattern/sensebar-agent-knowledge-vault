@@ -123,11 +123,101 @@ def compress_video(src_path):
     return local_dst
 
 
+def burn_subtitles(video_path, srt_path, output_path, font_size=24, position="bottom"):
+    """燒錄字幕到影片"""
+    import subprocess
+
+    # 字幕位置樣式
+    if position == "top":
+        margin_v = 30
+        alignment = 6  # 上方置中
+    else:
+        margin_v = 30
+        alignment = 2  # 下方置中
+
+    # ffmpeg 燒字幕指令
+    style = f"FontSize={font_size},MarginV={margin_v},Alignment={alignment}"
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", video_path,
+        "-vf", f"subtitles='{srt_path}':force_style='{style}'",
+        "-c:a", "copy",
+        output_path
+    ]
+
+    log(f"  執行: {' '.join(cmd[:5])}...")
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=7200)
+
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg 失敗: {result.stderr[:500]}")
+
+    return output_path
+
+
+def process_subtitle_task(task):
+    """處理燒字幕任務"""
+    tid = task["task_id"]
+    info = task["task_info"]
+
+    from tracker import TaskTimer
+    timer = TaskTimer(tid)
+    timer.start()
+
+    log(f"\n{'─'*50}")
+    log(f"開始燒字幕 #{tid}: {info['name']}")
+
+    heartbeat.update(status="processing", current_task=tid)
+    task_queue.update_task_status(tid, "processing")
+
+    try:
+        video_path = info["video_path"]
+        srt_path = info["srt_path"]
+        output_mode = info.get("output_mode", "same_dir")
+        output_dir = info.get("output_dir")
+        font_size = info.get("font_size", 24)
+        position = info.get("position", "bottom")
+
+        # 確認檔案存在
+        if not os.path.exists(video_path):
+            raise FileNotFoundError(f"影片不存在: {video_path}")
+        if not os.path.exists(srt_path):
+            raise FileNotFoundError(f"字幕不存在: {srt_path}")
+
+        # 決定輸出路徑
+        stem = os.path.splitext(video_path)[0]
+        if output_mode == "custom_dir" and output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+            output_path = os.path.join(output_dir, os.path.basename(stem) + "_字幕.mp4")
+        else:
+            output_path = stem + "_字幕.mp4"
+
+        # 燒字幕
+        timer.step("burn_subtitles")
+        burn_subtitles(video_path, srt_path, output_path, font_size, position)
+        timer.step_done("burn_subtitles")
+
+        # 完成
+        log(f"  完成: {output_path}")
+        task_queue.update_task_status(tid, "completed")
+        timer.finish(success=True)
+        return True
+
+    except Exception as e:
+        err = str(e)
+        log(f"  [錯誤] {err}")
+        task_queue.update_task_status(tid, "failed", error=err)
+        timer.finish(success=False, error=err)
+        return False
+
 
 def process_task(task):
     """處理單一任務"""
     tid = task["task_id"]
     info = task["task_info"]
+
+    # 燒字幕任務獨立處理
+    if info.get("type") == "subtitle":
+        return process_subtitle_task(task)
     
     # 初始化追蹤器
     from tracker import TaskTimer, OutputValidator, ErrorTracker, HealthChecker
