@@ -736,7 +736,7 @@ class TaskManagerGUI:
                 messagebox.showerror("建立失敗", str(e))
 
         def _open_file_dialog():
-            dlg = _FileSelectionDialog(win)
+            dlg = FileSelectionDialog(win)
             selected = dlg.show()
             if selected:
                 _selected_sub_files.clear()
