@@ -172,7 +172,6 @@ def process_subtitle_task(task):
     try:
         video_path = info["video_path"]
         srt_path = info["srt_path"]
-        output_mode = info.get("output_mode", "same_dir")
         output_dir = info.get("output_dir")
         font_size = info.get("font_size", 24)
         position = info.get("position", "bottom")
@@ -185,7 +184,7 @@ def process_subtitle_task(task):
 
         # 決定輸出路徑
         stem = os.path.splitext(video_path)[0]
-        if output_mode == "custom_dir" and output_dir:
+        if output_dir:
             os.makedirs(output_dir, exist_ok=True)
             output_path = os.path.join(output_dir, os.path.basename(stem) + "_字幕.mp4")
         else:
