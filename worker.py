@@ -209,6 +209,47 @@ def process_subtitle_task(task):
         return False
 
 
+def _create_subtitle_task(orig_tid, info, video_path, output_dir):
+    """影片完成後自動建立燒字幕任務"""
+    try:
+        srt_path = os.path.join(output_dir, "字幕.srt")
+        if not os.path.isfile(srt_path):
+            log(f"  [燒字幕] 跳過：找不到字幕檔 {srt_path}")
+            return
+        from scheduler import load_task_status, save_task_status
+        data = load_task_status()
+        counter = data.get("task_counter", 0) + 1
+        data["task_counter"] = counter
+        tid = str(counter)
+        name = info.get("name", "unknown")
+        data["tasks"][tid] = {
+            "type": "subtitle", "status": "pending",
+            "assigned_to": MACHINE, "priority": 0,
+            "name": name,
+            "video_path": video_path,
+            "srt_path": srt_path,
+            "output_dir": os.path.dirname(video_path),
+            "font_size": 24, "position": "bottom",
+            "note": f"自動建立（原始任務 #{orig_tid}）",
+            "discovered_at": datetime.now().isoformat(),
+            "started_at": None, "completed_at": None,
+            "last_error": None, "machine": None,
+        }
+        shared_task = {
+            "task_id": tid, "task_info": data["tasks"][tid],
+            "status": "pending", "assigned_to": MACHINE,
+        }
+        shared_file = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "shared", "tasks", f"task_{tid}.json")
+        os.makedirs(os.path.dirname(shared_file), exist_ok=True)
+        with open(shared_file, "w", encoding="utf-8") as f:
+            json.dump(shared_task, f, indent=2)
+        save_task_status(data)
+        log(f"  [燒字幕] 已建立 #{tid}（原始 #{orig_tid}）")
+    except Exception as e:
+        log(f"  [燒字幕] 建立失敗: {e}")
+
+
 def process_task(task):
     """處理單一任務"""
     tid = task["task_id"]
@@ -382,7 +423,11 @@ def process_task(task):
         except Exception as e:
             log(f"  [警告] 收成失敗: {e}")
         timer.step_done("harvest")
-        
+
+        # 自動燒字幕
+        if info.get("auto_subtitle") and success:
+            _create_subtitle_task(tid, info, video_path, output_dir)
+
         heartbeat.update(status="online", current_task=None)
         return True
     else:

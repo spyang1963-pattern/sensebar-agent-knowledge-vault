@@ -633,6 +633,11 @@ class TaskManagerGUI:
                           insertbackground=COLOR_FG, relief="flat")
         e_vsize.pack(fill="x", padx=5, pady=(2, 0))
 
+        auto_sub_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(video_frame, text="完成後自動燒字幕", variable=auto_sub_var,
+                       bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
+                       font=("Consolas", 10)).pack(anchor="w", padx=5, pady=(8, 0))
+
         # YouTube 表單
         yt_frame = tk.Frame(container, bg=COLOR_BG)
         yt_entries = {}
@@ -649,6 +654,11 @@ class TaskManagerGUI:
             e.insert(0, default)
             e.pack(fill="x", padx=5, pady=(2, 0))
             yt_entries[key] = e
+
+        yt_auto_sub = tk.BooleanVar(value=False)
+        tk.Checkbutton(yt_frame, text="完成後自動燒字幕", variable=yt_auto_sub,
+                       bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
+                       font=("Consolas", 10)).pack(anchor="w", padx=5, pady=(8, 0))
 
         # 燒字幕表單
         sub_frame = tk.Frame(container, bg=COLOR_BG)
@@ -894,6 +904,7 @@ class TaskManagerGUI:
                             "size_mb": round(size_mb, 1),
                             "needs_compress": size_mb > 24,
                             "note": note,
+                            "auto_subtitle": auto_sub_var.get(),
                             "discovered_at": datetime.now().isoformat(),
                             "started_at": None,
                             "completed_at": None,
@@ -952,6 +963,7 @@ class TaskManagerGUI:
                         "size_mb": round(size_mb, 1),
                         "needs_compress": size_mb > 24,
                         "note": note,
+                        "auto_subtitle": auto_sub_var.get(),
                         "discovered_at": datetime.now().isoformat(),
                         "started_at": None,
                         "completed_at": None,
@@ -996,6 +1008,7 @@ class TaskManagerGUI:
                     "title": title,
                     "url": url,
                     "note": note,
+                    "auto_subtitle": yt_auto_sub.get(),
                     "discovered_at": datetime.now().isoformat(),
                     "started_at": None,
                     "completed_at": None,
