@@ -5,7 +5,7 @@
 用法:
   python task_manager_gui.py
 """
-import os, sys, json, threading, time, subprocess, socket, ctypes
+import os, sys, json, threading, time, subprocess, socket, ctypes, re
 from datetime import datetime
 from tkinter import ttk, messagebox, filedialog
 import tkinter as tk
@@ -653,34 +653,46 @@ class TaskManagerGUI:
         # 燒字幕表單
         sub_frame = tk.Frame(container, bg=COLOR_BG)
         sub_frame_inner = tk.Frame(sub_frame, bg=COLOR_BG)
-        sub_frame_inner.pack(fill="both", expand=True, padx=5)
+        sub_frame_inner.pack(fill="both", expand=True, padx=10)
 
-        sub_entries = {}
-        sub_fields = [
-            ("影片路徑 *", "sub_video", ""),
-            ("SRT 字幕路徑 *", "sub_srt", ""),
-            ("輸出目錄 (留空=同目錄)", "sub_outdir", ""),
-        ]
-        for label, key, default in sub_fields:
-            tk.Label(sub_frame_inner, text=label, bg=COLOR_BG, fg=COLOR_FG,
-                     font=("Consolas", 10), anchor="w").pack(fill="x", padx=5, pady=(8, 0))
-            row = tk.Frame(sub_frame_inner, bg=COLOR_BG)
-            row.pack(fill="x", padx=5)
-            e = tk.Entry(row, font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
-                         insertbackground=COLOR_FG, relief="flat")
-            e.insert(0, default)
-            e.pack(side="left", fill="x", expand=True)
-            btn = tk.Button(row, text="瀏覽", font=("Consolas", 9),
-                            bg="#45475a", fg=COLOR_FG, relief="flat",
-                            command=lambda key=key, entry=e: _browse_file(entry, key))
-            btn.pack(side="right", padx=(5, 0))
-            sub_entries[key] = e
+        sub_src_path = tk.StringVar()
+        sub_src_label = tk.Label(sub_frame_inner, text="來源（.md 檔或目錄）*：", bg=COLOR_BG, fg=COLOR_FG,
+                                 font=("Consolas", 10), anchor="w")
+        sub_src_label.pack(fill="x", pady=(8, 0))
+        sub_src_row = tk.Frame(sub_frame_inner, bg=COLOR_BG)
+        sub_src_row.pack(fill="x")
+        sub_src_entry = tk.Entry(sub_src_row, textvariable=sub_src_path,
+                                 font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
+                                 insertbackground=COLOR_FG, relief="flat")
+        sub_src_entry.pack(side="left", fill="x", expand=True)
+        tk.Button(sub_src_row, text="選 .md", font=("Consolas", 9),
+                  bg="#45475a", fg=COLOR_FG, relief="flat",
+                  command=lambda: _browse_md(sub_src_path)).pack(side="left", padx=(5, 0))
+        tk.Button(sub_src_row, text="選目錄", font=("Consolas", 9),
+                  bg="#45475a", fg=COLOR_FG, relief="flat",
+                  command=lambda: _browse_dir(sub_src_path)).pack(side="left", padx=(5, 0))
+        sub_src_info = tk.Label(sub_frame_inner, text="※ .md 檔：自動讀取影片路徑；目錄：掃描所有 .md",
+                                bg=COLOR_BG, fg="#a6adc8", font=("Consolas", 9), anchor="w")
+        sub_src_info.pack(fill="x")
+
+        sub_out_path = tk.StringVar()
+        tk.Label(sub_frame_inner, text="輸出目錄 (留空=同目錄)：", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10), anchor="w").pack(fill="x", pady=(8, 0))
+        sub_out_row = tk.Frame(sub_frame_inner, bg=COLOR_BG)
+        sub_out_row.pack(fill="x")
+        tk.Entry(sub_out_row, textvariable=sub_out_path,
+                 font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
+                 insertbackground=COLOR_FG, relief="flat").pack(side="left", fill="x", expand=True)
+        tk.Button(sub_out_row, text="瀏覽", font=("Consolas", 9),
+                  bg="#45475a", fg=COLOR_FG, relief="flat",
+                  command=lambda: sub_out_path.set(filedialog.askdirectory(title="選擇輸出目錄"))
+                  ).pack(side="right", padx=(5, 0))
 
         # 字幕樣式
         tk.Label(sub_frame_inner, text="字幕樣式：", bg=COLOR_BG, fg=COLOR_FG,
-                 font=("Consolas", 10, "bold"), anchor="w").pack(fill="x", padx=5, pady=(8, 0))
+                 font=("Consolas", 10, "bold"), anchor="w").pack(fill="x", pady=(8, 0))
         style_frame = tk.Frame(sub_frame_inner, bg=COLOR_BG)
-        style_frame.pack(fill="x", padx=5)
+        style_frame.pack(fill="x")
         tk.Label(style_frame, text="字型大小:", bg=COLOR_BG, fg=COLOR_FG,
                  font=("Consolas", 10)).pack(side="left")
         sub_fontsize = tk.Entry(style_frame, font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
@@ -726,23 +738,57 @@ class TaskManagerGUI:
                 traceback.print_exc()
                 messagebox.showerror("建立失敗", str(e))
 
-        def _browse_file(entry, key):
-            """瀏覽檔案"""
-            if key == "sub_video":
-                f = filedialog.askopenfilename(title="選擇影片", filetypes=[("影片", "*.mp4 *.mkv *.avi")])
-            elif key == "sub_srt":
-                f = filedialog.askopenfilename(title="選擇字幕", filetypes=[("SRT", "*.srt")])
-            else:
-                f = filedialog.askdirectory(title="選擇目錄")
+        def _browse_md(var):
+            f = filedialog.askopenfilename(title="選擇 .md 檔", filetypes=[("Markdown", "*.md")])
             if f:
-                entry.delete(0, "end")
-                entry.insert(0, f)
-                # 選影片時自動帶入同名的 SRT
-                if key == "sub_video":
-                    srt_guess = os.path.splitext(f)[0] + ".srt"
-                    if os.path.exists(srt_guess):
-                        sub_entries["sub_srt"].delete(0, "end")
-                        sub_entries["sub_srt"].insert(0, srt_guess)
+                var.set(f)
+
+        def _browse_dir(var):
+            d = filedialog.askdirectory(title="選擇目錄")
+            if d:
+                var.set(d)
+
+        def _md_to_srt(md_text):
+            m = re.search(r'## 逐字稿\s*\n(.*)', md_text, re.DOTALL)
+            if not m:
+                return None
+            transcript = m.group(1).strip()
+            if not transcript:
+                return None
+            lines = [l.strip() for l in transcript.splitlines() if l.strip()]
+            subs = []
+            for line in lines:
+                if len(line) <= 30:
+                    subs.append(line)
+                else:
+                    parts = re.split(r'([，、。！？])', line)
+                    cur = ""
+                    for p in parts:
+                        if len(cur) + len(p) <= 30:
+                            cur += p
+                        else:
+                            if cur:
+                                subs.append(cur)
+                            cur = p
+                    if cur:
+                        subs.append(cur)
+            if not subs:
+                return None
+            srt_lines = []
+            t = 0.0
+            for i, txt in enumerate(subs, 1):
+                dur = len(txt) / 4
+                h1, m1 = int(t // 3600), int((t % 3600) // 60)
+                s1, ms1 = int(t % 60), int((t % 1) * 1000)
+                e = t + dur
+                h2, m2 = int(e // 3600), int((e % 3600) // 60)
+                s2, ms2 = int(e % 60), int((e % 1) * 1000)
+                srt_lines.append(f"{i}")
+                srt_lines.append(f"{h1:02d}:{m1:02d}:{s1:02d},{ms1:03d} --> {h2:02d}:{m2:02d}:{s2:02d},{ms2:03d}")
+                srt_lines.append(txt)
+                srt_lines.append("")
+                t = e + 0.3
+            return "\n".join(srt_lines)
 
         def _submit_impl():
             t = task_type_var.get()
@@ -926,6 +972,7 @@ class TaskManagerGUI:
                     with open(shared_task_file, "w", encoding="utf-8") as f:
                         json.dump(shared_task, f, indent=2)
                     print_text = path
+                    created_count = 1
             elif t == "sensebar":
                 url = yt_entries["yt_url"].get().strip()
                 if not url:
@@ -959,51 +1006,108 @@ class TaskManagerGUI:
                 print_text = url
 
             elif t == "subtitle":
-                video_path = sub_entries["sub_video"].get().strip()
-                srt_path = sub_entries["sub_srt"].get().strip()
-                outdir = sub_entries["sub_outdir"].get().strip()
-
-                if not video_path or not os.path.exists(video_path):
-                    messagebox.showerror("錯誤", "請選擇有效的影片路徑")
-                    return
-                if not srt_path or not os.path.exists(srt_path):
-                    messagebox.showerror("錯誤", "請選擇有效的 SRT 字幕檔案")
-                    return
-
+                src = sub_src_path.get().strip()
+                outdir = sub_out_path.get().strip()
                 font_size = sub_fontsize.get().strip() or "24"
                 position = sub_position.get()
 
-                data["tasks"][tid] = {
-                    "type": "subtitle",
-                    "status": "pending",
-                    "assigned_to": MACHINE,
-                    "priority": 0,
-                    "name": os.path.basename(video_path),
-                    "video_path": video_path,
-                    "srt_path": srt_path,
-                    "output_dir": outdir if outdir else None,
-                    "font_size": int(font_size),
-                    "position": position,
-                    "note": "",
-                    "discovered_at": datetime.now().isoformat(),
-                    "started_at": None,
-                    "completed_at": None,
-                    "last_error": None,
-                    "machine": None,
-                }
+                if not src:
+                    messagebox.showerror("錯誤", "請選擇 .md 檔或目錄")
+                    return
+                if not os.path.exists(src):
+                    messagebox.showerror("錯誤", "路徑不存在:\n" + src)
+                    return
 
-                shared_task = {
-                    "task_id": tid,
-                    "task_info": data["tasks"][tid],
-                    "status": "pending",
-                    "assigned_to": MACHINE,
-                }
-                shared_task_file = os.path.join(SHARED_ROOT, "tasks", f"task_{tid}.json")
-                os.makedirs(os.path.dirname(shared_task_file), exist_ok=True)
-                with open(shared_task_file, "w", encoding="utf-8") as f:
-                    json.dump(shared_task, f, indent=2)
+                # 收集所有要處理的 .md 檔
+                md_files = []
+                if os.path.isfile(src) and src.lower().endswith(".md"):
+                    md_files.append(src)
+                elif os.path.isdir(src):
+                    for root, dirs, files in os.walk(src):
+                        for f in files:
+                            if f.lower().endswith(".md"):
+                                md_files.append(os.path.join(root, f))
+                    if not md_files:
+                        messagebox.showerror("錯誤", "目錄中沒有 .md 檔案:\n" + src)
+                        return
+                else:
+                    messagebox.showerror("錯誤", "請選擇 .md 檔或目錄")
+                    return
 
-                print_text = f"燒字幕: {os.path.basename(video_path)} ({font_size}px, {position})"
+                created_count = 0
+                for md_path in md_files:
+                    try:
+                        with open(md_path, "r", encoding="utf-8") as fh:
+                            md_text = fh.read()
+                    except Exception:
+                        continue
+
+                    # 讀取影片路徑
+                    vm = re.search(r'^## 影片\s*\n(.+)', md_text, re.MULTILINE)
+                    if not vm:
+                        continue
+                    video_path = os.path.normpath(vm.group(1).strip())
+                    if not os.path.isfile(video_path):
+                        continue
+
+                    # 檢查 SRT 是否存在
+                    srt_path = None
+                    sm = re.search(r'^## 字幕\s*\n(.+)', md_text, re.MULTILINE)
+                    if sm:
+                        candidate = sm.group(1).strip()
+                        srp = os.path.normpath(os.path.join(os.path.dirname(md_path), candidate))
+                        if os.path.isfile(srp):
+                            srt_path = srp
+
+                    # 沒 SRT 則從逐字稿產生
+                    if not srt_path:
+                        srt_content = _md_to_srt(md_text)
+                        if srt_content:
+                            srt_path = os.path.join(os.path.dirname(md_path), "generated.srt")
+                            with open(srt_path, "w", encoding="utf-8") as fh:
+                                fh.write(srt_content)
+                        else:
+                            continue
+
+                    counter = data.get("task_counter", 0) + 1
+                    data["task_counter"] = counter
+                    tid = str(counter)
+                    name = os.path.basename(video_path)
+
+                    data["tasks"][tid] = {
+                        "type": "subtitle",
+                        "status": "pending",
+                        "assigned_to": MACHINE,
+                        "priority": 0,
+                        "name": name,
+                        "video_path": video_path,
+                        "srt_path": srt_path,
+                        "output_dir": outdir if outdir else None,
+                        "font_size": int(font_size),
+                        "position": position,
+                        "note": "",
+                        "discovered_at": datetime.now().isoformat(),
+                        "started_at": None,
+                        "completed_at": None,
+                        "last_error": None,
+                        "machine": None,
+                    }
+                    shared_task = {
+                        "task_id": tid,
+                        "task_info": data["tasks"][tid],
+                        "status": "pending",
+                        "assigned_to": MACHINE,
+                    }
+                    shared_task_file = os.path.join(SHARED_ROOT, "tasks", f"task_{tid}.json")
+                    os.makedirs(os.path.dirname(shared_task_file), exist_ok=True)
+                    with open(shared_task_file, "w", encoding="utf-8") as f:
+                        json.dump(shared_task, f, indent=2)
+                    created_count += 1
+
+                if created_count == 0:
+                    messagebox.showerror("錯誤", "沒有任何可處理的 .md 檔（需包含 ## 影片 與有效的影片路徑）")
+                    return
+                print_text = f"燒字幕: {src} ({created_count} 個任務)"
 
             data["generated_at"] = datetime.now().isoformat()
             save_task_status(data)
@@ -1025,7 +1129,7 @@ class TaskManagerGUI:
             self._refresh()
             
             # 自動滾動到第一個新增的任務
-            first_new_tid = str(data["task_counter"] - (created_count if t == "video" else 0) + 1)
+            first_new_tid = str(data["task_counter"] - (created_count if t in ("video", "subtitle") else 0) + 1)
             if first_new_tid in self.tree.get_children():
                 self.tree.see(first_new_tid)
                 self.tree.selection_set(first_new_tid)
