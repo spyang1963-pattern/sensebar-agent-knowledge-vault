@@ -209,6 +209,27 @@ def process_subtitle_task(task):
         return False
 
 
+def _copy_output_to_source(output_dir, video_path, tid):
+    """不收成 KB 時，將 .md/.srt 複製到來源目錄"""
+    try:
+        video_dir = os.path.dirname(video_path)
+        video_stem = os.path.splitext(os.path.basename(video_path))[0]
+        # 複製 metadata.md → {video_stem}.md
+        meta_src = os.path.join(output_dir, "metadata.md")
+        if os.path.isfile(meta_src):
+            md_dst = os.path.join(video_dir, f"{video_stem}.md")
+            shutil.copy2(meta_src, md_dst)
+            log(f"  [產出] .md → {md_dst}")
+        # 複製 字幕.srt
+        srt_src = os.path.join(output_dir, "字幕.srt")
+        if os.path.isfile(srt_src):
+            srt_dst = os.path.join(video_dir, "字幕.srt")
+            shutil.copy2(srt_src, srt_dst)
+            log(f"  [產出] .srt → {srt_dst}")
+    except Exception as e:
+        log(f"  [產出] 複製失敗: {e}")
+
+
 def _create_subtitle_task(orig_tid, info, video_path, output_dir):
     """影片完成後自動建立燒字幕任務"""
     try:
@@ -414,15 +435,18 @@ def process_task(task):
         except Exception:
             pass
         
-        # 自動收成到知識庫
-        timer.step("harvest")
-        try:
-            from scheduler import harvest
-            harvest()
-            log(f"  已收成到知識庫")
-        except Exception as e:
-            log(f"  [警告] 收成失敗: {e}")
-        timer.step_done("harvest")
+        harvest_to_kb = info.get("harvest_to_kb", True)
+        if harvest_to_kb:
+            timer.step("harvest")
+            try:
+                from scheduler import harvest
+                harvest()
+                log(f"  已收成到知識庫")
+            except Exception as e:
+                log(f"  [警告] 收成失敗: {e}")
+            timer.step_done("harvest")
+        else:
+            _copy_output_to_source(output_dir, video_path, tid)
 
         # 自動燒字幕
         if info.get("auto_subtitle") and success:
