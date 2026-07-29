@@ -655,26 +655,23 @@ class TaskManagerGUI:
         sub_frame_inner = tk.Frame(sub_frame, bg=COLOR_BG)
         sub_frame_inner.pack(fill="both", expand=True, padx=10)
 
-        sub_src_path = tk.StringVar()
-        sub_src_label = tk.Label(sub_frame_inner, text="來源（.md 檔或目錄）*：", bg=COLOR_BG, fg=COLOR_FG,
+        # 來源：選擇 .md 檔（雙面板對話框）
+        sub_src_label = tk.Label(sub_frame_inner, text="選擇 .md 檔案：", bg=COLOR_BG, fg=COLOR_FG,
                                  font=("Consolas", 10), anchor="w")
         sub_src_label.pack(fill="x", pady=(8, 0))
         sub_src_row = tk.Frame(sub_frame_inner, bg=COLOR_BG)
         sub_src_row.pack(fill="x")
-        sub_src_entry = tk.Entry(sub_src_row, textvariable=sub_src_path,
-                                 font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
+        sub_src_entry = tk.Entry(sub_src_row, font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
                                  insertbackground=COLOR_FG, relief="flat")
         sub_src_entry.pack(side="left", fill="x", expand=True)
-        tk.Button(sub_src_row, text="選 .md", font=("Consolas", 9),
+        tk.Button(sub_src_row, text="選擇檔案", font=("Consolas", 9),
                   bg="#45475a", fg=COLOR_FG, relief="flat",
-                  command=lambda: _browse_md(sub_src_path)).pack(side="left", padx=(5, 0))
-        tk.Button(sub_src_row, text="選目錄", font=("Consolas", 9),
-                  bg="#45475a", fg=COLOR_FG, relief="flat",
-                  command=lambda: _browse_dir(sub_src_path)).pack(side="left", padx=(5, 0))
-        sub_src_info = tk.Label(sub_frame_inner, text="※ .md 檔：自動讀取影片路徑；目錄：掃描所有 .md",
+                  command=lambda: _open_file_dialog()).pack(side="right", padx=(5, 0))
+        sub_src_info = tk.Label(sub_frame_inner, text="※ 左視窗瀏覽 .md 檔，雙擊或按加入選到右視窗",
                                 bg=COLOR_BG, fg="#a6adc8", font=("Consolas", 9), anchor="w")
         sub_src_info.pack(fill="x")
 
+        # 輸出目錄（留空=同目錄）
         sub_out_path = tk.StringVar()
         tk.Label(sub_frame_inner, text="輸出目錄 (留空=同目錄)：", bg=COLOR_BG, fg=COLOR_FG,
                  font=("Consolas", 10), anchor="w").pack(fill="x", pady=(8, 0))
@@ -738,15 +735,17 @@ class TaskManagerGUI:
                 traceback.print_exc()
                 messagebox.showerror("建立失敗", str(e))
 
-        def _browse_md(var):
-            f = filedialog.askopenfilename(title="選擇 .md 檔", filetypes=[("Markdown", "*.md")])
-            if f:
-                var.set(f)
+        def _open_file_dialog():
+            dlg = _FileSelectionDialog(win)
+            selected = dlg.show()
+            if selected:
+                _selected_sub_files.clear()
+                _selected_sub_files.extend(selected)
+                sub_src_entry.delete(0, "end")
+                sub_src_entry.insert(0, f"{len(selected)} 個 .md 檔已選取")
+                sub_src_entry.config(fg="#a6e3a1")
 
-        def _browse_dir(var):
-            d = filedialog.askdirectory(title="選擇目錄")
-            if d:
-                var.set(d)
+        _selected_sub_files = []
 
         def _md_to_srt(md_text):
             m = re.search(r'## 逐字稿\s*\n(.*)', md_text, re.DOTALL)
@@ -1006,33 +1005,14 @@ class TaskManagerGUI:
                 print_text = url
 
             elif t == "subtitle":
-                src = sub_src_path.get().strip()
+                md_files = list(_selected_sub_files)
+                if not md_files:
+                    messagebox.showerror("錯誤", "請先選擇 .md 檔案")
+                    return
+
                 outdir = sub_out_path.get().strip()
                 font_size = sub_fontsize.get().strip() or "24"
                 position = sub_position.get()
-
-                if not src:
-                    messagebox.showerror("錯誤", "請選擇 .md 檔或目錄")
-                    return
-                if not os.path.exists(src):
-                    messagebox.showerror("錯誤", "路徑不存在:\n" + src)
-                    return
-
-                # 收集所有要處理的 .md 檔
-                md_files = []
-                if os.path.isfile(src) and src.lower().endswith(".md"):
-                    md_files.append(src)
-                elif os.path.isdir(src):
-                    for root, dirs, files in os.walk(src):
-                        for f in files:
-                            if f.lower().endswith(".md"):
-                                md_files.append(os.path.join(root, f))
-                    if not md_files:
-                        messagebox.showerror("錯誤", "目錄中沒有 .md 檔案:\n" + src)
-                        return
-                else:
-                    messagebox.showerror("錯誤", "請選擇 .md 檔或目錄")
-                    return
 
                 created_count = 0
                 for md_path in md_files:
@@ -1042,7 +1022,6 @@ class TaskManagerGUI:
                     except Exception:
                         continue
 
-                    # 讀取影片路徑
                     vm = re.search(r'^## 影片\s*\n(.+)', md_text, re.MULTILINE)
                     if not vm:
                         continue
@@ -1050,7 +1029,6 @@ class TaskManagerGUI:
                     if not os.path.isfile(video_path):
                         continue
 
-                    # 檢查 SRT 是否存在
                     srt_path = None
                     sm = re.search(r'^## 字幕\s*\n(.+)', md_text, re.MULTILINE)
                     if sm:
@@ -1059,7 +1037,6 @@ class TaskManagerGUI:
                         if os.path.isfile(srp):
                             srt_path = srp
 
-                    # 沒 SRT 則從逐字稿產生
                     if not srt_path:
                         srt_content = _md_to_srt(md_text)
                         if srt_content:
@@ -1107,7 +1084,7 @@ class TaskManagerGUI:
                 if created_count == 0:
                     messagebox.showerror("錯誤", "沒有任何可處理的 .md 檔（需包含 ## 影片 與有效的影片路徑）")
                     return
-                print_text = f"燒字幕: {src} ({created_count} 個任務)"
+                print_text = f"燒字幕: {len(md_files)} 個檔案 ({created_count} 個任務)"
 
             data["generated_at"] = datetime.now().isoformat()
             save_task_status(data)
@@ -1226,6 +1203,164 @@ class TaskManagerGUI:
         self.btn_filter_all.config(bg="#89b4fa")
         self.btn_filter_pending.config(bg="#f9e2af")
         self._refresh()
+
+
+class FileSelectionDialog:
+    """雙面板檔案選擇對話框：左視窗瀏覽 .md → 加入 → 右視窗待處理"""
+    def __init__(self, parent):
+        self.win = tk.Toplevel(parent)
+        self.win.title("選擇 .md 檔案")
+        self.win.geometry("800x500")
+        self.win.configure(bg="#1e1e2e")
+        self.win.transient(parent)
+        self.win.grab_set()
+
+        self.selected = []
+
+        # 上方：目錄選擇
+        top = tk.Frame(self.win, bg="#1e1e2e")
+        top.pack(fill="x", padx=10, pady=(10, 5))
+        tk.Label(top, text="來源目錄：", bg="#1e1e2e", fg="#cdd6f4",
+                 font=("Consolas", 10)).pack(side="left")
+        self.dir_entry = tk.Entry(top, font=("Consolas", 10), bg="#313244", fg="#cdd6f4",
+                                  insertbackground="#cdd6f4", relief="flat")
+        self.dir_entry.pack(side="left", fill="x", expand=True, padx=5)
+        tk.Button(top, text="瀏覽", font=("Consolas", 9), bg="#45475a",
+                  fg="#cdd6f4", relief="flat", command=self._browse_dir).pack(side="left")
+        tk.Button(top, text="掃描", font=("Consolas", 9), bg="#45475a",
+                  fg="#cdd6f4", relief="flat", command=self._scan_dir).pack(side="left", padx=(5, 0))
+
+        # 主區域：左右雙面板
+        main = tk.Frame(self.win, bg="#1e1e2e")
+        main.pack(fill="both", expand=True, padx=10, pady=5)
+
+        # 左面板
+        left_frame = tk.LabelFrame(main, text="可選檔案", bg="#1e1e2e", fg="#cdd6f4",
+                                   font=("Consolas", 10), relief="flat")
+        left_frame.pack(side="left", fill="both", expand=True)
+        self.left_lb = tk.Listbox(left_frame, bg="#313244", fg="#cdd6f4",
+                                  selectbackground="#585b70", relief="flat",
+                                  font=("Consolas", 10), activestyle="none")
+        self.left_lb.pack(side="left", fill="both", expand=True, padx=5, pady=5)
+        left_scroll = tk.Scrollbar(self.left_lb, orient="vertical")
+        left_scroll.pack(side="right", fill="y")
+        self.left_lb.config(yscrollcommand=left_scroll.set)
+        left_scroll.config(command=self.left_lb.yview)
+        self.left_lb.bind("<Double-Button-1>", lambda e: self._add_selected())
+
+        # 中間按鈕
+        mid_frame = tk.Frame(main, bg="#1e1e2e")
+        mid_frame.pack(side="left", fill="y", padx=10)
+        tk.Button(mid_frame, text="加入 >>", font=("Consolas", 10), bg="#45475a",
+                  fg="#a6e3a1", relief="flat", command=self._add_selected).pack(pady=(80, 5))
+        tk.Button(mid_frame, text="<< 移除", font=("Consolas", 10), bg="#45475a",
+                  fg="#f38ba8", relief="flat", command=self._remove_selected).pack(pady=5)
+
+        # 右面板
+        right_frame = tk.LabelFrame(main, text="待處理檔案", bg="#1e1e2e", fg="#cdd6f4",
+                                    font=("Consolas", 10), relief="flat")
+        right_frame.pack(side="left", fill="both", expand=True)
+        self.right_lb = tk.Listbox(right_frame, bg="#313244", fg="#cdd6f4",
+                                   selectbackground="#585b70", relief="flat",
+                                   font=("Consolas", 10), activestyle="none")
+        self.right_lb.pack(side="left", fill="both", expand=True, padx=5, pady=5)
+        right_scroll = tk.Scrollbar(self.right_lb, orient="vertical")
+        right_scroll.pack(side="right", fill="y")
+        self.right_lb.config(yscrollcommand=right_scroll.set)
+        right_scroll.config(command=self.right_lb.yview)
+        self.right_lb.bind("<Double-Button-1>", lambda e: self._remove_selected())
+
+        # 底部按鈕
+        bottom = tk.Frame(self.win, bg="#1e1e2e")
+        bottom.pack(fill="x", padx=10, pady=10)
+        self.count_label = tk.Label(bottom, text="已選 0 個檔案", bg="#1e1e2e", fg="#a6adc8",
+                                    font=("Consolas", 10))
+        self.count_label.pack(side="left")
+        tk.Button(bottom, text="確定", font=("Consolas", 10), bg="#a6e3a1",
+                  fg="#1e1e2e", relief="flat", command=self._confirm).pack(side="right", padx=(5, 0))
+        tk.Button(bottom, text="取消", font=("Consolas", 10), bg="#45475a",
+                  fg="#cdd6f4", relief="flat", command=self.win.destroy).pack(side="right")
+
+        self._all_files = []  # (display_name, full_path)
+
+    def _browse_dir(self):
+        d = filedialog.askdirectory(title="選擇包含 .md 的目錄")
+        if d:
+            self.dir_entry.delete(0, "end")
+            self.dir_entry.insert(0, d)
+            self._scan_dir()
+
+    def _scan_dir(self):
+        path = self.dir_entry.get().strip()
+        if not path or not os.path.isdir(path):
+            messagebox.showerror("錯誤", "請選擇有效的目錄", parent=self.win)
+            return
+        self._all_files = []
+        self.left_lb.delete(0, "end")
+        for root, dirs, files in os.walk(path):
+            for f in sorted(files):
+                if f.lower().endswith(".md"):
+                    full = os.path.join(root, f)
+                    rel = os.path.relpath(full, path)
+                    self._all_files.append((rel, full))
+                    self.left_lb.insert("end", rel)
+        if not self._all_files:
+            messagebox.showinfo("提示", "目錄中沒有 .md 檔案", parent=self.win)
+
+    def _add_selected(self):
+        sel = self.left_lb.curselection()
+        if not sel:
+            return
+        for idx in reversed(sel):
+            display, path = self._all_files[idx]
+            # 加到右邊
+            self.right_lb.insert("end", display)
+            # 從左邊移除
+            self.left_lb.delete(idx)
+            del self._all_files[idx]
+        self._update_count()
+
+    def _remove_selected(self):
+        sel = self.right_lb.curselection()
+        if not sel:
+            return
+        for idx in reversed(sel):
+            display = self.right_lb.get(idx)
+            self.right_lb.delete(idx)
+            # 放回左邊
+            # 找到對應的完整路徑 - 需要重新掃描
+            # 直接重新掃描較簡單
+        # 保留右側，從右側移除的檔案暫不回左側（避免需重新掃描）
+        self._update_count()
+
+    def _update_count(self):
+        count = self.right_lb.size()
+        self.count_label.config(text=f"已選 {count} 個檔案")
+
+    def _confirm(self):
+        # 從右側 listbox 收集檔案路徑
+        self.selected = []
+        for i in range(self.right_lb.size()):
+            display = self.right_lb.get(i)
+            # 找對應的完整路徑 - 需要重新遍歷
+        # 重新掃描目錄來匹配
+        path = self.dir_entry.get().strip()
+        if path and os.path.isdir(path):
+            for root, dirs, files in os.walk(path):
+                for f in files:
+                    if f.lower().endswith(".md"):
+                        full = os.path.join(root, f)
+                        rel = os.path.relpath(full, path)
+                        # 檢查是否在右側 listbox 中
+                        for i in range(self.right_lb.size()):
+                            if self.right_lb.get(i) == rel:
+                                self.selected.append(full)
+                                break
+        self.win.destroy()
+
+    def show(self):
+        self.win.wait_window()
+        return self.selected
 
 
 if __name__ == "__main__":
