@@ -27,6 +27,7 @@ from config import (
     log, PROJECT_ROOT, SHARED_ROOT,
     load_channel_state, save_channel_state, get_watched_channels,
 )
+from watchdog import notify_line_and_email
 
 # ── 常數 ──
 WORKING = PROJECT_ROOT / "working"
@@ -52,9 +53,16 @@ def srt_to_transcript(srt_path):
         out.append(line)
     return "\n".join(out)
 
-def get_playlist_entries(playlist_id):
-    """用 yt-dlp 取得播放清單所有影片"""
-    url = f"https://www.youtube.com/playlist?list={playlist_id}"
+def get_playlist_entries(source):
+    """用 yt-dlp 取得播放清單所有影片
+    source: 可為 playlist_id 或直接 YouTube URL（含 youtube.com）
+    """
+    if "youtube.com" in source or "youtu.be" in source:
+        url = source
+        label = source[:50]
+    else:
+        url = f"https://www.youtube.com/playlist?list={source}"
+        label = source
     try:
         import yt_dlp
     except ImportError:
@@ -70,7 +78,7 @@ def get_playlist_entries(playlist_id):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
         entries = info.get("entries", [])
-        log(f"  [清單] {playlist_id}: {len(entries)} 支")
+        log(f"  [清單] {label}: {len(entries)} 支")
         return entries
     except Exception as e:
         log(f"  [清單] 失敗: {e}")
@@ -140,11 +148,12 @@ def download_yt_video(video_id, title):
 def run_pipeline(video_path, title, video_id):
     """執行 run_pipeline.py 完整流程（壓縮→轉錄→收成）"""
     log("  [Pipeline] 開始...")
+    slug = safe_filename(f"{title[:30]}_{video_id}")
     cmd = [
         sys.executable, "-X", "utf8",
         str(PROJECT_ROOT / "run_pipeline.py"),
         str(video_path),
-        "--title", f"{title} [{video_id}]",
+        "--slug", slug,
     ]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
@@ -153,13 +162,22 @@ def run_pipeline(video_path, title, video_id):
             log(result.stderr[-500:] if result.stderr else "")
             return None
         log("  [Pipeline] 成功")
-        # pipeline output 在 output/<slug>/
-        slug = safe_filename(title)
         output_dir = PROJECT_ROOT / "output" / slug
         if output_dir.exists():
             return output_dir
+        log(f"  [Pipeline] 找不到輸出: {output_dir}")
     except subprocess.TimeoutExpired:
         log("  [Pipeline] 逾時（1800s）")
+    except UnicodeDecodeError:
+        log("  [Pipeline] 編碼問題，改用無 capture 模式...")
+        try:
+            r = subprocess.run(cmd, timeout=1800)
+            if r.returncode == 0:
+                od = PROJECT_ROOT / "output" / slug
+                if od.exists():
+                    return od
+        except Exception as e2:
+            log(f"  [Pipeline] 重試仍失敗: {e2}")
     except Exception as e:
         log(f"  [Pipeline] 異常: {e}")
     return None
@@ -297,18 +315,23 @@ def process_no_subs(video_id, title, langs, kb_dir):
     return True
 
 
-def scan_playlist(playlist_id, kb_dir, langs, state):
-    """掃描單一播放清單，處理新影片"""
-    log(f"[掃描] 清單：{playlist_id}")
+def scan_playlist(source, kb_dir, langs, state, max_initial=3):
+    """掃描單一播放清單，處理新影片
+    source: playlist_id 或 YouTube URL
+    max_initial: 初次掃描最多處理幾支
+    """
+    label = source[:40] if "youtube.com" in source else source
+    log(f"[掃描] 清單：{label}")
     log(f"  KB 目錄：{kb_dir}")
 
-    entries = get_playlist_entries(playlist_id)
+    entries = get_playlist_entries(source)
     if not entries:
         return 0
 
-    # 找出新影片
-    last_id = state.get(playlist_id, {}).get("last_video_id", "")
-    last_check = state.get(playlist_id, {}).get("last_check", "")
+    state_key = source  # 用 source 字串當狀態鍵
+
+    last_id = state.get(state_key, {}).get("last_video_id", "")
+    is_first_scan = not last_id
 
     new_entries = []
     found_last = False
@@ -321,52 +344,59 @@ def scan_playlist(playlist_id, kb_dir, langs, state):
             break
         new_entries.append(entry)
 
-    # 如果沒找到 last_id（第一次掃描或全部都是新的）
-    if not found_last and last_id:
-        # 只取最新的 5 支（避免一次處理太多）
-        new_entries = entries[:5]
-        log(f"  [新片] 上次 ID ({last_id}) 未找到，取最新 {len(new_entries)} 支")
+    # 初次掃描：只取前 max_initial 支
+    if is_first_scan:
+        new_entries = entries[:max_initial]
+        log(f"  [新片] 初次掃描，取最新 {len(new_entries)} 支")
+    elif not found_last:
+        new_entries = entries[:max_initial]
+        log(f"  [新片] 上次 ID 未找到，取最新 {len(new_entries)} 支")
     elif new_entries:
         new_entries.reverse()
         log(f"  [新片] {len(new_entries)} 支新影片")
 
     if not new_entries:
-        # 更新 check 時間即可
-        state[playlist_id] = {
+        state[state_key] = {
             "last_video_id": entries[0].get("id", ""),
             "last_check": datetime.now().isoformat(),
         }
         return 0
 
-    # 處理新影片（可一次處理多支）
+    # 處理新影片
     processed = 0
     for entry in new_entries:
         vid = entry.get("id", "")
         title = entry.get("title", vid)
-        log(f"\n  ── {title}")
+        log(f"\n  ── {title[:50]}")
         log(f"      https://www.youtube.com/watch?v={vid}")
 
-        # 嘗試有字幕路徑
         if process_has_subs(vid, title, langs, kb_dir):
             processed += 1
             log(f"  ✅ 有字幕處理完成")
             continue
 
-        # 無字幕 → 離線轉錄
         if process_no_subs(vid, title, langs, kb_dir):
             processed += 1
             log(f"  ✅ 離線轉錄完成")
         else:
             log(f"  ❌ 處理失敗")
 
-    # 更新狀態
-    state[playlist_id] = {
+    state[state_key] = {
         "last_video_id": entries[0].get("id", ""),
         "last_check": datetime.now().isoformat(),
         "last_process_time": datetime.now().isoformat(),
     }
 
     return processed
+
+
+def notify(title, message):
+    """發送 Line + Email 通知"""
+    log(f"[通知] {title}: {message[:60]}")
+    try:
+        notify_line_and_email(f"[{title}]", message)
+    except Exception as e:
+        log(f"[通知] 發送失敗: {e}")
 
 
 def scan_all_channels():
@@ -388,15 +418,18 @@ def scan_all_channels():
         log(f"  URL: {ch.get('channel_url', 'N/A')}")
 
         for pl in ch.get("playlists", []):
-            pl_id = pl.get("id", "")
+            source = pl.get("url", "") or pl.get("id", "")
             kb_rel = pl.get("kb_dir", "")
             kb_dir = KB_ROOT / kb_rel
+            max_init = pl.get("max_initial", 3)
 
+            if not source:
+                continue
             try:
-                n = scan_playlist(pl_id, kb_dir, langs, state)
+                n = scan_playlist(source, kb_dir, langs, state, max_initial=max_init)
                 total += n
             except Exception as e:
-                log(f"  [錯誤] {pl_id}: {e}")
+                log(f"  [錯誤] {source[:30]}: {e}")
 
         # 家目錄下的 .link.txt 檔案連結也可以作為快捷方式
         ch_links = KB_ROOT / "youtube-clips"
@@ -420,13 +453,14 @@ def show_status():
         print(f"\n📺 {name}")
         print(f"   URL: {ch.get('channel_url', 'N/A')}")
         for pl in ch.get("playlists", []):
-            pl_id = pl.get("id", "")
+            source = pl.get("url", "") or pl.get("id", "")
             kb_rel = pl.get("kb_dir", "")
-            s = state.get(pl_id, {})
+            s = state.get(source, {})
             last_id = s.get("last_video_id", "—")
             last_check = s.get("last_check", "未掃描")
             last_process = s.get("last_process_time", "—")
-            print(f"   清單 {pl_id[:8]}... → {kb_rel}")
+            lbl = source[:30] + "..." if len(source) > 30 else source
+            print(f"   來源 {lbl} → {kb_rel}")
             print(f"     最近 ID: {last_id}")
             print(f"     上次掃描: {last_check}")
             print(f"     上次處理: {last_process}")
@@ -548,13 +582,43 @@ def process_youtube_url(url, burn_sub=False, save_to_kb=True, langs=None):
 
 # ── CLI ──
 
+def _setup_schedule():
+    """建立 Windows 排程工作：每週一晚上10點執行 --once"""
+    script = sys.executable
+    cmd = f'"{script}" "{__file__}" --once'
+    task_name = "ChannelWatcherWeekly"
+    schtask_cmd = [
+        "schtasks", "/Create", "/TN", task_name,
+        "/TR", cmd,
+        "/SC", "WEEKLY", "/D", "MON", "/ST", "22:00",
+        "/F", "/RL", "HIGHEST",
+    ]
+    try:
+        log("建立 Windows 排程工作 (每週一 22:00)...")
+        r = subprocess.run(
+            schtask_cmd, capture_output=True, text=True, timeout=30,
+        )
+        if r.returncode == 0:
+            log(f"✅ 排程工作 '{task_name}' 建立成功")
+            log(f"   每週一 22:00 執行：{cmd}")
+        else:
+            log(f"❌ 建立失敗: {r.stderr or r.stdout}")
+    except Exception as e:
+        log(f"❌ 建立排程異常: {e}")
+
+
 def main():
     ap = argparse.ArgumentParser(description="YouTube 頻道自動監控與收成")
     ap.add_argument("--once", action="store_true", help="立即掃描一次")
     ap.add_argument("--watch", action="store_true", help="持續監控模式")
     ap.add_argument("--status", action="store_true", help="顯示監控狀態")
     ap.add_argument("--interval", type=int, default=3600, help="掃描間隔秒數（預設 3600）")
+    ap.add_argument("--setup-schedule", action="store_true", help="建立 Windows 排程（每週一 22:00）")
     args = ap.parse_args()
+
+    if args.setup_schedule:
+        _setup_schedule()
+        return
 
     if args.status:
         show_status()
@@ -567,6 +631,7 @@ def main():
             n = scan_all_channels()
             log(f"本輪處理 {n} 支新影片")
             if n > 0:
+                notify("頻道監控", f"處理 {n} 支新影片")
                 log(f"等待 {args.interval}s 後再次掃描...")
             else:
                 log(f"無新影片，{args.interval}s 後再檢查")
@@ -580,6 +645,8 @@ def main():
     # --once 或無參數預設為 --once
     n = scan_all_channels()
     log(f"\n處理完成，共 {n} 支新影片")
+    if n > 0:
+        notify("頻道監控", f"處理完成，共 {n} 支新影片")
 
 
 if __name__ == "__main__":

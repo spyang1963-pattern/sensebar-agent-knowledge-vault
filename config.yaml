@@ -59,3 +59,15 @@ watched_channels:
         kb_dir: "人工智慧/AI agent-三師爸/Codex 基本功"
       - id: "PLkNQUBglz8ExWgEy7-liAr6MIgAFh5xYH"
         kb_dir: "人工智慧/AI agent-三師爸/AI agents 教學應用"
+
+  - name: "20VTA 波段王子"
+    channel_url: "https://www.youtube.com/@20VTA"
+    subtitle_langs:
+      - "zh-Hant"
+      - "zh-TW"
+      - "zh"
+      - "en"
+    playlists:
+      - url: "https://www.youtube.com/@20VTA/streams"
+        kb_dir: "20VTA 頻道/直播"
+        max_initial: 2

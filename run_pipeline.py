@@ -57,6 +57,7 @@ def main():
     ap = argparse.ArgumentParser(description="YouTube 影片自動化生產線")
     ap.add_argument("video", type=Path, help="原始影片路徑（如 raw/課程/原始.mp4）")
     ap.add_argument("--title", type=str, default=None, help="自訂標題（不指定則自動生成）")
+    ap.add_argument("--slug", type=str, default=None, help="自訂資料夾代號（不指定則自動從路徑推斷）")
     ap.add_argument("--skip-cut", action="store_true", help="跳過智能剪輯")
     ap.add_argument("--skip-cover", action="store_true", help="跳過封面生成")
     args = ap.parse_args()
@@ -69,7 +70,10 @@ def main():
     # 使用影片的父目錄作為 working 和 output 的基礎
     # 如果影片在 working/{course}/{task_slug}/ 下，則使用該目錄
     # 否則使用 video.parent.name 作為 slug
-    if "working" in str(video.parent) and video.parent.parent.name != "working":
+    if args.slug:
+        slug = args.slug
+        working = ROOT / "working" / slug
+    elif "working" in str(video.parent) and video.parent.parent.name != "working":
         # 影片在 working/{course}/{task_slug}/ 下
         working = video.parent
         slug = video.parent.name
