@@ -436,6 +436,116 @@ def show_status():
     print()
 
 
+def process_youtube_url(url, burn_sub=False, save_to_kb=True, langs=None):
+    """處理單一 YouTube 網址（供 GUI 呼叫）
+    
+    支援格式：
+      - 單一影片: https://www.youtube.com/watch?v=xxx
+      - 播放清單: https://www.youtube.com/playlist?list=xxx
+      - 頻道: https://www.youtube.com/@channel
+    
+    Returns:
+        dict: { "status": "ok"/"error", "message": str, "videos": [{...}] }
+    """
+    import yt_dlp
+    if langs is None:
+        langs = ["zh-Hant", "zh-TW", "zh", "en"]
+
+    result = {"status": "ok", "message": "", "videos": []}
+    temp_dir = WORKING / "channel-watcher-temp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        ydl_opts = {
+            "extract_flat": True,
+            "skip_download": True,
+            "quiet": True,
+            "no_warnings": True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+
+        entries = info.get("entries", [])
+        if not entries:
+            entries = [info]  # 單一影片
+
+        processed_count = 0
+        for i, entry in enumerate(entries):
+            if i >= 5:  # 最多處理 5 支
+                result["message"] += f"\n(尚有 {len(entries)-5} 支未處理，上限 5 支)"
+                break
+
+            vid = entry.get("id", "")
+            title = entry.get("title", vid)
+            if not vid:
+                continue
+
+            log(f"  [{i+1}] {title}")
+            video_info = {"id": vid, "title": title, "success": False, "kb_path": ""}
+
+            # 嘗試下載字幕
+            langs_to_try = langs
+            srt_path = download_yt_sub(vid, langs_to_try, temp_dir)
+
+            if srt_path:
+                log(f"  有 YouTube 字幕")
+                transcript = srt_to_transcript(srt_path)
+                kb_dir = KB_ROOT / "youtube-clips"
+                create_kb_entry(vid, title, transcript, srt_path, None, kb_dir)
+                video_info["success"] = True
+                video_info["kb_path"] = str(kb_dir / f"{safe_filename(title)}.md")
+                srt_path.unlink()
+                processed_count += 1
+            else:
+                log(f"  無 YouTube 字幕，啟動 Pipeline...")
+                video_path = download_yt_video(vid, title)
+                if video_path:
+                    output_dir = run_pipeline(video_path, title, vid)
+                    if output_dir:
+                        srt_src = output_dir / "字幕.srt"
+                        if srt_src.exists():
+                            transcript = srt_to_transcript(srt_src)
+                            kb_dir = KB_ROOT / "youtube-clips"
+                            create_kb_entry(vid, title, transcript, srt_src, video_path, kb_dir)
+                            video_info["success"] = True
+                            video_info["kb_path"] = str(kb_dir / f"{safe_filename(title)}.md")
+
+                            if burn_sub:
+                                burned = output_dir / f"{safe_filename(title)}_burned.mp4"
+                                burn_subtitles(video_path, srt_src, burned)
+
+                            processed_count += 1
+                        else:
+                            log(f"  找不到 SRT 輸出")
+                    else:
+                        log(f"  Pipeline 失敗")
+                else:
+                    log(f"  下載失敗")
+
+            result["videos"].append(video_info)
+
+        if processed_count == 0:
+            result["status"] = "error"
+            result["message"] = "所有影片處理失敗"
+        else:
+            result["message"] = f"成功處理 {processed_count}/{len([e for e in entries if e.get('id','')][:5])} 支影片"
+            result["status"] = "ok"
+
+    except Exception as e:
+        result["status"] = "error"
+        result["message"] = f"YouTube 處理異常: {e}"
+        log(f"[ERROR] process_youtube_url: {e}")
+
+    # 清理暫存
+    try:
+        for f in temp_dir.glob("*"):
+            f.unlink()
+    except Exception:
+        pass
+
+    return result
+
+
 # ── CLI ──
 
 def main():

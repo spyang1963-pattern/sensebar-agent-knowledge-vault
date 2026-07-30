@@ -1198,34 +1198,41 @@ class TaskManagerGUI:
                 if not url:
                     messagebox.showerror("錯誤", "請輸入 YouTube 網址")
                     return
-                assigned = yt_entries["yt_assigned"].get().strip().lower()
-                if assigned not in ("pc1", "pc2", "notebook"):
-                    assigned = None
-                note = yt_entries["yt_note"].get().strip()
+                do_burn = yt_auto_sub.get()
+                do_kb = yt_harvest_kb.get()
 
-                import re
-                vid_match = re.search(r'[A-Za-z0-9_-]{11}', url)
-                vid = vid_match.group(0) if vid_match else "unknown"
-                title = "YouTube-" + vid
+                win.destroy()
+                self.lbl_status.config(text=f"正在處理 YouTube: {url[:50]}...", fg="#89b4fa")
 
-                data["tasks"][tid] = {
-                    "type": "sensebar",
-                    "status": "pending",
-                    "assigned_to": assigned,
-                    "priority": 0,
-                    "video_id": vid,
-                    "title": title,
-                    "url": url,
-                    "note": note,
-                    "auto_subtitle": yt_auto_sub.get(),
-                    "harvest_to_kb": yt_harvest_kb.get(),
-                    "discovered_at": datetime.now().isoformat(),
-                    "started_at": None,
-                    "completed_at": None,
-                    "last_error": None,
-                    "machine": None,
-                }
-                print_text = url
+                def _process_yt():
+                    try:
+                        from channel_watcher import process_youtube_url
+                        results = process_youtube_url(url, burn_sub=do_burn, save_to_kb=do_kb)
+                        self.root.after(0, lambda: _yt_done(results))
+                    except Exception as e:
+                        self.root.after(0, lambda: messagebox.showerror("處理異常", str(e)))
+                        self.root.after(0, lambda: self.lbl_status.config(text="YouTube 處理失敗", fg="#f38ba8"))
+
+                def _yt_done(results):
+                    if results["status"] == "error":
+                        messagebox.showerror("處理失敗", results["message"])
+                        self.lbl_status.config(text="YouTube 處理失敗", fg="#f38ba8")
+                        return
+                    msg_lines = [results["message"]]
+                    for v in results.get("videos", []):
+                        kb_path = v.get("kb_path", "")
+                        status = "✅" if v.get("success") else "❌"
+                        msg_lines.append(f"  {status} {v.get('title','?')[:30]}")
+                        if kb_path:
+                            msg_lines.append(f"     KB: {kb_path}")
+                    msg = "\n".join(msg_lines)
+                    messagebox.showinfo("YouTube 處理結果", msg)
+                    self._refresh()
+                    n = len([v for v in results.get("videos", []) if v.get("success")])
+                    self.lbl_status.config(text=f"YouTube 處理完成: {n} 支成功")
+
+                threading.Thread(target=_process_yt, daemon=True).start()
+                return
 
             elif t == "subtitle":
                 md_files = list(_selected_sub_files)
