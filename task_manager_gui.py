@@ -649,7 +649,7 @@ class TaskManagerGUI:
     def _new_task_dialog(self):
         win = tk.Toplevel(self.root)
         win.title("新增任務")
-        win.geometry("550x540")
+        win.geometry("550x620")
         win.configure(bg=COLOR_BG)
 
         type_frame = tk.Frame(win, bg=COLOR_BG)
@@ -665,6 +665,15 @@ class TaskManagerGUI:
                        selectcolor=COLOR_BG, font=("Consolas", 10)).pack(side="left")
         tk.Radiobutton(type_frame, text="燒字幕", variable=task_type_var,
                        value="subtitle", bg=COLOR_BG, fg=COLOR_FG,
+                       selectcolor=COLOR_BG, font=("Consolas", 10)).pack(side="left", padx=10)
+        tk.Radiobutton(type_frame, text="聲音檔", variable=task_type_var,
+                       value="audio", bg=COLOR_BG, fg=COLOR_FG,
+                       selectcolor=COLOR_BG, font=("Consolas", 10)).pack(side="left", padx=10)
+        tk.Radiobutton(type_frame, text="文件檔", variable=task_type_var,
+                       value="document", bg=COLOR_BG, fg=COLOR_FG,
+                       selectcolor=COLOR_BG, font=("Consolas", 10)).pack(side="left")
+        tk.Radiobutton(type_frame, text="網址", variable=task_type_var,
+                       value="web", bg=COLOR_BG, fg=COLOR_FG,
                        selectcolor=COLOR_BG, font=("Consolas", 10)).pack(side="left", padx=10)
 
         container = tk.Frame(win, bg=COLOR_BG)
@@ -920,24 +929,105 @@ class TaskManagerGUI:
                                 activebackground="#45475a", activeforeground=COLOR_FG)
             rb.grid(row=row, column=col, padx=2, pady=2)
 
+        # 聲音檔表單
+        audio_frame = tk.Frame(container, bg=COLOR_BG)
+        tk.Label(audio_frame, text="聲音檔案路徑 *", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10), anchor="w").pack(fill="x", padx=5, pady=(8, 0))
+        af_path = tk.StringVar()
+        af_path_row = tk.Frame(audio_frame, bg=COLOR_BG)
+        af_path_row.pack(fill="x", padx=5)
+        tk.Entry(af_path_row, textvariable=af_path,
+                 font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
+                 insertbackground=COLOR_FG, relief="flat").pack(side="left", fill="x", expand=True)
+        tk.Button(af_path_row, text="瀏覽", font=("Consolas", 9),
+                  bg="#45475a", fg=COLOR_FG, relief="flat",
+                  command=lambda: af_path.set(filedialog.askopenfilename(
+                      title="選擇聲音檔",
+                      filetypes=[("音訊檔", "*.mp3 *.wav *.m4a *.flac *.ogg *.aac"), ("所有檔案", "*.*")]))
+                  ).pack(side="right", padx=(5, 0))
+        tk.Label(audio_frame, text="條目標題 (留空=用檔名)", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10), anchor="w").pack(fill="x", padx=5, pady=(8, 0))
+        af_title = tk.Entry(audio_frame, font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
+                            insertbackground=COLOR_FG, relief="flat")
+        af_title.pack(fill="x", padx=5, pady=(2, 0))
+        tk.Label(audio_frame, text="KB 子目錄 (相對 knowledge-base/)", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10), anchor="w").pack(fill="x", padx=5, pady=(8, 0))
+        af_kb = tk.Entry(audio_frame, font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
+                         insertbackground=COLOR_FG, relief="flat")
+        af_kb.insert(0, "音頻")
+        af_kb.pack(fill="x", padx=5, pady=(2, 0))
+
+        # 文件檔表單
+        doc_frame = tk.Frame(container, bg=COLOR_BG)
+        tk.Label(doc_frame, text="檔案路徑 *", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10), anchor="w").pack(fill="x", padx=5, pady=(8, 0))
+        df_path = tk.StringVar()
+        df_path_row = tk.Frame(doc_frame, bg=COLOR_BG)
+        df_path_row.pack(fill="x", padx=5)
+        tk.Entry(df_path_row, textvariable=df_path,
+                 font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
+                 insertbackground=COLOR_FG, relief="flat").pack(side="left", fill="x", expand=True)
+        tk.Button(df_path_row, text="瀏覽", font=("Consolas", 9),
+                  bg="#45475a", fg=COLOR_FG, relief="flat",
+                  command=lambda: df_path.set(filedialog.askopenfilename(
+                      title="選擇檔案",
+                      filetypes=[("文件檔", "*.pdf *.docx *.doc *.txt *.md *.csv *.html *.htm"),
+                                 ("所有檔案", "*.*")]))
+                  ).pack(side="right", padx=(5, 0))
+        tk.Label(doc_frame, text="條目標題 (留空=用檔名)", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10), anchor="w").pack(fill="x", padx=5, pady=(8, 0))
+        df_title = tk.Entry(doc_frame, font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
+                            insertbackground=COLOR_FG, relief="flat")
+        df_title.pack(fill="x", padx=5, pady=(2, 0))
+        tk.Label(doc_frame, text="KB 子目錄 (相對 knowledge-base/)", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10), anchor="w").pack(fill="x", padx=5, pady=(8, 0))
+        df_kb = tk.Entry(doc_frame, font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
+                         insertbackground=COLOR_FG, relief="flat")
+        df_kb.insert(0, "文件")
+        df_kb.pack(fill="x", padx=5, pady=(2, 0))
+
+        # 網址表單
+        web_frame = tk.Frame(container, bg=COLOR_BG)
+        tk.Label(web_frame, text="網址 *", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10), anchor="w").pack(fill="x", padx=5, pady=(8, 0))
+        wf_url = tk.Entry(web_frame, font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
+                          insertbackground=COLOR_FG, relief="flat")
+        wf_url.pack(fill="x", padx=5, pady=(2, 0))
+        tk.Label(web_frame, text="條目標題 (留空=用網址)", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10), anchor="w").pack(fill="x", padx=5, pady=(8, 0))
+        wf_title = tk.Entry(web_frame, font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
+                            insertbackground=COLOR_FG, relief="flat")
+        wf_title.pack(fill="x", padx=5, pady=(2, 0))
+        tk.Label(web_frame, text="KB 子目錄 (相對 knowledge-base/)", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10), anchor="w").pack(fill="x", padx=5, pady=(8, 0))
+        wf_kb = tk.Entry(web_frame, font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
+                         insertbackground=COLOR_FG, relief="flat")
+        wf_kb.insert(0, "網頁")
+        wf_kb.pack(fill="x", padx=5, pady=(2, 0))
+
         video_frame.pack(fill="both", expand=True)
         yt_frame.pack_forget()
         sub_frame.pack_forget()
+        audio_frame.pack_forget()
+        doc_frame.pack_forget()
+        web_frame.pack_forget()
 
         def switch_type(*_):
             t = task_type_var.get()
+            for f in [video_frame, yt_frame, sub_frame, audio_frame, doc_frame, web_frame]:
+                f.pack_forget()
             if t == "video":
                 video_frame.pack(fill="both", expand=True)
-                yt_frame.pack_forget()
-                sub_frame.pack_forget()
             elif t == "sensebar":
-                video_frame.pack_forget()
                 yt_frame.pack(fill="both", expand=True)
-                sub_frame.pack_forget()
-            else:  # subtitle
-                video_frame.pack_forget()
-                yt_frame.pack_forget()
+            elif t == "subtitle":
                 sub_frame.pack(fill="both", expand=True)
+            elif t == "audio":
+                audio_frame.pack(fill="both", expand=True)
+            elif t == "document":
+                doc_frame.pack(fill="both", expand=True)
+            elif t == "web":
+                web_frame.pack(fill="both", expand=True)
 
         task_type_var.trace("w", switch_type)
 
@@ -1327,6 +1417,57 @@ class TaskManagerGUI:
                     messagebox.showerror("錯誤", "沒有任何可處理的 .md 檔（需包含 ## 影片 與有效的影片路徑）")
                     return
                 print_text = f"燒字幕: {len(md_files)} 個檔案 ({created_count} 個任務)"
+
+            elif t in ("audio", "document", "web"):
+                from file_processors import process_audio as _proc_audio
+                from file_processors import process_document as _proc_doc
+                from file_processors import process_web as _proc_web
+                if t == "audio":
+                    src = af_path.get().strip()
+                    kb = af_kb.get().strip() or "音頻"
+                    title = af_title.get().strip() or None
+                    processor = _proc_audio
+                elif t == "document":
+                    src = df_path.get().strip()
+                    kb = df_kb.get().strip() or "文件"
+                    title = df_title.get().strip() or None
+                    processor = _proc_doc
+                elif t == "web":
+                    src = wf_url.get().strip()
+                    kb = wf_kb.get().strip() or "網頁"
+                    title = wf_title.get().strip() or None
+                    processor = _proc_web
+
+                if not src:
+                    messagebox.showerror("錯誤", {"audio": "請選擇聲音檔", "document": "請選擇檔案", "web": "請輸入網址"}[t])
+                    return
+
+                win.destroy()
+                self.lbl_status.config(text=f"正在處理{'音訊' if t=='audio' else '文件' if t=='document' else '網頁'}: {src[:50]}...", fg="#89b4fa")
+
+                def _process_generic():
+                    try:
+                        results = processor(src, kb_subdir=kb, title=title)
+                        self.root.after(0, lambda: _generic_done(results, processor.__name__))
+                    except Exception as e:
+                        self.root.after(0, lambda: messagebox.showerror("處理異常", str(e)))
+                        self.root.after(0, lambda: self.lbl_status.config(text="處理失敗", fg="#f38ba8"))
+
+                def _generic_done(results, pname):
+                    if results["status"] == "error":
+                        messagebox.showerror("處理失敗", results["message"])
+                        self.lbl_status.config(text="處理失敗", fg="#f38ba8")
+                        return
+                    kb_path = results.get("kb_path", "")
+                    msg = results["message"]
+                    if kb_path:
+                        msg += f"\n KB: {kb_path}"
+                    messagebox.showinfo("處理完成", msg)
+                    self._refresh()
+                    self.lbl_status.config(text=f"處理完成: {results['message'][:40]}")
+
+                threading.Thread(target=_process_generic, daemon=True).start()
+                return
 
             # 更新 task_counter
             all_ids = [int(k) for k in data.get("tasks", {}) if k.isdigit()]
