@@ -31,3 +31,31 @@ output:
     clipping: "Clipping"
     creation: "創作庫"
     knowledge: "知識庫"
+
+# ============================================
+# 頻道監控設定（channel_watcher.py 使用）
+# ============================================
+# 鎖定頻道/播放清單，有新影片時自動收成到知識庫
+watched_channels:
+  - name: "三師爸"
+    channel_url: "https://www.youtube.com/@sensebar"
+    subtitle_langs:
+      - "zh-Hant"
+      - "zh-TW"
+      - "zh"
+      - "en"
+    playlists:
+      - id: "PLkNQUBglz8EyGuOIKfrKX9V7ot5VbZKha"
+        kb_dir: "人工智慧/AI agent-三師爸/AI Agent 基本功"
+      - id: "PLkNQUBglz8EwHJQu6ijh5ra41RTfaaZT8"
+        kb_dir: "人工智慧/AI agent-三師爸/Claude Code 基本功"
+      - id: "PLkNQUBglz8EzKWIuDCtS5AmfSFzuwFv-H"
+        kb_dir: "人工智慧/AI agent-三師爸/OpenCode 基本功"
+      - id: "PLkNQUBglz8Eyh1xcFYFBOcOEBu1WGoB0p"
+        kb_dir: "人工智慧/AI agent-三師爸/AntiGravity 基本功"
+      - id: "PLkNQUBglz8EwKENFOsPf3jZx3WvTIS7YD"
+        kb_dir: "人工智慧/AI agent-三師爸/GoogleAI 基本功"
+      - id: "PLkNQUBglz8EyvaS1lFWnFeLR4JvlSzB48"
+        kb_dir: "人工智慧/AI agent-三師爸/Codex 基本功"
+      - id: "PLkNQUBglz8ExWgEy7-liAr6MIgAFh5xYH"
+        kb_dir: "人工智慧/AI agent-三師爸/AI agents 教學應用"

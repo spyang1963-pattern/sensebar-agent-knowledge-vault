@@ -155,3 +155,44 @@ def check_machine_online(machine, timeout_seconds=300):
     from datetime import datetime, timedelta
     last_seen = datetime.fromisoformat(status.get("last_seen", "2000-01-01"))
     return (datetime.now() - last_seen).total_seconds() < timeout_seconds
+
+
+# === 頻道監控設定 ===
+import yaml as _yaml
+
+def _load_yaml_config():
+    yaml_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.yaml")
+    if not os.path.exists(yaml_path):
+        return {}
+    try:
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            return _yaml.safe_load(f) or {}
+    except Exception:
+        return {}
+
+_YAML_CONFIG = _load_yaml_config()
+
+WATCHED_CHANNELS = _YAML_CONFIG.get("watched_channels", [])
+
+def get_watched_channels():
+    """回傳頻道監控設定串列"""
+    return WATCHED_CHANNELS
+
+# 頻道監控狀態檔
+CHANNEL_STATE_FILE = os.path.join(SHARED_ROOT, "watched_channels_state.json")
+
+def load_channel_state():
+    if not os.path.exists(CHANNEL_STATE_FILE):
+        return {}
+    try:
+        with open(CHANNEL_STATE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def save_channel_state(state):
+    os.makedirs(os.path.dirname(CHANNEL_STATE_FILE), exist_ok=True)
+    tmp = CHANNEL_STATE_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, CHANNEL_STATE_FILE)

@@ -207,6 +207,11 @@ class TaskManagerGUI:
         self.notebook.add(worker_tab, text=" Worker管理 ")
         self._build_worker_tab(worker_tab)
 
+        # ---- 頻道監控頁籤 ----
+        channel_tab = tk.Frame(self.notebook, bg=COLOR_BG)
+        self.notebook.add(channel_tab, text=" 頻道監控 ")
+        self._build_channel_tab(channel_tab)
+
         # 底部狀態列
         self.lbl_status = tk.Label(self.root, text="就緒", bg=COLOR_BG, fg=COLOR_FG,
                                     font=("Consolas", 9), anchor="w")
@@ -351,6 +356,89 @@ class TaskManagerGUI:
         self.lbl_share_status = tk.Label(status_frame, text=SHARED_ROOT, bg=COLOR_BG,
                                           fg=COLOR_FG, font=("Consolas", 9))
         self.lbl_share_status.pack(side="left", padx=(5, 0))
+
+    def _build_channel_tab(self, parent):
+        """頻道監控面板 — 鎖定頻道狀態 + 手動掃描"""
+        header = tk.Frame(parent, bg=COLOR_BG)
+        header.pack(fill="x", padx=10, pady=(10, 5))
+        tk.Label(header, text="YouTube 頻道監控", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 14, "bold")).pack(side="left")
+        self.ch_lbl_last_check = tk.Label(header, text="", bg=COLOR_BG, fg=COLOR_FG,
+                                           font=("Consolas", 10))
+        self.ch_lbl_last_check.pack(side="right", padx=(10, 0))
+
+        # 操作列
+        action_row = tk.Frame(parent, bg=COLOR_BG)
+        action_row.pack(fill="x", padx=10, pady=5)
+        self.btn_scan_once = tk.Button(
+            action_row, text="▶ 立即掃描", command=self._channel_scan_once,
+            bg="#89b4fa", fg="#1e1e2e", font=("Consolas", 10, "bold"),
+            relief="flat", padx=15, pady=4,
+        )
+        self.btn_scan_once.pack(side="left", padx=(0, 10))
+        self.ch_lbl_scanning = tk.Label(action_row, text="", bg=COLOR_BG, fg=COLOR_FG,
+                                         font=("Consolas", 10))
+        self.ch_lbl_scanning.pack(side="left")
+
+        # 表格
+        columns = ("頻道", "播放清單", "知識庫目錄", "最近影片", "狀態", "上次掃描")
+        self.ch_tree = ttk.Treeview(parent, columns=columns, show="headings")
+        widths = [120, 180, 250, 120, 80, 180]
+        for col, w in zip(columns, widths):
+            self.ch_tree.heading(col, text=col, anchor="w")
+            self.ch_tree.column(col, width=w, anchor="w", minwidth=40)
+        scroll_y = ttk.Scrollbar(parent, orient="vertical", command=self.ch_tree.yview)
+        self.ch_tree.configure(yscrollcommand=scroll_y.set)
+        self.ch_tree.pack(side="left", fill="both", expand=True, padx=(5, 0), pady=5)
+        scroll_y.pack(side="right", fill="y", padx=(0, 5), pady=5)
+
+        # 底部顯示頻道列表
+        self._refresh_channel_status()
+
+    def _refresh_channel_status(self):
+        """重新整理頻道監控面板"""
+        try:
+            from config import get_watched_channels, load_channel_state
+            channels = get_watched_channels()
+            state = load_channel_state()
+
+            # 清除舊資料
+            for row in self.ch_tree.get_children():
+                self.ch_tree.delete(row)
+
+            for ch in channels:
+                ch_name = ch.get("name", "?")
+                for pl in ch.get("playlists", []):
+                    pl_id = pl.get("id", "")
+                    kb_dir = pl.get("kb_dir", "")
+                    s = state.get(pl_id, {})
+                    last_id = s.get("last_video_id", "")
+                    last_check = s.get("last_check", "—")
+                    status = "✅ 監控中" if last_id else "⏳ 首次"
+                    last_id_short = last_id[:10] + "..." if len(last_id) > 10 else last_id
+                    self.ch_tree.insert("", "end", values=(
+                        ch_name, pl_id[:15] + "...", kb_dir,
+                        last_id_short, status, last_check[:19],
+                    ))
+        except Exception as e:
+            pass
+
+    def _channel_scan_once(self):
+        """執行單次頻道掃描（背景執行緒）"""
+        self.ch_lbl_scanning.config(text="掃描中...", fg="#89b4fa")
+
+        def _run():
+            try:
+                from channel_watcher import scan_all_channels
+                n = scan_all_channels()
+                self.root.after(0, lambda: self.ch_lbl_scanning.config(
+                    text=f"✅ 完成，處理 {n} 支新影片", fg="#a6e3a1"))
+                self.root.after(0, self._refresh_channel_status)
+            except Exception as e:
+                self.root.after(0, lambda: self.ch_lbl_scanning.config(
+                    text=f"❌ 錯誤: {e}", fg="#f38ba8"))
+
+        threading.Thread(target=_run, daemon=True).start()
 
     def _add_card_row(self, parent, label_text, attr_name, default):
         row = tk.Frame(parent, bg=COLOR_CARD_BG)
@@ -521,6 +609,7 @@ class TaskManagerGUI:
 
     def _auto_refresh(self):
         self._refresh()
+        self._refresh_channel_status()
         self.root.after(REFRESH_INTERVAL * 1000, self._auto_refresh)
 
     def _promote_task(self):
