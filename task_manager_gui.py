@@ -649,6 +649,64 @@ class TaskManagerGUI:
                        bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
                        font=("Consolas", 10)).pack(side="left")
 
+        # 自動燒字幕設定面板（勾選後展開）
+        sub_style_frame = tk.Frame(video_frame, bg="#252540", relief="solid", bd=1)
+        sub_font_var = tk.IntVar(value=24)
+        sub_margin_var = tk.IntVar(value=30)
+        sub_pos_var = tk.StringVar(value="bottom")
+
+        def toggle_sub_style(*_):
+            if auto_sub_var.get():
+                sub_style_frame.pack(fill="x", padx=10, pady=(6, 0), ipady=4)
+            else:
+                sub_style_frame.pack_forget()
+
+        auto_sub_var.trace("w", toggle_sub_style)
+
+        # 字型大小
+        fs_row = tk.Frame(sub_style_frame, bg="#252540")
+        fs_row.pack(fill="x", padx=8, pady=(6, 0))
+        tk.Label(fs_row, text="字型:", bg="#252540", fg=COLOR_FG,
+                 font=("Consolas", 9)).pack(side="left")
+        tk.Scale(fs_row, from_=8, to=72, orient="horizontal",
+                 variable=sub_font_var, showvalue=False,
+                 bg="#252540", fg=COLOR_FG, highlightbackground="#252540",
+                 length=100, sliderlength=12).pack(side="left", padx=(4, 0))
+        tk.Entry(fs_row, textvariable=sub_font_var,
+                 font=("Consolas", 9), bg="#313244", fg=COLOR_FG,
+                 insertbackground=COLOR_FG, relief="flat", width=3).pack(side="left", padx=4)
+        tk.Label(fs_row, text="pt", bg="#252540", fg="#a6adc8",
+                 font=("Consolas", 8)).pack(side="left")
+        tk.Label(fs_row, text="  邊距:", bg="#252540", fg=COLOR_FG,
+                 font=("Consolas", 9)).pack(side="left", padx=(8, 0))
+        tk.Scale(fs_row, from_=0, to=200, orient="horizontal",
+                 variable=sub_margin_var, showvalue=False,
+                 bg="#252540", fg=COLOR_FG, highlightbackground="#252540",
+                 length=80, sliderlength=12).pack(side="left", padx=(4, 0))
+        tk.Entry(fs_row, textvariable=sub_margin_var,
+                 font=("Consolas", 9), bg="#313244", fg=COLOR_FG,
+                 insertbackground=COLOR_FG, relief="flat", width=3).pack(side="left", padx=4)
+        tk.Label(fs_row, text="px", bg="#252540", fg="#a6adc8",
+                 font=("Consolas", 8)).pack(side="left")
+
+        # 位置：3x3
+        pos_row = tk.Frame(sub_style_frame, bg="#252540")
+        pos_row.pack(fill="x", padx=8, pady=(4, 6))
+        tk.Label(pos_row, text="位置:", bg="#252540", fg=COLOR_FG,
+                 font=("Consolas", 9)).pack(side="left")
+        pos_grid = [
+            ("上左","top-left"),("上中","top"),("上右","top-right"),
+            ("中左","middle-left"),("正中","middle"),("中右","middle-right"),
+            ("下左","bottom-left"),("下中","bottom"),("下右","bottom-right"),
+        ]
+        for idx, (label, val) in enumerate(pos_grid):
+            rb = tk.Radiobutton(pos_row, text=label, variable=sub_pos_var, value=val,
+                                bg="#252540", fg=COLOR_FG, selectcolor="#45475a",
+                                indicatoron=0, width=6, relief="flat",
+                                font=("Consolas", 8),
+                                activebackground="#45475a", activeforeground=COLOR_FG)
+            rb.pack(side="left", padx=1)
+
         # YouTube 表單
         yt_frame = tk.Frame(container, bg=COLOR_BG)
         yt_entries = {}
@@ -1023,6 +1081,9 @@ class TaskManagerGUI:
                         "note": note,
                         "auto_subtitle": auto_sub_var.get(),
                         "harvest_to_kb": harvest_kb_var.get(),
+                        "auto_subtitle_font_size": sub_font_var.get() if auto_sub_var.get() else 24,
+                        "auto_subtitle_position": sub_pos_var.get() if auto_sub_var.get() else "bottom",
+                        "auto_subtitle_margin_v": sub_margin_var.get() if auto_sub_var.get() else 30,
                         "discovered_at": datetime.now().isoformat(),
                         "started_at": None,
                         "completed_at": None,

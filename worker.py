@@ -504,9 +504,13 @@ def process_task(task):
         else:
             _copy_output_to_source(output_dir, video_path, tid)
 
-        # 自動燒字幕
+        # 自動燒字幕（帶入字幕樣式設定）
         if info.get("auto_subtitle") and success:
-            _create_subtitle_task(tid, info, video_path, output_dir)
+            sub_info = dict(info)
+            sub_info["font_size"] = info.get("auto_subtitle_font_size", 24)
+            sub_info["position"] = info.get("auto_subtitle_position", "bottom")
+            sub_info["margin_v"] = info.get("auto_subtitle_margin_v", 30)
+            _create_subtitle_task(tid, sub_info, video_path, output_dir)
 
         heartbeat.update(status="online", current_task=None)
         return True
