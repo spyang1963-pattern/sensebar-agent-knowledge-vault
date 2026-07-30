@@ -475,6 +475,11 @@ class TaskManagerGUI:
                 task_type = info.get("type", "video")
                 status = info.get("status", "pending")
                 
+                # 燒字幕任務顯示中文狀態
+                status_display = {
+                    "subtitle": {"pending": "待燒錄", "processing": "燒錄中", "completed": "已燒錄", "failed": "失敗", "assigned": "待燒錄"},
+                }.get(task_type, {}).get(status, status)
+                
                 # 篩選邏輯
                 if self.filter_var.get() == "pending" and status not in ("pending", "processing"):
                     continue
@@ -504,7 +509,7 @@ class TaskManagerGUI:
                 error_display = error if len(error) <= 40 else error[:37] + "..."
 
                 self.tree.insert("", "end", iid=tid, values=(
-                    tid, status, priority_str, task_type, assigned,
+                    tid, status_display, priority_str, task_type, assigned,
                     machine, name_display, size_str, error_display
                 ), tags=tags)
 
@@ -710,23 +715,63 @@ class TaskManagerGUI:
         # 字幕樣式
         tk.Label(sub_frame_inner, text="字幕樣式：", bg=COLOR_BG, fg=COLOR_FG,
                  font=("Consolas", 10, "bold"), anchor="w").pack(fill="x", pady=(8, 0))
-        style_frame = tk.Frame(sub_frame_inner, bg=COLOR_BG)
-        style_frame.pack(fill="x")
-        tk.Label(style_frame, text="字型大小:", bg=COLOR_BG, fg=COLOR_FG,
+
+        # 字型大小（滑桿 + 數字輸入，8~72）
+        fs_frame = tk.Frame(sub_frame_inner, bg=COLOR_BG)
+        fs_frame.pack(fill="x", pady=(2, 0))
+        tk.Label(fs_frame, text="字型大小:", bg=COLOR_BG, fg=COLOR_FG,
                  font=("Consolas", 10)).pack(side="left")
-        sub_fontsize = tk.Entry(style_frame, font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
-                                insertbackground=COLOR_FG, relief="flat", width=5)
-        sub_fontsize.insert(0, "24")
-        sub_fontsize.pack(side="left", padx=5)
-        tk.Label(style_frame, text="位置:", bg=COLOR_BG, fg=COLOR_FG,
-                 font=("Consolas", 10)).pack(side="left", padx=(10, 0))
+        sub_fontsize_var = tk.IntVar(value=24)
+        sub_fontsize_scale = tk.Scale(fs_frame, from_=8, to=72, orient="horizontal",
+                                      variable=sub_fontsize_var, showvalue=False,
+                                      bg=COLOR_BG, fg=COLOR_FG, highlightbackground=COLOR_BG,
+                                      length=150, sliderlength=15)
+        sub_fontsize_scale.pack(side="left", padx=(5, 0))
+        sub_fontsize_entry = tk.Entry(fs_frame, textvariable=sub_fontsize_var,
+                                      font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
+                                      insertbackground=COLOR_FG, relief="flat", width=4)
+        sub_fontsize_entry.pack(side="left", padx=5)
+        tk.Label(fs_frame, text="pt", bg=COLOR_BG, fg="#a6adc8",
+                 font=("Consolas", 9)).pack(side="left")
+
+        # 垂直邊距（0~200）
+        mv_frame = tk.Frame(sub_frame_inner, bg=COLOR_BG)
+        mv_frame.pack(fill="x", pady=(2, 0))
+        tk.Label(mv_frame, text="垂直邊距:", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10)).pack(side="left")
+        sub_margin_var = tk.IntVar(value=30)
+        sub_margin_scale = tk.Scale(mv_frame, from_=0, to=200, orient="horizontal",
+                                     variable=sub_margin_var, showvalue=False,
+                                     bg=COLOR_BG, fg=COLOR_FG, highlightbackground=COLOR_BG,
+                                     length=150, sliderlength=15)
+        sub_margin_scale.pack(side="left", padx=(5, 0))
+        sub_margin_entry = tk.Entry(mv_frame, textvariable=sub_margin_var,
+                                     font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
+                                     insertbackground=COLOR_FG, relief="flat", width=4)
+        sub_margin_entry.pack(side="left", padx=5)
+        tk.Label(mv_frame, text="px", bg=COLOR_BG, fg="#a6adc8",
+                 font=("Consolas", 9)).pack(side="left")
+
+        # 位置：3x3 按鈕矩陣
+        tk.Label(sub_frame_inner, text="位置（點選九宮格）：", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10), anchor="w").pack(fill="x", pady=(6, 0))
+        pos_frame = tk.Frame(sub_frame_inner, bg=COLOR_BG)
+        pos_frame.pack()
         sub_position = tk.StringVar(value="bottom")
-        tk.Radiobutton(style_frame, text="下", variable=sub_position, value="bottom",
-                       bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
-                       font=("Consolas", 10)).pack(side="left")
-        tk.Radiobutton(style_frame, text="上", variable=sub_position, value="top",
-                       bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
-                       font=("Consolas", 10)).pack(side="left")
+
+        pos_grid = [
+            ("上左", "top-left"),     ("上中", "top"),     ("上右", "top-right"),
+            ("中左", "middle-left"),  ("正中", "middle"),  ("中右", "middle-right"),
+            ("下左", "bottom-left"),  ("下中", "bottom"),  ("下右", "bottom-right"),
+        ]
+        for idx, (label, val) in enumerate(pos_grid):
+            row, col = divmod(idx, 3)
+            rb = tk.Radiobutton(pos_frame, text=label, variable=sub_position, value=val,
+                                bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
+                                indicatoron=0, width=8, relief="flat",
+                                font=("Consolas", 9),
+                                activebackground="#45475a", activeforeground=COLOR_FG)
+            rb.grid(row=row, column=col, padx=2, pady=2)
 
         video_frame.pack(fill="both", expand=True)
         yt_frame.pack_forget()
@@ -1039,8 +1084,9 @@ class TaskManagerGUI:
                     return
 
                 outdir = sub_out_path.get().strip()
-                font_size = sub_fontsize.get().strip() or "24"
+                font_size = str(sub_fontsize_var.get())
                 position = sub_position.get()
+                margin_v = sub_margin_var.get()
 
                 created_count = 0
                 for md_path in md_files:
@@ -1074,9 +1120,19 @@ class TaskManagerGUI:
                         else:
                             continue
 
-                    counter = data.get("task_counter", 0) + 1
-                    data["task_counter"] = counter
-                    tid = str(counter)
+                    # 找最大任務 ID，避免衝突
+                    existing_ids = [int(k) for k in data.get("tasks", {}) if k.isdigit()]
+                    shared_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                               "shared", "tasks")
+                    if os.path.exists(shared_dir):
+                        for fn in os.listdir(shared_dir):
+                            if fn.startswith("task_") and fn.endswith(".json"):
+                                try:
+                                    existing_ids.append(int(fn.replace("task_", "").replace(".json", "")))
+                                except ValueError:
+                                    pass
+                    next_id = (max(existing_ids) if existing_ids else 0) + 1
+                    tid = str(next_id)
                     name = os.path.basename(video_path)
 
                     data["tasks"][tid] = {
@@ -1090,6 +1146,7 @@ class TaskManagerGUI:
                         "output_dir": outdir if outdir else None,
                         "font_size": int(font_size),
                         "position": position,
+                        "margin_v": margin_v,
                         "note": "",
                         "discovered_at": datetime.now().isoformat(),
                         "started_at": None,
@@ -1114,6 +1171,9 @@ class TaskManagerGUI:
                     return
                 print_text = f"燒字幕: {len(md_files)} 個檔案 ({created_count} 個任務)"
 
+            # 更新 task_counter
+            all_ids = [int(k) for k in data.get("tasks", {}) if k.isdigit()]
+            data["task_counter"] = max(all_ids) if all_ids else 0
             data["generated_at"] = datetime.now().isoformat()
             save_task_status(data)
             
@@ -1134,7 +1194,8 @@ class TaskManagerGUI:
             self._refresh()
             
             # 自動滾動到第一個新增的任務
-            first_new_tid = str(data["task_counter"] - (created_count if t in ("video", "subtitle") else 0) + 1)
+            current_max = max([int(k) for k in data.get("tasks", {}) if k.isdigit()] + [0])
+            first_new_tid = str(current_max - (created_count if t in ("video", "subtitle") else 0) + 1)
             if first_new_tid in self.tree.get_children():
                 self.tree.see(first_new_tid)
                 self.tree.selection_set(first_new_tid)

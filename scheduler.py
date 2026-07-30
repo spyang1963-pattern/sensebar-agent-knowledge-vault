@@ -72,10 +72,26 @@ def scan_directory(source_dir=None):
     log(f"找到 {len(found)} 部影片")
     return found
 
+def _get_max_task_id():
+    """取得 shared/tasks 中最大 ID + task_status.json 中最大 ID"""
+    max_id = 0
+    tasks_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "shared", "tasks")
+    if os.path.exists(tasks_dir):
+        for fname in os.listdir(tasks_dir):
+            if fname.startswith("task_") and fname.endswith(".json"):
+                try:
+                    fid = int(fname.replace("task_", "").replace(".json", ""))
+                    if fid > max_id:
+                        max_id = fid
+                except ValueError:
+                    pass
+    return max_id
+
+
 def create_tasks(videos):
     data = load_task_status()
     tasks = data["tasks"]
-    counter = data.get("task_counter", 0)
+    max_id = _get_max_task_id()
 
     existing = set()
     for tid, info in tasks.items():
@@ -89,8 +105,8 @@ def create_tasks(videos):
         if v["course"] in SKIP_COURSES:
             continue
 
-        counter += 1
-        tid = str(counter)
+        max_id += 1
+        tid = str(max_id)
 
         status = STATUS_PENDING
 
@@ -111,7 +127,7 @@ def create_tasks(videos):
         log(f"  新任務 #{tid}: {v['course']} / {v['name']}")
 
     if new_count > 0:
-        data["task_counter"] = counter
+        data["task_counter"] = max_id
         data["generated_at"] = datetime.now().isoformat()
         save_task_status(data)
         log(f"新增 {new_count} 個任務")

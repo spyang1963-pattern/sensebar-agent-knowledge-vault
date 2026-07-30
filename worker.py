@@ -123,30 +123,59 @@ def compress_video(src_path):
     return local_dst
 
 
-def burn_subtitles(video_path, srt_path, output_path, font_size=24, position="bottom"):
+def burn_subtitles(video_path, srt_path, output_path, font_size=24, position="bottom", margin_v=30):
     """燒錄字幕到影片"""
-    import subprocess
+    import subprocess, tempfile, shutil
 
-    # 字幕位置樣式
-    if position == "top":
-        margin_v = 30
-        alignment = 6  # 上方置中
-    else:
-        margin_v = 30
-        alignment = 2  # 下方置中
+    # 字幕位置樣式：libass alignment 1-9
+    # 7 8 9  (上)
+    # 4 5 6  (中)
+    # 1 2 3  (下)
+    position_map = {
+        "bottom":       2, "bottom-center": 2, "下": 2, "下中": 2,
+        "bottom-left":  1, "下左": 1,
+        "bottom-right": 3, "下右": 3,
+        "top":          8, "top-center":    8, "上": 8, "上中": 8,
+        "top-left":     7, "上左": 7,
+        "top-right":    9, "上右": 9,
+        "middle":       5, "mid-center":    5, "中": 5, "正中": 5,
+        "middle-left":  4, "mid-left":      4, "中左": 4,
+        "middle-right": 6, "mid-right":     6, "中右": 6,
+    }
+    alignment = position_map.get(position, 2)
 
-    # ffmpeg 燒字幕指令
-    style = f"FontSize={font_size},MarginV={margin_v},Alignment={alignment}"
+    # ffmpeg filter 語法中 `:` 與 `,` 有特殊意義（選項分隔符/濾鏡鏈分隔符），
+    # Windows 磁碟機代號 `D:` 會讓解析出錯。解法：
+    # 1. 將 SRT 複製到不含特殊字元的暫存路徑
+    # 2. 在 force_style 值內以 `\,` 跳脫逗號
+    # 3. 使用相對路徑（不含磁碟機代號）避開 `:` 問題
+    work_dir = os.path.join(tempfile.gettempdir(), "opencode_subtitle")
+    os.makedirs(work_dir, exist_ok=True)
+    tmp_srt = os.path.join(work_dir, "subtitle.srt")
+    try:
+        shutil.copy2(srt_path, tmp_srt)
+    except Exception:
+        # 若複製失敗，直接使用原始路徑
+        tmp_srt = srt_path
+        work_dir = os.path.dirname(srt_path)
+
+    style = "FontSize={}\\,MarginV={}\\,Alignment={}".format(font_size, margin_v, alignment)
     cmd = [
         "ffmpeg", "-y",
         "-i", video_path,
-        "-vf", f"subtitles='{srt_path}':force_style='{style}'",
+        "-vf", "subtitles={}:force_style={}".format(os.path.basename(tmp_srt), style),
         "-c:a", "copy",
         output_path
     ]
 
-    log(f"  執行: {' '.join(cmd[:5])}...")
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=7200)
+    log(f"  執行: ffmpeg -y -i <video> -vf subtitles=<srt>:force_style=<style> -c:a copy <output>")
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=7200, cwd=work_dir)
+
+    if tmp_srt != srt_path and os.path.isfile(tmp_srt):
+        try:
+            os.unlink(tmp_srt)
+        except Exception:
+            pass
 
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg 失敗: {result.stderr[:500]}")
@@ -175,6 +204,7 @@ def process_subtitle_task(task):
         output_dir = info.get("output_dir")
         font_size = info.get("font_size", 24)
         position = info.get("position", "bottom")
+        margin_v = info.get("margin_v", 30)
 
         # 確認檔案存在
         if not os.path.exists(video_path):
@@ -192,7 +222,7 @@ def process_subtitle_task(task):
 
         # 燒字幕
         timer.step("burn_subtitles")
-        burn_subtitles(video_path, srt_path, output_path, font_size, position)
+        burn_subtitles(video_path, srt_path, output_path, font_size, position, margin_v)
         timer.step_done("burn_subtitles")
 
         # 完成
@@ -230,6 +260,28 @@ def _copy_output_to_source(output_dir, video_path, tid):
         log(f"  [產出] 複製失敗: {e}")
 
 
+def _get_next_task_id():
+    """掃描 shared/tasks 找出最大 ID，避免與現有任務衝突"""
+    tasks_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "shared", "tasks")
+    max_id = 0
+    if os.path.exists(tasks_dir):
+        for fname in os.listdir(tasks_dir):
+            if fname.startswith("task_") and fname.endswith(".json"):
+                try:
+                    fid = int(fname.replace("task_", "").replace(".json", ""))
+                    if fid > max_id:
+                        max_id = fid
+                except ValueError:
+                    pass
+    # 向上找第一個可用的 ID
+    new_id = max_id + 1
+    while True:
+        test_file = os.path.join(tasks_dir, f"task_{new_id}.json")
+        if not os.path.exists(test_file):
+            return str(new_id)
+        new_id += 1
+
+
 def _create_subtitle_task(orig_tid, info, video_path, output_dir):
     """影片完成後自動建立燒字幕任務"""
     try:
@@ -238,10 +290,11 @@ def _create_subtitle_task(orig_tid, info, video_path, output_dir):
             log(f"  [燒字幕] 跳過：找不到字幕檔 {srt_path}")
             return
         from scheduler import load_task_status, save_task_status
+        tid = _get_next_task_id()
         data = load_task_status()
-        counter = data.get("task_counter", 0) + 1
-        data["task_counter"] = counter
-        tid = str(counter)
+        current_max = max((int(k) for k in data.get("tasks", {}) if k.isdigit()), default=0)
+        if int(tid) <= current_max:
+            tid = str(current_max + 1)
         name = info.get("name", "unknown")
         data["tasks"][tid] = {
             "type": "subtitle", "status": "pending",
@@ -250,7 +303,7 @@ def _create_subtitle_task(orig_tid, info, video_path, output_dir):
             "video_path": video_path,
             "srt_path": srt_path,
             "output_dir": os.path.dirname(video_path),
-            "font_size": 24, "position": "bottom",
+            "font_size": 24, "position": "bottom", "margin_v": 30,
             "note": f"自動建立（原始任務 #{orig_tid}）",
             "discovered_at": datetime.now().isoformat(),
             "started_at": None, "completed_at": None,
@@ -265,6 +318,9 @@ def _create_subtitle_task(orig_tid, info, video_path, output_dir):
         os.makedirs(os.path.dirname(shared_file), exist_ok=True)
         with open(shared_file, "w", encoding="utf-8") as f:
             json.dump(shared_task, f, indent=2)
+        # 更新 task_counter 到最新值
+        existing_ids = [int(k) for k in data.get("tasks", {}) if k.isdigit()]
+        data["task_counter"] = max([int(tid)] + existing_ids + [data.get("task_counter", 0)])
         save_task_status(data)
         log(f"  [燒字幕] 已建立 #{tid}（原始 #{orig_tid}）")
     except Exception as e:
