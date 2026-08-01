@@ -492,7 +492,8 @@ def harvest():
             video_relpath = ti.get("video_relpath", "")
             if kb_subpath:
                 # 使用者指定的 KB 路徑
-                kb_subpath = kb_subpath.strip()
+                # 去除前導/尾隨斜線（否則 os.path.join 會丟棄 knowledge-base 前的路徑）
+                kb_subpath = kb_subpath.strip().strip('/\\')
                 clean_name = os.path.splitext(os.path.basename(video_relpath) if video_relpath else task_name)[0]
                 dst_md = os.path.join(kb_dir, kb_subpath, f"{clean_name}.md")
             elif video_relpath:

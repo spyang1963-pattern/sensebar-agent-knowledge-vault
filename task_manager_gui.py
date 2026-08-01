@@ -33,6 +33,24 @@ COLOR_OFFLINE = "#f38ba8"
 
 REFRESH_INTERVAL = 5
 
+PROGRESS_DIR = os.path.join(LOCAL_ROOT, "working", "_task_progress")
+
+
+def _progress_path(tid):
+    return os.path.join(PROGRESS_DIR, f"{tid}.json")
+
+
+def _read_progress(tid):
+    """讀取副程序寫入的進度檔（無則回傳 None）"""
+    try:
+        p = _progress_path(tid)
+        if os.path.exists(p):
+            with open(p, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return None
+
 
 class WorkerManager:
     """Worker 狀態管理與註冊"""
@@ -282,6 +300,7 @@ class TaskManagerGUI:
         self.tree.tag_configure("processing", foreground=COLOR_PROCESSING)
         self.tree.tag_configure("done", foreground=COLOR_DONE)
         self.tree.tag_configure("failed", foreground=COLOR_FAILED)
+        self.tree.tag_configure("paused", foreground=COLOR_WARN)
         self.tree.tag_configure("high", foreground=COLOR_HIGH_PRIORITY)
         self.tree.tag_configure("warn", foreground=COLOR_WARN)
         self.tree.tag_configure("critical", foreground=COLOR_CRITICAL)
@@ -530,6 +549,46 @@ class TaskManagerGUI:
         else:
             self.lbl_add_result.config(text=msg, fg=COLOR_FAILED)
 
+    def _reconcile_progress(self, data):
+        """把副程序完成的結果同步回 task_status.json（含 GUI 關閉期間完成的任務）"""
+        try:
+            if not os.path.isdir(PROGRESS_DIR):
+                return
+            changed = False
+            for fn in os.listdir(PROGRESS_DIR):
+                if not fn.endswith(".json"):
+                    continue
+                tid = fn[:-5]
+                if tid not in data["tasks"]:
+                    continue
+                task = data["tasks"][tid]
+                if task.get("status") != "processing":
+                    continue
+                try:
+                    with open(os.path.join(PROGRESS_DIR, fn), "r", encoding="utf-8") as f:
+                        prog = json.load(f)
+                except Exception:
+                    continue
+                status = prog.get("status")
+                if status == "completed":
+                    task["status"] = "done"
+                    task["completed_at"] = datetime.now().isoformat()
+                    task["last_error"] = None
+                    changed = True
+                elif status == "failed":
+                    task["status"] = "failed"
+                    task["completed_at"] = datetime.now().isoformat()
+                    task["last_error"] = prog.get("message", "") or "處理失敗"
+                    changed = True
+                elif status == "paused":
+                    task["status"] = "paused"
+                    task["last_error"] = prog.get("message", "") or "等待每日額度"
+                    changed = True
+            if changed:
+                save_task_status(data)
+        except Exception:
+            pass
+
     def _refresh(self):
         try:
             data = load_task_status()
@@ -541,14 +600,17 @@ class TaskManagerGUI:
                 disk_text += " ⚠"
             self.lbl_disk.config(text=disk_text)
 
-            counts = {"pending": 0, "processing": 0, "done": 0, "failed": 0}
+            # 副程序完成/失敗 → 同步回 task_status.json
+            self._reconcile_progress(data)
+
+            counts = {"pending": 0, "processing": 0, "done": 0, "failed": 0, "paused": 0}
             for _, info in tasks.items():
                 s = info.get("status", "pending")
                 counts[s] = counts.get(s, 0) + 1
             total = len(tasks)
             self.lbl_count.config(
-                text="總 {} | ⏳{} ▶{} ✓{} ✗{}".format(
-                    total, counts['pending'], counts['processing'], counts['done'], counts['failed']))
+                text="總 {} | ⏳{} ▶{} ✓{} ✗{} ⏸{}".format(
+                    total, counts['pending'], counts['processing'], counts['done'], counts['failed'], counts['paused']))
 
             for row in self.tree.get_children():
                 self.tree.delete(row)
@@ -566,16 +628,39 @@ class TaskManagerGUI:
                 # 燒字幕任務顯示中文狀態
                 status_display = {
                     "subtitle": {"pending": "待燒錄", "processing": "燒錄中", "completed": "已燒錄", "failed": "失敗", "assigned": "待燒錄"},
+                    "document": {"pending": "待處理", "processing": "處理中", "done": "已完成", "failed": "失敗", "paused": "等待額度"},
+                    "audio": {"pending": "待處理", "processing": "處理中", "done": "已完成", "failed": "失敗", "paused": "等待額度"},
+                    "web": {"pending": "待處理", "processing": "處理中", "done": "已完成", "failed": "失敗", "paused": "等待額度"},
                 }.get(task_type, {}).get(status, status)
+
+                # 文件/聲音/網頁任務：讀取副程序進度
+                progress_note = ""
+                if task_type in ("document", "audio", "web") and status == "processing":
+                    prog = _read_progress(tid)
+                    if prog:
+                        ptype = prog.get("type", "")
+                        page = prog.get("page", 0)
+                        total_pages = prog.get("total", 0)
+                        msg = prog.get("message", "") or prog.get("msg", "")
+                        if ptype in ("ocr", "ocr-tesseract") and total_pages:
+                            status_display = f"OCR 第 {page}/{total_pages} 頁"
+                        elif msg:
+                            progress_note = msg
+                error = info.get("last_error", "") or ""
+                if not error and status == "failed" and task_type in ("document", "audio", "web"):
+                    prog = _read_progress(tid)
+                    if prog:
+                        error = prog.get("message", "") or ""
+                if not error and progress_note:
+                    error = progress_note
                 
                 # 篩選邏輯
-                if self.filter_var.get() == "pending" and status not in ("pending", "processing"):
+                if self.filter_var.get() == "pending" and status not in ("pending", "processing", "paused"):
                     continue
                 
                 priority = info.get("priority", 0)
                 assigned = info.get("assigned_to", "?")
                 machine = info.get("machine", "-")
-                error = info.get("last_error", "") or ""
 
                 if task_type == "sensebar":
                     name = info.get("title", "?")
@@ -945,6 +1030,10 @@ class TaskManagerGUI:
                       title="選擇聲音檔",
                       filetypes=[("音訊檔", "*.mp3 *.wav *.m4a *.flac *.ogg *.aac"), ("所有檔案", "*.*")]))
                   ).pack(side="right", padx=(5, 0))
+        tk.Button(af_path_row, text="資料夾", font=("Consolas", 9),
+                  bg="#45475a", fg=COLOR_FG, relief="flat",
+                  command=lambda: af_path.set(filedialog.askdirectory(title="選擇聲音檔資料夾（會遞迴掃描）"))
+                  ).pack(side="right")
         tk.Label(audio_frame, text="條目標題 (留空=用檔名)", bg=COLOR_BG, fg=COLOR_FG,
                  font=("Consolas", 10), anchor="w").pack(fill="x", padx=5, pady=(8, 0))
         af_title = tk.Entry(audio_frame, font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
@@ -1194,7 +1283,7 @@ class TaskManagerGUI:
                             "course": course,
                             "name": video_name,
                             "video_relpath": rel_path,
-                            "kb_subpath": video_entries["kb_subpath"].get().strip() or course,
+                            "kb_subpath": (video_entries["kb_subpath"].get().strip() or course).strip('/\\'),
                             "size_mb": round(size_mb, 1),
                             "needs_compress": size_mb > 24,
                             "note": note,
@@ -1254,7 +1343,7 @@ class TaskManagerGUI:
                         "course": course,
                         "name": os.path.basename(path),
                         "video_relpath": path,
-                        "kb_subpath": video_entries["kb_subpath"].get().strip() or course,
+                        "kb_subpath": (video_entries["kb_subpath"].get().strip() or course).strip('/\\'),
                         "size_mb": round(size_mb, 1),
                         "needs_compress": size_mb > 24,
                         "note": note,
@@ -1419,55 +1508,88 @@ class TaskManagerGUI:
                 print_text = f"燒字幕: {len(md_files)} 個檔案 ({created_count} 個任務)"
 
             elif t in ("audio", "document", "web"):
-                from file_processors import process_audio as _proc_audio
-                from file_processors import process_document as _proc_doc
-                from file_processors import process_web as _proc_web
                 if t == "audio":
                     src = af_path.get().strip()
-                    kb = af_kb.get().strip() or "音頻"
+                    kb = (af_kb.get().strip() or "音頻").strip('/\\')
                     title = af_title.get().strip() or None
-                    processor = _proc_audio
                 elif t == "document":
                     src = df_path.get().strip()
-                    kb = df_kb.get().strip() or "文件"
+                    kb = (df_kb.get().strip() or "文件").strip('/\\')
                     title = df_title.get().strip() or None
-                    processor = _proc_doc
                 elif t == "web":
                     src = wf_url.get().strip()
-                    kb = wf_kb.get().strip() or "網頁"
+                    kb = (wf_kb.get().strip() or "網頁").strip('/\\')
                     title = wf_title.get().strip() or None
-                    processor = _proc_web
 
                 if not src:
                     messagebox.showerror("錯誤", {"audio": "請選擇聲音檔", "document": "請選擇檔案", "web": "請輸入網址"}[t])
                     return
 
+                # 建立任務紀錄（與 video 任務相同結構）
+                counter = data.get("task_counter", 0) + 1
+                tid = str(counter)
+                data["task_counter"] = counter
+                name = title or (os.path.basename(src) if t in ("audio", "document") else src)
+                data["tasks"][tid] = {
+                    "type": t,
+                    "status": "pending",
+                    "assigned_to": MACHINE,
+                    "priority": 0,
+                    "name": name,
+                    "source": src,
+                    "kb_subdir": kb,
+                    "title": title,
+                    "discovered_at": datetime.now().isoformat(),
+                    "started_at": None,
+                    "completed_at": None,
+                    "last_error": None,
+                    "machine": MACHINE,
+                }
+                shared_task = {
+                    "task_id": tid,
+                    "task_info": data["tasks"][tid],
+                    "status": "pending",
+                    "assigned_to": MACHINE,
+                }
+                shared_task_file = os.path.join(SHARED_ROOT, "tasks", f"task_{tid}.json")
+                os.makedirs(os.path.dirname(shared_task_file), exist_ok=True)
+                with open(shared_task_file, "w", encoding="utf-8") as f:
+                    json.dump(shared_task, f, indent=2)
+
+                # 標記為處理中並寫入中央佇列
+                data["tasks"][tid]["status"] = "processing"
+                data["tasks"][tid]["started_at"] = datetime.now().isoformat()
+                data["generated_at"] = datetime.now().isoformat()
+                save_task_status(data)
+                shared_task["status"] = "processing"
+                with open(shared_task_file, "w", encoding="utf-8") as f:
+                    json.dump(shared_task, f, indent=2)
+
                 win.destroy()
-                self.lbl_status.config(text=f"正在處理{'音訊' if t=='audio' else '文件' if t=='document' else '網頁'}: {src[:50]}...", fg="#89b4fa")
-
-                def _process_generic():
-                    try:
-                        results = processor(src, kb_subdir=kb, title=title)
-                        self.root.after(0, lambda: _generic_done(results, processor.__name__))
-                    except Exception as e:
-                        self.root.after(0, lambda: messagebox.showerror("處理異常", str(e)))
-                        self.root.after(0, lambda: self.lbl_status.config(text="處理失敗", fg="#f38ba8"))
-
-                def _generic_done(results, pname):
-                    if results["status"] == "error":
-                        messagebox.showerror("處理失敗", results["message"])
-                        self.lbl_status.config(text="處理失敗", fg="#f38ba8")
-                        return
-                    kb_path = results.get("kb_path", "")
-                    msg = results["message"]
-                    if kb_path:
-                        msg += f"\n KB: {kb_path}"
-                    messagebox.showinfo("處理完成", msg)
+                # 背景以 subprocess 執行（GUI 關閉任務照跑，進度寫入 _task_progress/{tid}.json）
+                try:
+                    cli_type = {"document": "doc", "audio": "audio", "web": "web"}[t]
+                    cmd = [sys.executable, "-X", "utf8",
+                           str(PROJECT_ROOT / "file_processors.py"),
+                           cli_type, src, "--kb", kb, "--task-id", tid]
+                    if title:
+                        cmd += ["--title", title]
+                    subprocess.Popen(cmd, cwd=str(PROJECT_ROOT),
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                    print_text = f"{name}"
+                    self.lbl_status.config(text=f"任務 #{tid} 已啟動（背景處理）: {name}", fg="#a6e3a1")
                     self._refresh()
-                    self.lbl_status.config(text=f"處理完成: {results['message'][:40]}")
-
-                threading.Thread(target=_process_generic, daemon=True).start()
-                return
+                    return
+                except Exception as e:
+                    data = load_task_status()
+                    if tid in data["tasks"]:
+                        data["tasks"][tid]["status"] = "failed"
+                        data["tasks"][tid]["last_error"] = f"啟動失敗: {e}"
+                        save_task_status(data)
+                    messagebox.showerror("啟動失敗", f"無法啟動背景處理:\n{e}")
+                    self._refresh()
+                    return
 
             # 更新 task_counter
             all_ids = [int(k) for k in data.get("tasks", {}) if k.isdigit()]

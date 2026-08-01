@@ -93,6 +93,8 @@ def main() -> int:
             "Whisper、GitHub、Obsidian。"
         ),
     )
+    ap.add_argument("--chunk-min", type=float, default=15.0,
+                    help="超過 24MB 時每段切 N 分鐘（預設 15）")
     args = ap.parse_args()
 
     if not args.audio.exists():
@@ -111,9 +113,35 @@ def main() -> int:
         upload_path = tmp_compressed
         new_mb = tmp_compressed.stat().st_size / 1024 / 1024
         if new_mb > SIZE_LIMIT_MB:
-            sys.exit(f"[ERR] 壓縮後仍 {new_mb:.1f} MB，超過 {SIZE_LIMIT_MB} MB 上限。")
+            upload_path = None  # 標記需要切段
+        else:
+            print(f"[INFO] 壓縮後 {new_mb:.1f} MB")
 
-    body, content_type = build_multipart(upload_path, args.model, args.prompt)
+    # 切段轉錄：超過 24MB 且單次無法縮至上限內 → 分段上傳後合併
+    if upload_path is None:
+        final = transcribe_in_chunks(tmp_compressed, args.model, args.prompt,
+                                     api_key, args.chunk_min)
+    else:
+        body, content_type = build_multipart(upload_path, args.model, args.prompt)
+        final = transcribe_once(body, content_type, api_key)
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(final, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    n_words = len(final.get("words", []))
+    n_segs = len(final.get("segments", []))
+    dur = final.get("duration", 0)
+    print(f"[OK] 輸出 {out}（{n_words} 詞 / {n_segs} 段 / {dur:.1f}s）")
+
+    if tmp_compressed is not None and tmp_compressed.exists():
+        try:
+            tmp_compressed.unlink()
+        except OSError:
+            pass
+    return 0
+
+
+def transcribe_once(body: bytes, content_type: str, api_key: str) -> dict:
     req = urllib.request.Request(
         GROQ_URL,
         data=body,
@@ -135,21 +163,70 @@ def main() -> int:
         sys.exit(f"[ERR] Groq API 錯誤 {e.code}：{err_body}")
     except urllib.error.URLError as e:
         sys.exit(f"[ERR] 網路錯誤：{e}")
+    return data
 
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    n_words = len(data.get("words", []))
-    n_segs = len(data.get("segments", []))
-    dur = data.get("duration", 0)
-    print(f"[OK] 輸出 {out}（{n_words} 詞 / {n_segs} 段 / {dur:.1f}s）")
+def transcribe_in_chunks(src: Path, model: str, prompt: str, api_key: str,
+                         chunk_min: float) -> dict:
+    """超過 24MB 的音訊：用 ffmpeg 切成 N 分鐘一段，逐段轉錄後合併"""
+    if not shutil.which("ffmpeg"):
+        sys.exit("[ERR] 切段需要 ffmpeg，但找不到")
+    duration = probe_duration(src)
+    chunk_sec = chunk_min * 60
+    if duration <= 0:
+        sys.exit("[ERR] 無法取得音訊時長")
+    n_chunks = max(1, int(duration // chunk_sec) + (1 if duration % chunk_sec else 0))
+    print(f"[INFO] 音訊 {duration:.0f}s → 切 {n_chunks} 段（每段 {chunk_min} 分鐘）")
 
-    if tmp_compressed is not None and tmp_compressed.exists():
-        try:
-            tmp_compressed.unlink()
-        except OSError:
-            pass
-    return 0
+    results: dict | None = None
+    for i in range(n_chunks):
+        start = i * chunk_sec
+        seg = Path(tempfile.gettempdir()) / f"audio-to-srt-seg-{os.getpid()}-{i}.mp3"
+        cmd = [
+            "ffmpeg", "-y", "-ss", f"{start}", "-i", str(src),
+            "-t", str(min(chunk_sec, duration - start)),
+            "-ac", "1", "-ar", "16000", "-b:a", "32k", str(seg),
+        ]
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        if r.returncode != 0:
+            sys.exit(f"[ERR] ffmpeg 切段失敗：\n{r.stderr[-500:]}")
+        seg_mb = seg.stat().st_size / 1024 / 1024
+        if seg_mb > SIZE_LIMIT_MB:
+            sys.exit(f"[ERR] 第 {i+1} 段仍 {seg_mb:.1f} MB，請縮短 --chunk-min")
+        print(f"[INFO] 轉錄段 {i+1}/{n_chunks}（{start:.0f}s 起，{seg_mb:.1f} MB）...")
+        body, ct = build_multipart(seg, model, prompt)
+        data = transcribe_once(body, ct, api_key)
+        seg.unlink(missing_ok=True)
+        results = merge_results(results, data, offset=start)
+    return results
+
+
+def probe_duration(path: Path) -> float:
+    cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+           "-of", "default=noprint_wrappers=1:nokey=1", str(path)]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        return 0.0
+    try:
+        return float(r.stdout.strip())
+    except ValueError:
+        return 0.0
+
+
+def merge_results(base: dict | None, new: dict, offset: float) -> dict:
+    """合併分段轉錄結果；時序碼平移 offset 秒"""
+    if base is None:
+        return new
+    out = dict(base)
+    out["text"] = (out.get("text", "") + " " + new.get("text", "")).strip()
+    shifted_words = [dict(w, start=w.get("start", 0) + offset, end=w.get("end", 0) + offset)
+                     for w in new.get("words", [])]
+    out["words"] = list(out.get("words", [])) + shifted_words
+    shifted_segs = [dict(s, start=s.get("start", 0) + offset, end=s.get("end", 0) + offset)
+                    for s in new.get("segments", [])]
+    out["segments"] = list(out.get("segments", [])) + shifted_segs
+    out["duration"] = offset + new.get("duration", 0)
+    return out
 
 
 if __name__ == "__main__":

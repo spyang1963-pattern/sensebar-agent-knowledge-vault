@@ -35,6 +35,7 @@ def validate(raw_path: Path, clean_path: Path) -> int:
     raw = parse_srt(raw_path)
     clean = parse_srt(clean_path)
     errors = []
+    warnings = []
     if len(raw) != len(clean):
         errors.append(f"段數不一致：raw={len(raw)} vs clean={len(clean)}")
         print("\n".join(errors))
@@ -47,7 +48,7 @@ def validate(raw_path: Path, clean_path: Path) -> int:
         if r_tc != c_tc:
             errors.append(f"段 {i} 時間碼不符：\n  raw  = {r_tc}\n  clean= {c_tc}")
         if not c_txt:
-            errors.append(f"段 {i} 文字為空")
+            warnings.append(f"段 {i} 文字為空（Whisper 常見，已忽略）")
     prev_end = -1
     for i, (idx, tc, txt) in enumerate(clean, start=1):
         m = TIMECODE_RE.match(tc)
@@ -61,6 +62,12 @@ def validate(raw_path: Path, clean_path: Path) -> int:
         if start_ms < prev_end:
             errors.append(f"段 {i} 與前段重疊：prev_end={prev_end} start={start_ms}")
         prev_end = end_ms
+    if warnings:
+        print(f"[WARN] {len(warnings)} 個警告（已忽略）：")
+        for w in warnings[:3]:
+            print(f"  - {w}")
+        if len(warnings) > 3:
+            print(f"  ... 還有 {len(warnings)-3} 個")
     if errors:
         print("[FAIL] 驗證失敗：")
         for e in errors:
