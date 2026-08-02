@@ -428,8 +428,181 @@ def _ocr_pdf_groq(filepath, model="qwen/qwen3.6-27b", task_id=None):
     return "\n\n".join(all_text)
 
 
+def _parse_gemini_pages(full_text, start):
+    """解析 Gemini 輸出的「--- 第 N 頁 ---」區塊為 {絕對頁碼: 文字}
+
+    注意：上傳給 Gemini 的是切割後的分段 PDF，頁碼從 1 重新編號，
+    所以段內頁碼 N 要加上段起始頁偏移 start-1 才是原 PDF 頁碼。
+    """
+    pages = {}
+    if not full_text:
+        return pages
+    pattern = re.compile(r"^-{3,}\s*第\s*(\d+)\s*頁\s*-{3,}\s*$")
+    cur = None
+    buf = []
+    for line in full_text.splitlines():
+        m = pattern.match(line.strip())
+        if m:
+            if cur is not None and buf:
+                pages[str(start + cur - 1)] = "\n".join(buf).strip()
+            cur = int(m.group(1))
+            buf = []
+        elif cur is not None:
+            buf.append(line)
+    if cur is not None and buf:
+        pages[str(start + cur - 1)] = "\n".join(buf).strip()
+    # 找不到標記時，整段塞進段首頁（至少保留文字）
+    if not pages:
+        pages[str(start)] = full_text
+    return pages
+
+
+def _ocr_pdf_gemini(filepath, model="gemini-3.5-flash-lite", task_id=None, chunk_pages=10):
+    """用 Gemini 原生 PDF OCR（分段 inline 上傳，免逐頁轉圖），支援中斷續傳 + 併發防護 + 進度回報"""
+    import fitz
+    from google import genai
+    from google.genai import types
+
+    api_key = os.environ.get("GEMINI_API_KEY") or ""
+    if not api_key:
+        kf = Path.home() / ".gemini_api_key"
+        if kf.exists():
+            api_key = kf.read_text("utf-8").strip()
+    if not api_key:
+        raise Exception("GEMINI_API_KEY not found")
+
+    ckpt_path = _ocr_checkpoint_path(filepath)
+
+    # 併發防護：同一 PDF 同一時間只允許一個實例
+    lock_path = _ocr_lock(filepath)
+    if not lock_path:
+        raise Exception(f"另一 OCR 實例正在處理此檔案（{_ocr_checkpoint_path(filepath).stem}.lock）")
+
+    doc = fitz.open(filepath)
+    total = len(doc)
+
+    # 載入檢查點
+    done_pages = _load_checkpoint(ckpt_path, total)
+    if done_pages:
+        # 空結果頁面（先前失敗）視為未完成，重新辨識
+        empty_kept = [k for k, v in done_pages.items() if not str(v).strip()]
+        if empty_kept:
+            sys.stderr.write(f"[ocr-gemini] 重新辨識空結果頁: {len(empty_kept)} 頁\n")
+            done_pages = {k: v for k, v in done_pages.items() if str(v).strip()}
+            _save_checkpoint(ckpt_path, total, done_pages)
+    if done_pages:
+        sys.stderr.write(f"[ocr-gemini] 續傳模式: 已跳過 {len(done_pages)} 頁\n")
+
+    client = genai.Client(api_key=api_key)
+
+    prompt = (
+        "你是一個專業的繁體中文 OCR 引擎。請辨識下方 PDF 每一頁中的所有文字，"
+        "完整輸出，不要省略、不要總結、不要加入任何評論。"
+        "每一頁輸出開頭請用一行「--- 第 N 頁 ---」標記（N 為頁碼），"
+        "接著輸出該頁全部文字。"
+    )
+
+    for start in range(1, total + 1, chunk_pages):
+        end = min(start + chunk_pages - 1, total)
+        need = [str(p) for p in range(start, end + 1) if str(p) not in done_pages]
+        if not need:
+            continue
+
+        # 抽出分段 PDF（inline bytes，免 files.upload）
+        chunk = fitz.open()
+        chunk.insert_pdf(doc, from_page=start - 1, to_page=end - 1)
+        pdf_bytes = chunk.tobytes()
+        chunk.close()
+
+        full_text = ""
+        page_start_t = time.time()
+        saved = False
+        max_attempts = 8
+        for attempt in range(max_attempts):
+            try:
+                resp = client.models.generate_content(
+                    model=model,
+                    contents=[types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")],
+                    config=types.GenerateContentConfig(
+                        system_instruction=prompt, temperature=0.1
+                    ),
+                )
+                full_text = (resp.text or "").strip()
+                if not full_text:
+                    raise Exception("empty_response")
+                saved = True
+                break
+            except Exception as e:
+                es = str(e)
+                # 每日 token 額度用盡 → 停止，不標空頁，等重置後續傳
+                if "tokens per day" in es.lower() or "daily tokens" in es.lower():
+                    _write_progress(task_id, type="ocr", status="paused",
+                                    message=f"已達 Gemini 每日額度，OCR 暫停（{es[:200]}）")
+                    raise _QuotaStop(es[:300])
+                # RPM（每分鐘請求數）限制：錯誤訊息會附建議等待秒數，等待後重試
+                is_rpm = ("quota exceeded" in es.lower() or "resource_exhausted" in es.lower()) and "retry in" in es.lower()
+                retry_sec = 30
+                if is_rpm:
+                    import re as _re
+                    m = _re.search(r"retry in ([0-9.]+)s", es)
+                    if m:
+                        retry_sec = int(float(m.group(1))) + 2
+                # 503 UNAVAILABLE：模型高需求，等待較久再重試
+                is_503 = "503" in es or "unavailable" in es.lower()
+                is_ratelimit = is_rpm or is_503 or "429" in es or "rate_limit" in es.lower()
+                if attempt < max_attempts - 1:
+                    if is_rpm:
+                        wait = retry_sec
+                        label = f"速率上限等待 {retry_sec}s"
+                    elif is_503:
+                        wait = 30 * (attempt + 1)
+                        label = f"高需求等待 {wait}s"
+                    else:
+                        wait = 20 * (attempt + 1) if is_ratelimit else 8
+                        label = f"重試等待 {wait}s"
+                    sys.stderr.write(f"[ocr-gemini] 段 {start}-{end} {label} ({(attempt+1)}/{max_attempts}): {es[:120]}\n")
+                    time.sleep(wait)
+                else:
+                    sys.stderr.write(f"[ocr-gemini] 段 {start}-{end} 失敗放棄: {e}\n")
+                    full_text = ""
+                    saved = True
+                    break
+                # 段卡住過久 → 放棄此段（留空）繼續下一段
+                if time.time() - page_start_t > 600 and not saved:
+                    full_text = ""
+                    saved = True
+                    break
+
+        # 解析各頁文字
+        seg = _parse_gemini_pages(full_text, start)
+        for p in need:
+            done_pages[p] = seg.get(p, "")
+            if done_pages[p]:
+                sys.stderr.write(f"[ocr-gemini] 第 {p}/{total}: {len(done_pages[p])} 字\n")
+        _save_checkpoint(ckpt_path, total, done_pages)
+        _write_progress(task_id, type="ocr", page=end, total=total,
+                        done=len(done_pages), chars=sum(len(v) for v in done_pages.values()))
+        time.sleep(3)
+
+    doc.close()
+    # 依頁碼排序輸出
+    all_text = []
+    for pg in sorted(int(k) for k in done_pages):
+        txt = done_pages[str(pg)]
+        if txt:
+            all_text.append(f"--- 第 {pg} 頁 ---\n{txt}")
+    # 完成後刪除檢查點與鎖
+    for p in (ckpt_path, lock_path):
+        try:
+            if p.exists():
+                p.unlink()
+        except Exception:
+            pass
+    return "\n\n".join(all_text)
+
+
 def _ocr_pdf(filepath, dpi=150, task_id=None):
-    """掃描 PDF OCR：先試 Groq Vision，失敗降級 Tesseract"""
+    """掃描 PDF OCR：先試 Gemini，再 Groq Vision，最後降級 Tesseract"""
     try:
         import pytesseract, fitz
         from PIL import Image
@@ -447,7 +620,21 @@ def _ocr_pdf(filepath, dpi=150, task_id=None):
     total = len(doc)
     all_text = []
 
-    # Try Groq Vision first
+    # Try Gemini first
+    if total > 0:
+        try:
+            sys.stderr.write(f"[ocr] 嘗試 Gemini ({total} 頁)...\n")
+            result = _ocr_pdf_gemini(filepath, task_id=task_id)
+            if result.strip():
+                doc.close()
+                return result
+        except _QuotaStop:
+            doc.close()
+            raise
+        except Exception as e:
+            sys.stderr.write(f"[ocr] Gemini 失敗: {e}，降級 Groq Vision\n")
+
+    # Try Groq Vision second
     if total > 0:
         try:
             sys.stderr.write(f"[ocr] 嘗試 Groq Vision ({total} 頁，約 {total*25}s)...\n")
@@ -535,7 +722,7 @@ def process_document(filepath, kb_subdir="文件", title=None, task_id=None):
         else:
             content = handler(str(fp))
     except _QuotaStop:
-        return _msg("paused", "已達 Groq 每日額度，OCR 暫停；待額度重置後可續傳（檢查點已保存）")
+        return _msg("paused", "已達 OCR API 每日額度，OCR 暫停；待額度重置後可續傳（檢查點已保存）")
     except Exception as e:
         return _msg("error", f"文字提取失敗: {e}")
 
