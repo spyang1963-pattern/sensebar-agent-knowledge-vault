@@ -13,3 +13,7 @@ raw/
 *.wav
 *.flac
 *.aac
+
+# financial news DB + logs
+financial_news/finance.db*
+financial_news/logs/
