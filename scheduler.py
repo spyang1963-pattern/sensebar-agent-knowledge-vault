@@ -342,6 +342,26 @@ def parse_srt_to_text(srt_content):
     return '\n'.join(lines)
 
 
+def _video_kb_subdir(video_relpath, course):
+    """從影片相對/絕對路徑中取出「課程根目錄之後的子目錄結構」。
+
+    與 audio 模式的 relative_to 分層一致：KB 收成時依來源子目錄分層，
+    而不是把全部檔案平鋪到 kb_subpath 頂層。
+    """
+    if not video_relpath or not course:
+        return ""
+    vr = video_relpath.replace("\\", "/")
+    c = str(course).strip().replace("\\", "/")
+    idx = vr.find(c)
+    if idx < 0:
+        return ""
+    rest = vr[idx + len(c):].strip("/")
+    if not rest:
+        return ""
+    parent = os.path.dirname(rest.replace("/", "\\"))
+    return parent if parent else ""
+
+
 def harvest():
     """收成：從 shared/tasks/*.json 讀取狀態，從各機器的產出整合到知識庫"""
     shared_tasks_dir = os.path.join(SHARED_ROOT, "tasks")
@@ -495,7 +515,12 @@ def harvest():
                 # 去除前導/尾隨斜線（否則 os.path.join 會丟棄 knowledge-base 前的路徑）
                 kb_subpath = kb_subpath.strip().strip('/\\')
                 clean_name = os.path.splitext(os.path.basename(video_relpath) if video_relpath else task_name)[0]
-                dst_md = os.path.join(kb_dir, kb_subpath, f"{clean_name}.md")
+                # 依來源子目錄分層（與 audio 模式一致），避免全部平鋪到 kb_subpath 頂層
+                kb_sub_rel = _video_kb_subdir(video_relpath, course)
+                if kb_sub_rel:
+                    dst_md = os.path.join(kb_dir, kb_subpath, kb_sub_rel, f"{clean_name}.md")
+                else:
+                    dst_md = os.path.join(kb_dir, kb_subpath, f"{clean_name}.md")
             elif video_relpath:
                 video_relpath = video_relpath.strip()
                 # 預設放到 knowledge-base/{course}/{filename}.md
