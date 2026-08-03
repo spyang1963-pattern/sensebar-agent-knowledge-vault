@@ -8,7 +8,7 @@ Usage:
   python pipeline.py --full          # run everything
   python pipeline.py --collect       # just collect
   python pipeline.py --analyze --batch 40
-  python pipeline.py --report
+  python pipeline.py --report         # regenerate today's report (+ deep report)
 """
 import os
 import sys
@@ -23,6 +23,7 @@ import news_collector
 import noise_filter
 import analysis_engine
 import report_generator
+import deep_report
 
 LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "pipeline.log")
 os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
@@ -63,12 +64,22 @@ def run_analyze(batch_size=40):
     return analyzed, quota_hit
 
 
-def run_report():
+def run_report(deep=False):
     events = db.recent_events(limit=80, severity_min=0)
     path = report_generator.write_daily_report(events)
     msg = f"report: {path} ({len(events)} events)"
     print(msg)
     logging.info(msg)
+    if deep:
+        try:
+            docx_path = deep_report.run()
+            msg2 = f"deep report: {docx_path}"
+            print(msg2)
+            logging.info(msg2)
+        except Exception as e:
+            msg2 = f"deep report failed: {e}"
+            print(msg2)
+            logging.error(msg2)
     return path
 
 
@@ -77,7 +88,7 @@ def run_full(analyze_batch=40):
     run_filter()
     analyzed, quota_hit = run_analyze(analyze_batch)
     if not quota_hit:
-        run_report()
+        run_report(deep=True)
     print("pipeline done")
 
 
@@ -89,6 +100,7 @@ def main():
     parser.add_argument("--analyze", action="store_true")
     parser.add_argument("--report", action="store_true")
     parser.add_argument("--batch", type=int, default=40)
+    parser.add_argument("--no-deep", action="store_true", help="report without deep analysis")
     args = parser.parse_args()
 
     if args.full:
@@ -101,7 +113,7 @@ def main():
         if args.analyze:
             run_analyze(args.batch)
         if args.report:
-            run_report()
+            run_report(deep=not args.no_deep)
         if not any([args.collect, args.filter, args.analyze, args.report]):
             parser.print_help()
 
