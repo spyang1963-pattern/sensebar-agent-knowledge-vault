@@ -305,7 +305,7 @@ def _docx_to_doc(docx_path, doc_path):
                 pass
 
 
-def write_doc(analysis_md, day, now_str):
+def write_doc(analysis_md, day, now_str, label=""):
     os.makedirs(DEEP_DIR, exist_ok=True)
     docx_path = os.path.join(DEEP_DIR, f"{day}.docx")
     doc = Document()
@@ -328,7 +328,7 @@ def write_doc(analysis_md, day, now_str):
     doc.save(docx_path)
 
     # Convert to .doc (Word 97-2003) for final delivery
-    doc_path = os.path.join(DEEP_DIR, f"深度分析報告 {day}.doc")
+    doc_path = os.path.join(DEEP_DIR, f"深度分析報告 {day} {label}.doc").strip()
     if _docx_to_doc(docx_path, doc_path):
         return doc_path
     print("[deep_report] 改用 .docx 交付")
@@ -348,7 +348,7 @@ def _email_config():
         return None
 
 
-def send_email(docx_path, day, recipients=None):
+def send_email(docx_path, day, label="", recipients=None):
     """Email the .docx attachment via Gmail."""
     cfg = _email_config()
     if not cfg or not cfg.get("enabled") or not cfg.get("sender_email"):
@@ -357,13 +357,14 @@ def send_email(docx_path, day, recipients=None):
     sender = cfg["sender_email"]
     if recipients is None:
         recipients = [sender]
+    title = f"{label}深度分析報告" if label else "深度分析報告"
     msg = MIMEMultipart()
-    msg["Subject"] = f"【深度分析報告】{day} 金融市場深度解析"
+    msg["Subject"] = f"【{title}】{day} 金融市場深度解析"
     msg["From"] = sender
     msg["To"] = ", ".join(recipients)
     body = (
-        f"<h2>金融情報系統 · 深度分析報告</h2>"
-        f"<p>報告日期：<b>{day}</b></p>"
+        f"<h2>金融情報系統 · {title}</h2>"
+        f"<p>報告日期：<b>{day}</b>　時段：<b>{label or '一般'}</b></p>"
         f"<p>本報告由 AI 自動生成，針對今日重大事件與市場走勢進行深度分析，"
         f"涵蓋股/債/匯/商品四大市場的短中長期展望。</p>"
         f"<p>詳細內容請開啟附件《{os.path.basename(docx_path)}》。</p>"
@@ -403,19 +404,29 @@ def _prev_days_text(day):
     return "\n\n".join(parts)
 
 
-def run(day=None, skip_email=False, skip_line=False, force=False):
+SLOT_LABELS = {"morning": "早上", "evening": "傍晚"}
+
+
+def _slot_label(slot):
+    return SLOT_LABELS.get(slot, "")
+
+
+def run(day=None, slot=None, skip_email=False, skip_line=False, force=False):
     tz = timezone(timedelta(hours=8))
     now = datetime.now(tz)
     day = day or now.strftime("%Y-%m-%d")
+    if slot is None:
+        slot = "morning" if now.hour < 13 else "evening"
+    label = _slot_label(slot)
 
     md_text, report_path = read_daily_report(day)
     if md_text is None:
         print(f"[deep_report] 找不到當日報告: {report_path}")
         return None
 
-    doc_path = os.path.join(DEEP_DIR, f"深度分析報告 {day}.doc")
+    doc_path = os.path.join(DEEP_DIR, f"深度分析報告 {day} {label}.doc")
     if os.path.exists(doc_path) and not force:
-        print(f"[deep_report] {day} 深度報告已存在，跳過（--force 可覆蓋）: {doc_path}")
+        print(f"[deep_report] {day} {label}深度報告已存在，跳過（--force 可覆蓋）: {doc_path}")
         return doc_path
 
     print(f"[deep_report] 讀取每日報告: {report_path} ({len(md_text)} 字)")
@@ -435,16 +446,16 @@ def run(day=None, skip_email=False, skip_line=False, force=False):
 
     analysis_md = deep_analyze(md_text, bigpickle_text=bigpickle_text, prev_days_text=prev_days)
     now_str = now.strftime("%Y-%m-%d %H:%M（台灣時間）")
-    doc_path = write_doc(analysis_md, day, now_str)
-    print(f"[deep_report] 深度報告已產生: {doc_path}")
+    doc_path = write_doc(analysis_md, day, now_str, label=label)
+    print(f"[deep_report] {label}深度報告已產生: {doc_path}")
 
     if not skip_email:
-        send_email(doc_path, day)
+        send_email(doc_path, day, label=label)
     if not skip_line:
         line_msg = (
-            f"【深度分析報告已出爐】{day}\n"
+            f"【{label}深度分析報告已出爐】{day}\n"
             f"已融合台股夜盤與跨日相關性分析，\n"
-            f"檔案: knowledge-base\\金融\\深度報告\\深度分析報告 {day}.doc\n"
+            f"檔案: knowledge-base\\金融\\深度報告\\深度分析報告 {day} {label}.doc\n"
             f"（詳情請查收 Email）"
         )
         notifier.send_line(line_msg)
@@ -455,11 +466,13 @@ def run(day=None, skip_email=False, skip_line=False, force=False):
 def main():
     parser = argparse.ArgumentParser(description="Financial deep report generator")
     parser.add_argument("--day", default=None, help="YYYY-MM-DD (default today)")
-    parser.add_argument("--force", action="store_true", help="overwrite existing docx")
+    parser.add_argument("--slot", choices=["morning", "evening"], default=None,
+                        help="morning/evening (default: auto by hour)")
+    parser.add_argument("--force", action="store_true", help="overwrite existing doc")
     parser.add_argument("--skip-email", action="store_true")
     parser.add_argument("--skip-line", action="store_true")
     args = parser.parse_args()
-    run(args.day, skip_email=args.skip_email, skip_line=args.skip_line, force=args.force)
+    run(args.day, slot=args.slot, skip_email=args.skip_email, skip_line=args.skip_line, force=args.force)
 
 
 if __name__ == "__main__":

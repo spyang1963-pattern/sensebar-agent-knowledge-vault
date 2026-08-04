@@ -64,7 +64,7 @@ def run_analyze(batch_size=40):
     return analyzed, quota_hit
 
 
-def run_report(deep=False):
+def run_report(deep=False, slot=None):
     events = db.recent_events(limit=80, severity_min=0)
     path = report_generator.write_daily_report(events)
     msg = f"report: {path} ({len(events)} events)"
@@ -72,7 +72,7 @@ def run_report(deep=False):
     logging.info(msg)
     if deep:
         try:
-            docx_path = deep_report.run()
+            docx_path = deep_report.run(slot=slot)
             msg2 = f"deep report: {docx_path}"
             print(msg2)
             logging.info(msg2)
@@ -88,7 +88,7 @@ def run_full(analyze_batch=40):
     run_filter()
     analyzed, quota_hit = run_analyze(analyze_batch)
     if not quota_hit:
-        run_report(deep=True)
+        run_report(deep=False)
     print("pipeline done")
 
 
@@ -100,7 +100,10 @@ def main():
     parser.add_argument("--analyze", action="store_true")
     parser.add_argument("--report", action="store_true")
     parser.add_argument("--batch", type=int, default=40)
+    parser.add_argument("--deep", action="store_true", help="report with deep analysis")
     parser.add_argument("--no-deep", action="store_true", help="report without deep analysis")
+    parser.add_argument("--slot", choices=["morning", "evening"], default=None,
+                        help="deep report slot (morning/evening)")
     args = parser.parse_args()
 
     if args.full:
@@ -113,7 +116,7 @@ def main():
         if args.analyze:
             run_analyze(args.batch)
         if args.report:
-            run_report(deep=not args.no_deep)
+            run_report(deep=args.deep or not args.no_deep, slot=args.slot)
         if not any([args.collect, args.filter, args.analyze, args.report]):
             parser.print_help()
 
