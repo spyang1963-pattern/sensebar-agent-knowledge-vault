@@ -34,6 +34,7 @@ except ImportError:
     Document = None
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import log_util
 import notifier
 
 REPORT_DIR = os.path.join(
@@ -47,11 +48,7 @@ DEEP_DIR = os.path.join(
 MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
 
 LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "deep_report.log")
-os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
-logging.basicConfig(
-    filename=LOG_FILE, level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
-)
+logger = log_util.get_logger(__name__, LOG_FILE)
 
 SYSTEM_PROMPT = """你是一名資深的國際金融分析師。使用者會給你一份當日的《金融重點報告》，也可能附加近兩日的報告（供跨日相關性分析）與一份分析師人工撰寫的報告（Big Pickle，特色是涵蓋台股夜盤變動、跨日因果與資金輪動視角）。
 
@@ -385,7 +382,7 @@ def send_email(docx_path, day, label="", recipients=None):
         return True
     except Exception as e:
         print(f"[deep_report] Email 失敗: {e}")
-        logging.error("email fail: %s", e)
+        logger.error("email fail: %s", e)
         return False
 
 
@@ -459,7 +456,7 @@ def run(day=None, slot=None, skip_email=False, skip_line=False, force=False):
             f"（詳情請查收 Email）"
         )
         notifier.send_line(line_msg)
-    logging.info("deep report done: %s", doc_path)
+    logger.info("deep report done: %s", doc_path)
     return doc_path
 
 

@@ -24,15 +24,10 @@ import noise_filter
 import analysis_engine
 import report_generator
 import deep_report
+import log_util
 
 LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "pipeline.log")
-os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
-
-logging.basicConfig(
-    filename=LOG_FILE,
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
-)
+logger = log_util.get_logger(__name__, LOG_FILE)
 
 
 def run_collect():
@@ -44,7 +39,7 @@ def run_collect():
         f"direct(+{b[0]}/{b[1]}dup/{b[2]}fail) {time.time()-t0:.1f}s"
     )
     print(msg)
-    logging.info(msg)
+    logger.info(msg)
     return a[0] + b[0]
 
 
@@ -52,7 +47,7 @@ def run_filter():
     keep, noise = noise_filter.apply_filter()
     msg = f"filter: keep={len(keep)} noise={len(noise)}"
     print(msg)
-    logging.info(msg)
+    logger.info(msg)
     return len(keep)
 
 
@@ -60,7 +55,7 @@ def run_analyze(batch_size=40):
     analyzed, quota_hit = analysis_engine.analyze_pending(batch_size=batch_size)
     msg = f"analyze: analyzed={analyzed} quota_hit={quota_hit}"
     print(msg)
-    logging.info(msg)
+    logger.info(msg)
     return analyzed, quota_hit
 
 
@@ -69,17 +64,17 @@ def run_report(deep=False, slot=None):
     path = report_generator.write_daily_report(events)
     msg = f"report: {path} ({len(events)} events)"
     print(msg)
-    logging.info(msg)
+    logger.info(msg)
     if deep:
         try:
             docx_path = deep_report.run(slot=slot)
             msg2 = f"deep report: {docx_path}"
             print(msg2)
-            logging.info(msg2)
+            logger.info(msg2)
         except Exception as e:
             msg2 = f"deep report failed: {e}"
             print(msg2)
-            logging.error(msg2)
+            logger.error(msg2)
     return path
 
 

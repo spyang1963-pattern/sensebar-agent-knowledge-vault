@@ -58,7 +58,13 @@ HTTP_HEADERS = {"User-Agent": "Mozilla/5.0 (sensebar-financial-news/1.0)"}
 
 
 def fetch_symbol(symbol):
-    """Return (symbol, price, change_pct) or None. Uses v8 chart API."""
+    """Return (symbol, price, change_pct) or None. Uses v8 chart API.
+
+    price/change_pct are derived from the daily close series: the last bar is
+    the most recent close and the bar before it is the previous session, so
+    change_pct is a true single-session change. (Do NOT use meta.chartPreviousClose:
+    it is the close before the chart range, i.e. several days back.)
+    """
     try:
         r = requests.get(
             CHART_URL.format(symbol=symbol), headers=HTTP_HEADERS, timeout=15
@@ -67,14 +73,17 @@ def fetch_symbol(symbol):
         result = data.get("chart", {}).get("result")
         if not result:
             return None
-        meta = result[0].get("meta", {})
-        price = meta.get("regularMarketPrice")
-        prev = meta.get("chartPreviousClose")
-        if price is None:
+        ts = result[0].get("timestamp") or []
+        quote = (result[0].get("indicators", {}).get("quote") or [{}])[0]
+        closes = quote.get("close") or []
+        pairs = [(t, c) for t, c in zip(ts, closes) if c is not None]
+        if len(pairs) < 2:
             return None
-        change_pct = None
-        if prev:
-            change_pct = round((price - prev) / prev * 100, 2)
+        price = pairs[-1][1]
+        prev = pairs[-2][1]
+        if prev in (None, 0):
+            return None
+        change_pct = round((price - prev) / prev * 100, 2)
         return symbol, price, change_pct
     except Exception as e:
         print(f"  {symbol}: ERR {str(e)[:60]}")

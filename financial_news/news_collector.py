@@ -26,15 +26,10 @@ import requests
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db
+import log_util
 
 LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "collector.log")
-os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
-
-logging.basicConfig(
-    filename=LOG_FILE,
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
-)
+logger = log_util.get_logger(__name__, LOG_FILE)
 
 # Google News RSS base. hl/gl/ceid control language & region.
 GOOGLE_NEWS_ZH = "https://news.google.com/rss/search?q={q}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
@@ -113,9 +108,9 @@ def fetch_feed(url, hard_timeout=25):
             resp = requests.get(url, headers=HTTP_HEADERS, timeout=min(TIMEOUT, deadline - time.time()))
             if resp.status_code == 200:
                 return feedparser.parse(resp.content)
-            logging.warning("HTTP %s for %s", resp.status_code, url)
+            logger.warning("HTTP %s for %s", resp.status_code, url)
         except Exception as e:
-            logging.warning("fetch failed %s: %s", url, e)
+            logger.warning("fetch failed %s: %s", url, e)
         time.sleep(1.5 + attempt * 2)
     return None
 
@@ -139,7 +134,7 @@ def collect_google_news():
                 existing += e
                 failed += f
             except Exception as ex:
-                logging.warning("google job failed: %s", ex)
+                logger.warning("google job failed: %s", ex)
                 failed += 1
     return inserted, existing, failed
 
@@ -184,7 +179,7 @@ def collect_direct_feeds():
                 existing += e
                 failed += f
             except Exception as ex:
-                logging.warning("direct feed job failed: %s", ex)
+                logger.warning("direct feed job failed: %s", ex)
                 failed += 1
     return inserted, existing, failed
 
@@ -194,7 +189,7 @@ def collect_all():
     a = collect_google_news()
     b = collect_direct_feeds()
     db.commit()
-    logging.info(
+    logger.info(
         "collect done: google(insert=%d,existing=%d,fail=%d) direct(insert=%d,existing=%d,fail=%d)",
         *a, *b,
     )
