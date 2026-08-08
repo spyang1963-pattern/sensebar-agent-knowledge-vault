@@ -1043,13 +1043,23 @@
         let comboChart = null;
         const comboZoomDef = [
             { type: 'inside', xAxisIndex: [0, 1, 2, 3], start: 0, end: 100 },
-            { type: 'slider', xAxisIndex: [0, 1, 2, 3], start: 0, end: 100, bottom: 0, height: 20,
-               textStyle: { color: '#94a3b8' }, borderColor: '#475569' }
+            { type: 'slider', xAxisIndex: [0, 1, 2, 3], start: 0, end: 100, bottom: 2, height: 16,
+               textStyle: { color: '#64748b', fontSize: 10 }, borderColor: '#334155',
+               backgroundColor: 'rgba(15,23,42,0.6)',
+               dataBackground: { lineStyle: { color: '#475569', opacity: 0.5 }, areaStyle: { color: 'rgba(71,85,105,0.12)' } },
+               fillerColor: 'rgba(96,165,250,0.2)',
+               handleStyle: { color: '#60a5fa' }, moveHandleStyle: { color: '#60a5fa' },
+               emphasis: { handleStyle: { color: '#93c5fd' } } }
         ];
         const stockZoomDef = [
             { type: 'inside', xAxisIndex: [0, 1, 2, 3, 4], start: 30, end: 100 },
-            { type: 'slider', xAxisIndex: [0, 1, 2, 3, 4], start: 30, end: 100, bottom: 0, height: 20,
-               textStyle: { color: '#94a3b8' }, borderColor: '#475569' }
+            { type: 'slider', xAxisIndex: [0, 1, 2, 3, 4], start: 30, end: 100, bottom: 2, height: 16,
+               textStyle: { color: '#64748b', fontSize: 10 }, borderColor: '#334155',
+               backgroundColor: 'rgba(15,23,42,0.6)',
+               dataBackground: { lineStyle: { color: '#475569', opacity: 0.5 }, areaStyle: { color: 'rgba(71,85,105,0.12)' } },
+               fillerColor: 'rgba(96,165,250,0.2)',
+               handleStyle: { color: '#60a5fa' }, moveHandleStyle: { color: '#60a5fa' },
+               emphasis: { handleStyle: { color: '#93c5fd' } } }
         ];
 
         function toggleZoom(key, on) {
