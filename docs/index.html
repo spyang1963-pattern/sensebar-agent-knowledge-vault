@@ -94,11 +94,11 @@
         table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 0.85em;
+            font-size: 0.95em;
         }
         th {
             background: rgba(51, 65, 85, 0.5);
-            padding: 10px 8px;
+            padding: 12px 10px;
             text-align: left;
             font-weight: 600;
             color: #94a3b8;
@@ -107,7 +107,7 @@
             top: 0;
         }
         td {
-            padding: 10px 8px;
+            padding: 12px 10px;
             border-bottom: 1px solid rgba(255,255,255,0.05);
         }
         tr:hover { background: rgba(51, 65, 85, 0.3); }
@@ -182,8 +182,8 @@
             .cards { grid-template-columns: 1fr 1fr; }
             .charts-grid { grid-template-columns: 1fr; }
             .header h1 { font-size: 1.5em; }
-            table { font-size: 0.75em; }
-            td, th { padding: 8px 4px; }
+            table { font-size: 0.85em; }
+            td, th { padding: 10px 6px; }
         }
         .quad-market {
             border-radius: 12px;
@@ -234,7 +234,7 @@
         .stock-chip .sc-code { color: #60a5fa; font-weight: 700; }
         .stock-chip .sc-pct { font-weight: 600; }
         .echart-box { width: 100%; height: 380px; }
-        .echart-tall { width: 100%; height: 1000px; }
+        .echart-tall { width: 100%; height: 1350px; }
         .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
         .tab-btn {
             background: rgba(51,65,85,0.5);
@@ -342,7 +342,7 @@
         <!-- 大盤綜合圖 -->
         <div class="section">
             <h2 class="red">大盤走勢 + 融資 + 維持率 + 三大法人（綜合）</h2>
-            <div id="marketComboChart" style="width:100%;height:880px"></div>
+            <div id="marketComboChart" style="width:100%;height:1150px"></div>
         </div>
 
         <!-- 個股分析（分頁） -->
@@ -1034,31 +1034,31 @@
                 backgroundColor: 'transparent',
                 animation: false,
                 legend: { data: ['加權指數', '融資增減', '融資餘額', '維持率', '外資', '投信', '自營'], top: 0,
-                    textStyle: { color: '#94a3b8', fontSize: 11 } },
+                    textStyle: { color: '#94a3b8', fontSize: 13 } },
                 tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
                 axisPointer: { link: [{ xAxisIndex: 'all' }] },
                 grid: [
-                    { left: 70, right: 85, top: 30, height: 200 },
-                    { left: 70, right: 85, top: 250, height: 200 },
-                    { left: 70, right: 85, top: 470, height: 160 },
-                    { left: 70, right: 85, top: 650, height: 170 }
+                    { left: 70, right: 85, top: 30, height: 260 },
+                    { left: 70, right: 85, top: 310, height: 260 },
+                    { left: 70, right: 85, top: 590, height: 210 },
+                    { left: 70, right: 85, top: 820, height: 230 }
                 ],
                 xAxis: [
                     { type: 'category', data: mk.dates, gridIndex: 0, axisLabel: { color: '#94a3b8' }, axisLine: { lineStyle: { color: '#475569' } } },
                     { type: 'category', data: mk.dates, gridIndex: 1, axisLabel: { show: false } },
                     { type: 'category', data: mk.dates, gridIndex: 2, axisLabel: { show: false } },
-                    { type: 'category', data: mk.dates, gridIndex: 3, axisLabel: { color: '#94a3b8', fontSize: 10 } }
+                    { type: 'category', data: mk.dates, gridIndex: 3, axisLabel: { color: '#94a3b8', fontSize: 12 } }
                 ],
                 yAxis: [
-                    { gridIndex: 0, scale: true, name: '指數', axisLabel: { color: '#60a5fa' }, nameTextStyle: { color: '#60a5fa' },
+                    { gridIndex: 0, scale: true, name: '指數', axisLabel: { color: '#60a5fa', fontSize: 12 }, nameTextStyle: { color: '#60a5fa', fontSize: 13 },
                        splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } } },
-                    { gridIndex: 1, min: mSym[0], max: mSym[1], name: '增減(張)', axisLabel: { color: '#94a3b8' }, nameTextStyle: { color: '#94a3b8' },
+                    { gridIndex: 1, min: mSym[0], max: mSym[1], name: '增減(張)', axisLabel: { color: '#94a3b8', fontSize: 12 }, nameTextStyle: { color: '#94a3b8', fontSize: 13 },
                        splitLine: { show: false } },
-                    { gridIndex: 1, scale: true, name: '餘額', axisLabel: { color: '#f59e0b' }, nameTextStyle: { color: '#f59e0b' },
+                    { gridIndex: 1, scale: true, name: '餘額', axisLabel: { color: '#f59e0b', fontSize: 12 }, nameTextStyle: { color: '#f59e0b', fontSize: 13 },
                        splitLine: { show: false } },
-                    { gridIndex: 2, min: 100, name: '維持率%', axisLabel: { color: '#94a3b8' }, nameTextStyle: { color: '#94a3b8' },
+                    { gridIndex: 2, min: 100, name: '維持率%', axisLabel: { color: '#94a3b8', fontSize: 12 }, nameTextStyle: { color: '#94a3b8', fontSize: 13 },
                        splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } } },
-                    { gridIndex: 3, name: '買賣超(千張)', axisLabel: { color: '#94a3b8' }, nameTextStyle: { color: '#94a3b8' },
+                    { gridIndex: 3, name: '買賣超(千張)', axisLabel: { color: '#94a3b8', fontSize: 12 }, nameTextStyle: { color: '#94a3b8', fontSize: 13 },
                        splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } } }
                 ],
                 dataZoom: [
@@ -1125,29 +1125,29 @@
                 backgroundColor: 'transparent',
                 animation: false,
                 legend: { data: ['K線', 'MA5', 'MA10', 'MA20', '融資增減', '融資餘額', '融券增減', '融券餘額', '外資', '投信', '自營'],
-                    top: 0, textStyle: { color: '#94a3b8', fontSize: 11 } },
+                    top: 0, textStyle: { color: '#94a3b8', fontSize: 13 } },
                 tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
                 axisPointer: { link: [{ xAxisIndex: 'all' }] },
                 grid: [
-                    { left: 70, right: 80, top: 45, height: 330 },
-                    { left: 70, right: 80, top: 395, height: 165 },
-                    { left: 70, right: 80, top: 580, height: 165 },
-                    { left: 70, right: 80, top: 765, height: 180 }
+                    { left: 70, right: 80, top: 45, height: 430 },
+                    { left: 70, right: 80, top: 495, height: 230 },
+                    { left: 70, right: 80, top: 745, height: 230 },
+                    { left: 70, right: 80, top: 995, height: 250 }
                 ],
                 xAxis: [
-                    { type: 'category', data: kd, gridIndex: 0, axisLabel: { color: '#94a3b8' }, axisLine: { lineStyle: { color: '#475569' } } },
+                    { type: 'category', data: kd, gridIndex: 0, axisLabel: { color: '#94a3b8', fontSize: 12 }, axisLine: { lineStyle: { color: '#475569' } } },
                     { type: 'category', data: kd, gridIndex: 1, axisLabel: { show: false } },
                     { type: 'category', data: kd, gridIndex: 2, axisLabel: { show: false } },
-                    { type: 'category', data: kd, gridIndex: 3, axisLabel: { color: '#94a3b8', fontSize: 10 } }
+                    { type: 'category', data: kd, gridIndex: 3, axisLabel: { color: '#94a3b8', fontSize: 12 } }
                 ],
                 yAxis: [
-                    { gridIndex: 0, scale: true, axisLabel: { color: '#94a3b8' },
+                    { gridIndex: 0, scale: true, axisLabel: { color: '#94a3b8', fontSize: 12 },
                        splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } } },
-                    { gridIndex: 1, min: mSym[0], max: mSym[1], axisLabel: { color: '#94a3b8', fontSize: 10 }, splitLine: { show: false } },
-                    { gridIndex: 1, scale: true, axisLabel: { color: '#fbbf24', fontSize: 10 }, splitLine: { show: false } },
-                    { gridIndex: 2, min: sSym[0], max: sSym[1], axisLabel: { color: '#94a3b8', fontSize: 10 }, splitLine: { show: false } },
-                    { gridIndex: 2, scale: true, axisLabel: { color: '#22d3ee', fontSize: 10 }, splitLine: { show: false } },
-                    { gridIndex: 3, min: iSym[0], max: iSym[1], axisLabel: { color: '#94a3b8', fontSize: 10 }, splitLine: { show: false } }
+                    { gridIndex: 1, min: mSym[0], max: mSym[1], axisLabel: { color: '#94a3b8', fontSize: 12 }, splitLine: { show: false } },
+                    { gridIndex: 1, scale: true, axisLabel: { color: '#fbbf24', fontSize: 12 }, splitLine: { show: false } },
+                    { gridIndex: 2, min: sSym[0], max: sSym[1], axisLabel: { color: '#94a3b8', fontSize: 12 }, splitLine: { show: false } },
+                    { gridIndex: 2, scale: true, axisLabel: { color: '#22d3ee', fontSize: 12 }, splitLine: { show: false } },
+                    { gridIndex: 3, min: iSym[0], max: iSym[1], axisLabel: { color: '#94a3b8', fontSize: 12 }, splitLine: { show: false } }
                 ],
                 dataZoom: [
                     { type: 'inside', xAxisIndex: [0, 1, 2, 3], start: 30, end: 100 },
