@@ -1166,6 +1166,14 @@
             const iTrust = align(mk.inst_trust);
             const iDealer = align(mk.inst_dealer);
             const mSym = symRange(mk.margin_change);
+            // 大盤融資餘額警戒/安全線：依大盤自身融資餘額分位數動態計算
+            const mBal = (mk.margin_total || []).filter(v => v != null);
+            let mSafe = null, mWarn = null;
+            if (mBal.length >= 8) {
+                const mSorted = mBal.slice().sort((a, b) => a - b);
+                mSafe = mSorted[Math.round(mSorted.length * 0.25) - 1];
+                mWarn = mSorted[Math.round(mSorted.length * 0.75) - 1];
+            }
 
             comboChart.setOption({
                 backgroundColor: 'transparent',
@@ -1219,7 +1227,23 @@
                        barMaxWidth: 14 },
                     { name: '融資餘額', type: 'line', xAxisIndex: 2, yAxisIndex: 3, data: mk.margin_total,
                        sampling: 'lttb', smooth: true, symbol: 'none', lineStyle: { color: '#f59e0b', width: 2 },
-                       itemStyle: { color: '#f59e0b' } },
+                       itemStyle: { color: '#f59e0b' },
+                       markLine: mWarn == null ? undefined : {
+                           symbol: 'none', silent: true,
+                           label: { show: true, fontSize: 10, color: '#e2e8f0', formatter: '{b}' },
+                           data: [
+                               { name: '警戒線', yAxis: mWarn, lineStyle: { color: '#f97316', width: 1, type: 'dashed' } },
+                               { name: '安全線', yAxis: mSafe, lineStyle: { color: '#10b981', width: 1, type: 'dashed' } }
+                           ]
+                       },
+                       markArea: mWarn == null ? undefined : {
+                           silent: true,
+                           label: { show: false },
+                           data: [
+                               [{ yAxis: mWarn, itemStyle: { color: 'rgba(239,68,68,0.10)' } }, { yAxis: 'max' }],
+                               [{ yAxis: 'min', itemStyle: { color: 'rgba(16,185,129,0.08)' } }, { yAxis: mSafe }]
+                           ]
+                       } },
                     { name: '維持率', type: 'line', xAxisIndex: 2, yAxisIndex: 4, data: mk.maintenance,
                        sampling: 'lttb', smooth: true, symbol: 'none', lineStyle: { color: '#a78bfa', width: 1.5 },
                        markLine: {
@@ -1332,9 +1356,10 @@
                        },
                        markArea: safeVal == null ? undefined : {
                            silent: true,
+                           label: { show: false },
                            data: [
-                               [{ name: '危險區', yAxis: warnVal, itemStyle: { color: 'rgba(239,68,68,0.10)' } }, { yAxis: 'max' }],
-                               [{ name: '安全區', yAxis: 'min', itemStyle: { color: 'rgba(16,185,129,0.08)' } }, { yAxis: safeVal }]
+                               [{ yAxis: warnVal, itemStyle: { color: 'rgba(239,68,68,0.10)' } }, { yAxis: 'max' }],
+                               [{ yAxis: 'min', itemStyle: { color: 'rgba(16,185,129,0.08)' } }, { yAxis: safeVal }]
                            ]
                        } },
                     { name: '融券增減', type: 'bar', xAxisIndex: 3, yAxisIndex: 4,
