@@ -1147,7 +1147,7 @@
                 grid: [
                     { left: 70, right: 85, top: '1%', height: '38%' },
                     { left: 70, right: 85, top: '40%', height: '15%' },
-                    { left: 70, right: 85, top: '56%', height: '17%' },
+                    { left: 80, right: 155, top: '56%', height: '17%' },
                     { left: 70, right: 85, top: '74%', height: '22%' }
                 ],
                 xAxis: [
@@ -1161,11 +1161,11 @@
                        splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } } },
                     { gridIndex: 1, scale: true, name: '成交量(億股)', axisLabel: { color: '#94a3b8', fontSize: 12 }, nameTextStyle: { color: '#94a3b8', fontSize: 13 },
                        splitLine: { show: false } },
-                    { gridIndex: 2, min: mSym[0], max: mSym[1], name: '增減(張)', axisLabel: { color: '#94a3b8', fontSize: 11 }, nameTextStyle: { color: '#94a3b8', fontSize: 12 },
+                    { gridIndex: 2, position: 'left', offset: 0, min: mSym[0], max: mSym[1], name: '增減(張)', axisLabel: { color: '#94a3b8', fontSize: 11 }, nameTextStyle: { color: '#94a3b8', fontSize: 12 },
                        splitLine: { show: false } },
-                    { gridIndex: 2, scale: true, name: '餘額', axisLabel: { color: '#f59e0b', fontSize: 11 }, nameTextStyle: { color: '#f59e0b', fontSize: 12 },
+                    { gridIndex: 2, position: 'right', offset: 0, scale: true, name: '餘額', axisLabel: { color: '#f59e0b', fontSize: 11 }, nameTextStyle: { color: '#f59e0b', fontSize: 12 },
                        splitLine: { show: false } },
-                    { gridIndex: 2, min: 100, name: '維持率%', axisLabel: { color: '#a78bfa', fontSize: 11 }, nameTextStyle: { color: '#a78bfa', fontSize: 12 },
+                    { gridIndex: 2, position: 'right', offset: 60, min: 100, name: '維持率%', axisLabel: { color: '#a78bfa', fontSize: 11 }, nameTextStyle: { color: '#a78bfa', fontSize: 12 },
                        splitLine: { show: false } },
                     { gridIndex: 3, name: '買賣超(千張)', axisLabel: { color: '#94a3b8', fontSize: 12 }, nameTextStyle: { color: '#94a3b8', fontSize: 13 },
                        splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } } }
