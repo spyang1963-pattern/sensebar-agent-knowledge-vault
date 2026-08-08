@@ -1382,14 +1382,13 @@
         }
 
         async function fetchLiveKline(code) {
-            // STOCK_DAY 一次回傳一個月，抓近 6 個月
+            // STOCK_DAY 一次回傳一個月（需用西元 8 位數格式才回正確歷史月），抓近 6 個月
             const byDate = {};
             let name = null;
             const now = new Date();
             for (let m = 0; m < 6; m++) {
                 const t = new Date(now.getFullYear(), now.getMonth() - m, 1);
-                const rocYear = t.getFullYear() - 1911;
-                const params = { response: 'json', date: rocYear + '/' + String(t.getMonth() + 1).padStart(2, '0') + '/01', stockNo: code };
+                const params = { response: 'json', date: t.getFullYear() + String(t.getMonth() + 1).padStart(2, '0') + '01', stockNo: code };
                 const d = await twseFetch('https://www.twse.com.tw/exchangeReport/STOCK_DAY', params);
                 if (!d || d.stat !== 'OK') continue;
                 if (!name && d.title) {
@@ -1495,7 +1494,13 @@
         function queryStock() {
             const v = document.getElementById('stockQuery').value.trim();
             if (!/^[0-9A-Za-z](4, 6)$/.test(v)) { qMsg('請輸入 4~6 位代號（如 2330）', 'err'); return; }
-            loadLiveStock(v.toUpperCase());
+            const code = v.toUpperCase();
+            if (chartPayload.stocks && chartPayload.stocks[code]) {
+                selectStock(code);
+                qMsg('（看板內建資料）', 'ok');
+                return;
+            }
+            loadLiveStock(code);
         }
 
         const catColors = {
