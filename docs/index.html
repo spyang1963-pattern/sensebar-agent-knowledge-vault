@@ -448,7 +448,7 @@
                 <label class="zoom-toggle"><input type="checkbox" id="comboZoomChk" checked onchange="toggleZoom('combo', this.checked)"> dataZoom</label>
                 <select class="tip-sel" id="comboTipSel" onchange="setTooltip('combo', this.value)">
                     <option value="follow">提示:跟隨</option>
-                    <option value="fixed">提示:固定</option>
+                    <option value="fixed" selected>提示:固定</option>
                     <option value="off">提示:關閉</option>
                 </select>
             </h2>
@@ -477,7 +477,7 @@
                     <label class="zoom-toggle" style="margin-left:0"><input type="checkbox" id="stockZoomChk" checked onchange="toggleZoom('stock', this.checked)"> dataZoom</label>
                     <select class="tip-sel" id="stockTipSel" onchange="setTooltip('stock', this.value)">
                         <option value="follow">提示:跟隨</option>
-                        <option value="fixed">提示:固定</option>
+                        <option value="fixed" selected>提示:固定</option>
                         <option value="off">提示:關閉</option>
                     </select>
                 </div>
@@ -1302,6 +1302,7 @@ const tdccData = {"week": "20260807", "cur": {"000218": 100.0, "000560": 100.0, 
                        barMaxWidth: 12, itemStyle: { color: '#a78bfa' } }
                 ]
             });
+            setTooltip('combo', document.getElementById('comboTipSel').value);
             window.addEventListener('resize', () => comboChart.resize());
         }
 
@@ -1413,6 +1414,7 @@ const tdccData = {"week": "20260807", "cur": {"000218": 100.0, "000560": 100.0, 
                     { name: '自營', type: 'bar', xAxisIndex: 4, yAxisIndex: 6, data: s.inst.dealer, barMaxWidth: 10, itemStyle: { color: '#a78bfa' } }
                 ]
             }, true);
+            setTooltip('stock', document.getElementById('stockTipSel').value);
             renderTdccCard(code, s);
         }
 
