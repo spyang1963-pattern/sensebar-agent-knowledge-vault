@@ -331,6 +331,18 @@
         .q-msg { color: #94a3b8; font-size: 0.9em; }
         .q-msg.ok { color: #34d399; }
         .q-msg.err { color: #ef4444; }
+        .chart-note {
+            font-size: 0.82em;
+            color: #94a3b8;
+            line-height: 1.6;
+            margin: 6px 0 10px;
+            padding: 8px 12px;
+            background: rgba(51,65,85,0.25);
+            border-left: 3px solid #475569;
+            border-radius: 4px;
+        }
+        .chart-note b { color: #f97316; }
+        .chart-note i { color: #10b981; font-style: normal; }
     </style>
 </head>
 <body>
@@ -420,6 +432,7 @@
                 </select>
             </h2>
             <div id="marketComboChart" style="width:100%;height:660px"></div>
+            <div class="chart-note"><b>線圖判讀：</b>融資餘額：<b>警戒線</b>＝近半年自身 75 分位（橙虛線，以上為<b>紅底危險區</b>）、<i>安全線</i>＝25 分位（綠虛線，以下為<i>綠底安全區</i>）。維持率（紫線，右側 % 軸）：<b>130% 警戒</b>＝整體維持率低於此逼近追繳斷頭、<i>160% 安全</i>。</div>
         </div>
 
         <!-- 個股分析（分頁） -->
@@ -449,6 +462,7 @@
                 </div>
                 <div id="stockCats" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;min-height:26px"></div>
                 <div id="stockChart" class="echart-tall"></div>
+                <div class="chart-note"><b>融資餘額判讀：</b><b>警戒線</b>＝該股近半年自身 75 分位（橙虛線，以上為<b>紅底危險區</b>＝散戶槓桿高、回檔易斷頭）、<i>安全線</i>＝25 分位（綠虛線，以下為<i>綠底安全區</i>）。</div>
             </div>
 
             <div id="tab-triggers" class="tab-panel">
@@ -1232,8 +1246,10 @@
                            symbol: 'none', silent: true,
                            label: { show: true, fontSize: 10, color: '#e2e8f0', formatter: '{b}' },
                            data: [
-                               { name: '警戒線', yAxis: mWarn, lineStyle: { color: '#f97316', width: 1, type: 'dashed' } },
-                               { name: '安全線', yAxis: mSafe, lineStyle: { color: '#10b981', width: 1, type: 'dashed' } }
+                               { name: '警戒線', yAxis: mWarn, lineStyle: { color: '#f97316', width: 1, type: 'dashed' },
+                                  label: { color: '#f97316', formatter: '餘額警戒(75分位)', fontSize: 10 } },
+                               { name: '安全線', yAxis: mSafe, lineStyle: { color: '#10b981', width: 1, type: 'dashed' },
+                                  label: { color: '#10b981', formatter: '餘額安全(25分位)', fontSize: 10 } }
                            ]
                        },
                        markArea: mWarn == null ? undefined : {
@@ -1249,10 +1265,10 @@
                        markLine: {
                            symbol: 'none',
                            data: [
-                               { yAxis: 130, name: '警戒線', lineStyle: { color: '#ef4444', width: 1.5 },
-                                  label: { color: '#ef4444', formatter: '130% 警戒', fontSize: 10 } },
-                               { yAxis: 160, name: '安全線', lineStyle: { color: '#10b981', width: 1, type: 'dashed' },
-                                  label: { color: '#10b981', formatter: '160%', fontSize: 10 } }
+                                { yAxis: 130, name: '警戒線', lineStyle: { color: '#ef4444', width: 1.5 },
+                                   label: { color: '#ef4444', formatter: '維持率<130% 警戒', fontSize: 10 } },
+                                { yAxis: 160, name: '安全線', lineStyle: { color: '#10b981', width: 1, type: 'dashed' },
+                                   label: { color: '#10b981', formatter: '維持率>160% 安全', fontSize: 10 } }
                            ]
                        } },
                     { name: '外資', type: 'bar', xAxisIndex: 3, yAxisIndex: 5, stack: 'inst', data: iForeign.map(v => v / 1000),
@@ -1350,8 +1366,10 @@
                            symbol: 'none', silent: true,
                            label: { show: true, fontSize: 10, color: '#e2e8f0', formatter: '{b}' },
                            data: [
-                               { name: '警戒線', yAxis: warnVal, lineStyle: { color: '#f97316', width: 1, type: 'dashed' } },
-                               { name: '安全線', yAxis: safeVal, lineStyle: { color: '#10b981', width: 1, type: 'dashed' } }
+                               { name: '警戒線', yAxis: warnVal, lineStyle: { color: '#f97316', width: 1, type: 'dashed' },
+                                  label: { color: '#f97316', formatter: '餘額警戒(75分位)', fontSize: 10 } },
+                               { name: '安全線', yAxis: safeVal, lineStyle: { color: '#10b981', width: 1, type: 'dashed' },
+                                  label: { color: '#10b981', formatter: '餘額安全(25分位)', fontSize: 10 } }
                            ]
                        },
                        markArea: safeVal == null ? undefined : {
