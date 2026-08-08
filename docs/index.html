@@ -1493,7 +1493,7 @@
 
         function queryStock() {
             const v = document.getElementById('stockQuery').value.trim();
-            if (!/^[0-9A-Za-z](4, 6)$/.test(v)) { qMsg('請輸入 4~6 位代號（如 2330）', 'err'); return; }
+            if (!/^[0-9A-Za-z]{4,6}$/.test(v)) { qMsg('請輸入 4~6 位代號（如 2330）', 'err'); return; }
             const code = v.toUpperCase();
             if (chartPayload.stocks && chartPayload.stocks[code]) {
                 selectStock(code);
