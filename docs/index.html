@@ -1089,7 +1089,7 @@
         function toggleZoom(key, on) {
             const ch = key === 'combo' ? comboChart : stockChart;
             if (!ch) return;
-            ch.setOption({ dataZoom: on ? (key === 'combo' ? comboZoomDef : stockZoomDef) : [] });
+            ch.setOption({ dataZoom: on ? (key === 'combo' ? comboZoomDef : stockZoomDef) : [] }, { replaceMerge: 'dataZoom' });
         }
 
         if (chartPayload.market && chartPayload.market.dates.length > 1) {
