@@ -1263,6 +1263,14 @@
             const mSym = symRange(s.margin.change);
             const sSym = symRange(s.short.change);
             const iSym = symRange(s.inst.total.concat(s.inst.foreign, s.inst.trust, s.inst.dealer));
+            // 融資餘額警戒/安全線：依該股自身融資餘額分位數動態計算
+            const balVals = (s.margin.balance || []).filter(v => v != null);
+            let safeVal = null, warnVal = null;
+            if (balVals.length >= 8) {
+                const sorted = balVals.slice().sort((a, b) => a - b);
+                safeVal = sorted[Math.round(sorted.length * 0.25) - 1];
+                warnVal = sorted[Math.round(sorted.length * 0.75) - 1];
+            }
             stockChart = stockChart || echarts.init(document.getElementById('stockChart'), null, { devicePixelRatio: Math.max(window.devicePixelRatio || 1, 2) });
             stockChart.setOption({
                 backgroundColor: 'transparent',
@@ -1313,7 +1321,22 @@
                        data: s.margin.change.map(v => ({ value: v, itemStyle: { color: v == null ? 'rgba(0,0,0,0)' : (v >= 0 ? '#ef4444' : '#10b981') } })),
                        barMaxWidth: 14 },
                     { name: '融資餘額', type: 'line', xAxisIndex: 2, yAxisIndex: 3, data: s.margin.balance,
-                       showSymbol: false, sampling: 'lttb', lineStyle: { width: 1, color: '#fbbf24' } },
+                       showSymbol: false, sampling: 'lttb', lineStyle: { width: 1, color: '#fbbf24' },
+                       markLine: safeVal == null ? undefined : {
+                           symbol: 'none', silent: true,
+                           label: { show: true, fontSize: 10, color: '#e2e8f0', formatter: '{b}' },
+                           data: [
+                               { name: '警戒線', yAxis: warnVal, lineStyle: { color: '#f97316', width: 1, type: 'dashed' } },
+                               { name: '安全線', yAxis: safeVal, lineStyle: { color: '#10b981', width: 1, type: 'dashed' } }
+                           ]
+                       },
+                       markArea: safeVal == null ? undefined : {
+                           silent: true,
+                           data: [
+                               [{ name: '危險區', yAxis: warnVal, itemStyle: { color: 'rgba(239,68,68,0.10)' } }, { yAxis: 'max' }],
+                               [{ name: '安全區', yAxis: 'min', itemStyle: { color: 'rgba(16,185,129,0.08)' } }, { yAxis: safeVal }]
+                           ]
+                       } },
                     { name: '融券增減', type: 'bar', xAxisIndex: 3, yAxisIndex: 4,
                        data: s.short.change.map(v => ({ value: v, itemStyle: { color: v == null ? 'rgba(0,0,0,0)' : (v >= 0 ? '#ef4444' : '#10b981') } })),
                        barMaxWidth: 14 },
