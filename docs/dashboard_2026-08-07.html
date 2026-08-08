@@ -305,6 +305,32 @@
             min-width: 260px;
         }
         #stockSelect option { background: #1e293b; color: #e2e8f0; }
+        .q-input {
+            background: rgba(51,65,85,0.6);
+            color: #e2e8f0;
+            border: 1px solid rgba(96,165,250,0.4);
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 1em;
+            width: 130px;
+        }
+        .q-input:focus { outline: none; border-color: #60a5fa; }
+        .q-btn {
+            background: linear-gradient(90deg, #60a5fa, #a78bfa);
+            color: #0f172a;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 14px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .q-btn:hover { opacity: 0.85; }
+        .q-btn:disabled { opacity: 0.5; cursor: wait; }
+        .q-msg { color: #94a3b8; font-size: 0.9em; }
+        .q-msg.ok { color: #34d399; }
+        .q-msg.err { color: #ef4444; }
     </style>
 </head>
 <body>
@@ -410,6 +436,10 @@
             <div id="tab-kline" class="tab-panel active">
                 <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
                     <select id="stockSelect"></select>
+                    <input type="text" id="stockQuery" class="q-input" placeholder="任意股代號 如 2330" maxlength="6"
+                           onkeydown="if(event.key==='Enter')queryStock()">
+                    <button class="q-btn" id="stockQueryBtn" onclick="queryStock()">查詢</button>
+                    <span class="q-msg" id="stockQueryMsg"></span>
                     <label class="zoom-toggle" style="margin-left:0"><input type="checkbox" id="stockZoomChk" checked onchange="toggleZoom('stock', this.checked)"> dataZoom</label>
                     <select class="tip-sel" id="stockTipSel" onchange="setTooltip('stock', this.value)">
                         <option value="follow">提示:跟隨</option>
@@ -1228,10 +1258,7 @@
             });
         }
 
-        function renderStock(code) {
-            renderCats(code);
-            const s = chartPayload.stocks && chartPayload.stocks[code];
-            if (!s || !s.kline.dates.length) return;
+        function drawStock(s, code) {
             const kd = s.kline.dates;
             const mSym = symRange(s.margin.change);
             const sSym = symRange(s.short.change);
@@ -1299,6 +1326,13 @@
             }, true);
         }
 
+        function renderStock(code) {
+            renderCats(code);
+            const s = chartPayload.stocks && chartPayload.stocks[code];
+            if (!s || !s.kline.dates.length) return;
+            drawStock(s, code);
+        }
+
         function switchTab(id, btn) {
             document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -1319,6 +1353,149 @@
             } else {
                 window.open('https://tw.stock.yahoo.com/quote/' + code + '.TW', '_blank');
             }
+        }
+
+        // ---------- 任意股即時查詢（純前端直連 TWSE，CORS OK） ----------
+        function qMsg(txt, cls) {
+            const el = document.getElementById('stockQueryMsg');
+            if (el) { el.textContent = txt || ''; el.className = 'q-msg' + (cls ? ' ' + cls : ''); }
+        }
+
+        async function twseFetch(url, params) {
+            const q = new URLSearchParams(params).toString();
+            const r = await fetch(url + '?' + q, { headers: { 'Accept': 'application/json' } });
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }
+
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+        function parseNum(v) {
+            const n = parseFloat(String(v == null ? '' : v).replace(/,/g, ''));
+            return isNaN(n) ? 0 : n;
+        }
+
+        function rocDate(row) {
+            const p = String(row).split('/');
+            if (p.length !== 3) return String(row);
+            return (parseInt(p[0]) + 1911) + '-' + p[1].padStart(2, '0') + '-' + p[2].padStart(2, '0');
+        }
+
+        async function fetchLiveKline(code) {
+            // STOCK_DAY 一次回傳一個月，抓近 6 個月
+            const byDate = {};
+            let name = null;
+            const now = new Date();
+            for (let m = 0; m < 6; m++) {
+                const t = new Date(now.getFullYear(), now.getMonth() - m, 1);
+                const rocYear = t.getFullYear() - 1911;
+                const params = { response: 'json', date: rocYear + '/' + String(t.getMonth() + 1).padStart(2, '0') + '/01', stockNo: code };
+                const d = await twseFetch('https://www.twse.com.tw/exchangeReport/STOCK_DAY', params);
+                if (!d || d.stat !== 'OK') continue;
+                if (!name && d.title) {
+                    const parts = String(d.title).trim().split(/\s+/);
+                    if (parts.length >= 3) name = parts[2];
+                }
+                (d.data || []).forEach(row => {
+                    const date = rocDate(row[0]);
+                    byDate[date] = {
+                        o: parseNum(row[3]), h: parseNum(row[4]), l: parseNum(row[5]),
+                        c: parseNum(row[6]), v: parseNum(row[1])
+                    };
+                });
+            }
+            const dates = Object.keys(byDate).sort();
+            return {
+                name: name,
+                dates: dates,
+                o: dates.map(d => byDate[d].o), h: dates.map(d => byDate[d].h),
+                l: dates.map(d => byDate[d].l), c: dates.map(d => byDate[d].c),
+                v: dates.map(d => byDate[d].v)
+            };
+        }
+
+        async function fetchLiveMargin(code, dates) {
+            const bal = {}, short = {};
+            let name = null;
+            for (const d of dates) {
+                try {
+                    const j = await twseFetch('https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN',
+                        { response: 'json', date: d.replace(/-/g, ''), selectType: 'ALL' });
+                    const tbl = (j.tables || [])[1];
+                    const row = (tbl && tbl.data || []).find(r => String(r[0]).trim() === code);
+                    if (row) {
+                        if (!name) name = String(row[1]).trim();
+                        bal[d] = parseNum(row[6]);
+                        short[d] = parseNum(row[12]);
+                    }
+                } catch (e) { /* 單日失敗略過 */ }
+                await sleep(60);
+            }
+            return { bal: bal, short: short, name: name };
+        }
+
+        async function fetchLiveInst(code, dates) {
+            const inst = {};
+            let name = null;
+            for (const d of dates) {
+                try {
+                    const j = await twseFetch('https://www.twse.com.tw/fund/T86',
+                        { response: 'json', date: d.replace(/-/g, ''), selectType: 'ALL' });
+                    const row = (j.data || []).find(r => String(r[0]).trim() === code);
+                    if (row) {
+                        if (!name) name = String(row[1]).trim();
+                        inst[d] = { f: parseNum(row[4]), t: parseNum(row[10]), d2: parseNum(row[11]), tot: parseNum(row[18]) };
+                    }
+                } catch (e) { /* 單日失敗略過 */ }
+                await sleep(60);
+            }
+            return { data: inst, name: name };
+        }
+
+        async function loadLiveStock(code) {
+            const btn = document.getElementById('stockQueryBtn');
+            if (btn) btn.disabled = true;
+            qMsg('查詢中…', '');
+            try {
+                const k = await fetchLiveKline(code);
+                if (!k.dates.length) throw new Error('查無資料，請確認代號');
+                qMsg('K線完成，抓籌碼中…', '');
+                // 取最後 20 個交易日的融資/法人
+                const last = k.dates.slice(-20);
+                const [mar, inst] = await Promise.all([fetchLiveMargin(code, last), fetchLiveInst(code, last)]);
+                const master = k.dates;
+                const mbal = master.map(d => (d in mar.bal ? mar.bal[d] : null));
+                const mchg = master.map((d, i) => (d in mar.bal && i > 0 && master[i - 1] in mar.bal) ? mar.bal[d] - mar.bal[master[i - 1]] : null);
+                const sbal = master.map(d => (d in mar.short ? mar.short[d] : null));
+                const schg = master.map((d, i) => (d in mar.short && i > 0 && master[i - 1] in mar.short) ? mar.short[d] - mar.short[master[i - 1]] : null);
+                const iF = master.map(d => (d in inst.data ? inst.data[d].f : null));
+                const iT = master.map(d => (d in inst.data ? inst.data[d].t : null));
+                const iD = master.map(d => (d in inst.data ? inst.data[d].d2 : null));
+                const iTot = master.map(d => (d in inst.data ? inst.data[d].tot : null));
+                const name = mar.name || inst.name || k.name || code;
+                const s = {
+                    name: name,
+                    kline: { dates: master, o: k.o, h: k.h, l: k.l, c: k.c, v: k.v },
+                    margin: { dates: master, balance: mbal, change: mchg },
+                    short: { dates: master, balance: sbal, change: schg },
+                    inst: { dates: master, foreign: iF, trust: iT, dealer: iD, total: iTot }
+                };
+                const box = document.getElementById('stockCats');
+                if (box) box.innerHTML = '';
+                qMsg(name + '（即時查詢）', 'ok');
+                drawStock(s, code);
+                switchTab('tab-kline', document.querySelector('.tab-btn[data-tab="tab-kline"]'));
+            } catch (e) {
+                qMsg('查詢失敗：' + e.message, 'err');
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        function queryStock() {
+            const v = document.getElementById('stockQuery').value.trim();
+            if (!/^[0-9A-Za-z](4, 6)$/.test(v)) { qMsg('請輸入 4~6 位代號（如 2330）', 'err'); return; }
+            loadLiveStock(v.toUpperCase());
         }
 
         const catColors = {
