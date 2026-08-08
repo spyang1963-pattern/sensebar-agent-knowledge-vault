@@ -137,7 +137,7 @@
             color: #e2e8f0;
             font-size: 1.1em;
         }
-        canvas { max-height: 300px; }
+        #industryChart { max-height: 150px; width: 100%; }
         .footer {
             text-align: center;
             padding: 20px;
@@ -1019,7 +1019,7 @@
         // ---------- 1. 大盤綜合圖（指數 + 融資 + 維持率 + 法人） ----------
         if (chartPayload.market && chartPayload.market.dates.length > 1) {
             const mk = chartPayload.market;
-            const comboChart = echarts.init(document.getElementById('marketComboChart'));
+            const comboChart = echarts.init(document.getElementById('marketComboChart'), null, { devicePixelRatio: Math.max(window.devicePixelRatio || 1, 2) });
 
             // 法人序列對齊到市場日期
             const instIdx = {};
@@ -1038,10 +1038,10 @@
                 tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
                 axisPointer: { link: [{ xAxisIndex: 'all' }] },
                 grid: [
-                    { left: 70, right: 85, top: 30, height: 260 },
-                    { left: 70, right: 85, top: 310, height: 260 },
-                    { left: 70, right: 85, top: 590, height: 210 },
-                    { left: 70, right: 85, top: 820, height: 230 }
+                    { left: 70, right: 85, top: '5%', height: '21%' },
+                    { left: 70, right: 85, top: '27%', height: '22%' },
+                    { left: 70, right: 85, top: '50%', height: '20%' },
+                    { left: 70, right: 85, top: '72%', height: '23%' }
                 ],
                 xAxis: [
                     { type: 'category', data: mk.dates, gridIndex: 0, axisLabel: { color: '#94a3b8' }, axisLine: { lineStyle: { color: '#475569' } } },
@@ -1063,7 +1063,7 @@
                 ],
                 dataZoom: [
                     { type: 'inside', xAxisIndex: [0, 1, 2, 3], start: 0, end: 100 },
-                    { type: 'slider', xAxisIndex: [0, 1, 2, 3], start: 0, end: 100, bottom: 0, height: 14,
+                    { type: 'slider', xAxisIndex: [0, 1, 2, 3], start: 0, end: 100, bottom: 0, height: 20,
                        textStyle: { color: '#94a3b8' }, borderColor: '#475569' }
                 ],
                 series: [
@@ -1120,7 +1120,7 @@
             const mSym = symRange(s.margin.change);
             const sSym = symRange(s.short.change);
             const iSym = symRange(s.inst.total.concat(s.inst.foreign, s.inst.trust, s.inst.dealer));
-            stockChart = stockChart || echarts.init(document.getElementById('stockChart'));
+            stockChart = stockChart || echarts.init(document.getElementById('stockChart'), null, { devicePixelRatio: Math.max(window.devicePixelRatio || 1, 2) });
             stockChart.setOption({
                 backgroundColor: 'transparent',
                 animation: false,
@@ -1129,10 +1129,10 @@
                 tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
                 axisPointer: { link: [{ xAxisIndex: 'all' }] },
                 grid: [
-                    { left: 70, right: 80, top: 45, height: 430 },
-                    { left: 70, right: 80, top: 495, height: 230 },
-                    { left: 70, right: 80, top: 745, height: 230 },
-                    { left: 70, right: 80, top: 995, height: 250 }
+                    { left: 70, right: 80, top: '5%', height: '30%' },
+                    { left: 70, right: 80, top: '36%', height: '18%' },
+                    { left: 70, right: 80, top: '55%', height: '18%' },
+                    { left: 70, right: 80, top: '74%', height: '21%' }
                 ],
                 xAxis: [
                     { type: 'category', data: kd, gridIndex: 0, axisLabel: { color: '#94a3b8', fontSize: 12 }, axisLine: { lineStyle: { color: '#475569' } } },
@@ -1151,7 +1151,7 @@
                 ],
                 dataZoom: [
                     { type: 'inside', xAxisIndex: [0, 1, 2, 3], start: 30, end: 100 },
-                    { type: 'slider', xAxisIndex: [0, 1, 2, 3], start: 30, end: 100, bottom: 0, height: 14,
+                    { type: 'slider', xAxisIndex: [0, 1, 2, 3], start: 30, end: 100, bottom: 0, height: 20,
                        textStyle: { color: '#94a3b8' }, borderColor: '#475569' }
                 ],
                 series: [
