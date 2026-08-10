@@ -1552,6 +1552,8 @@ const tdccData = {"week": "20260807", "cur": {"000218": 100.0, "000560": 100.0, 
                 stockSel.value = code;
                 renderStock(code);
                 switchTab('tab-kline', document.querySelector('.tab-btn[data-tab="tab-kline"]'));
+            } else if (/^[0-9A-Za-z]{4,6}$/.test(code)) {
+                loadLiveStock(code);
             } else {
                 window.open('https://tw.stock.yahoo.com/quote/' + code + '.TW', '_blank');
             }
