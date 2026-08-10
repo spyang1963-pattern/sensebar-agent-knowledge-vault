@@ -120,6 +120,11 @@
             cursor: pointer;
         }
         .stock-id:hover { text-decoration: underline; }
+        .stock-name {
+            color: #e2e8f0;
+            cursor: pointer;
+        }
+        .stock-name:hover { text-decoration: underline; color: #60a5fa; }
         .charts-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
@@ -518,7 +523,7 @@
             <tbody><tr>
                 <td>1</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('8112')" class="stock-id" title="點擊查看 K線+籌碼">8112</a></td>
-                <td>至上</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('8112')" class="stock-name" title="點擊查看 K線+籌碼">至上</a></td>
                 <td>91.20</td>
                 <td class="positive">+2.47%</td>
                 <td class="positive">+0.00%</td>
@@ -528,7 +533,7 @@
             </tr><tr>
                 <td>2</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('1216')" class="stock-id" title="點擊查看 K線+籌碼">1216</a></td>
-                <td>統一</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('1216')" class="stock-name" title="點擊查看 K線+籌碼">統一</a></td>
                 <td>75.70</td>
                 <td class="positive">+3.70%</td>
                 <td class="positive">+0.00%</td>
@@ -538,7 +543,7 @@
             </tr><tr>
                 <td>3</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('2527')" class="stock-id" title="點擊查看 K線+籌碼">2527</a></td>
-                <td>宏璟</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('2527')" class="stock-name" title="點擊查看 K線+籌碼">宏璟</a></td>
                 <td>47.10</td>
                 <td class="positive">+2.50%</td>
                 <td class="positive">+0.00%</td>
@@ -548,7 +553,7 @@
             </tr><tr>
                 <td>4</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('2101')" class="stock-id" title="點擊查看 K線+籌碼">2101</a></td>
-                <td>南港</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('2101')" class="stock-name" title="點擊查看 K線+籌碼">南港</a></td>
                 <td>35.50</td>
                 <td class="positive">+2.60%</td>
                 <td class="positive">+0.00%</td>
@@ -558,7 +563,7 @@
             </tr><tr>
                 <td>5</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('4142')" class="stock-id" title="點擊查看 K線+籌碼">4142</a></td>
-                <td>國光生</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('4142')" class="stock-name" title="點擊查看 K線+籌碼">國光生</a></td>
                 <td>17.70</td>
                 <td class="positive">+3.21%</td>
                 <td class="positive">+0.00%</td>
@@ -568,7 +573,7 @@
             </tr><tr>
                 <td>6</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('9921')" class="stock-id" title="點擊查看 K線+籌碼">9921</a></td>
-                <td>巨大</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('9921')" class="stock-name" title="點擊查看 K線+籌碼">巨大</a></td>
                 <td>92.40</td>
                 <td class="positive">+2.44%</td>
                 <td class="positive">+0.00%</td>
@@ -578,7 +583,7 @@
             </tr><tr>
                 <td>7</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('6781')" class="stock-id" title="點擊查看 K線+籌碼">6781</a></td>
-                <td>AES-KY</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('6781')" class="stock-name" title="點擊查看 K線+籌碼">AES-KY</a></td>
                 <td>1,145.00</td>
                 <td class="positive">+5.05%</td>
                 <td class="positive">+0.00%</td>
@@ -588,7 +593,7 @@
             </tr><tr>
                 <td>8</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('2348')" class="stock-id" title="點擊查看 K線+籌碼">2348</a></td>
-                <td>海悅</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('2348')" class="stock-name" title="點擊查看 K線+籌碼">海悅</a></td>
                 <td>71.40</td>
                 <td class="positive">+2.59%</td>
                 <td class="positive">+0.00%</td>
@@ -598,7 +603,7 @@
             </tr><tr>
                 <td>9</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('4961')" class="stock-id" title="點擊查看 K線+籌碼">4961</a></td>
-                <td>天鈺</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('4961')" class="stock-name" title="點擊查看 K線+籌碼">天鈺</a></td>
                 <td>172.50</td>
                 <td class="positive">+2.99%</td>
                 <td class="positive">+0.00%</td>
@@ -608,7 +613,7 @@
             </tr><tr>
                 <td>10</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('2331')" class="stock-id" title="點擊查看 K線+籌碼">2331</a></td>
-                <td>精英</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('2331')" class="stock-name" title="點擊查看 K線+籌碼">精英</a></td>
                 <td>19.80</td>
                 <td class="positive">+2.33%</td>
                 <td class="positive">+0.00%</td>
@@ -630,7 +635,7 @@
             <tbody><tr>
                 <td>1</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('00685L')" class="stock-id" title="點擊查看 K線+籌碼">00685L</a></td>
-                <td>群益臺灣加權正2</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('00685L')" class="stock-name" title="點擊查看 K線+籌碼">群益臺灣加權正2</a></td>
                 <td class="negative">-993,800</td>
                 <td class="neutral">+0</td>
                 <td class="positive">+107,082,096</td>
@@ -638,7 +643,7 @@
             </tr><tr>
                 <td>2</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('00403A')" class="stock-id" title="點擊查看 K線+籌碼">00403A</a></td>
-                <td>主動統一升級50</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('00403A')" class="stock-name" title="點擊查看 K線+籌碼">主動統一升級50</a></td>
                 <td class="positive">+22,453,834</td>
                 <td class="neutral">+0</td>
                 <td class="positive">+80,364,607</td>
@@ -646,7 +651,7 @@
             </tr><tr>
                 <td>3</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('00631L')" class="stock-id" title="點擊查看 K線+籌碼">00631L</a></td>
-                <td>元大台灣50正2</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('00631L')" class="stock-name" title="點擊查看 K線+籌碼">元大台灣50正2</a></td>
                 <td class="positive">+8,857,007</td>
                 <td class="neutral">+0</td>
                 <td class="positive">+68,488,078</td>
@@ -654,7 +659,7 @@
             </tr><tr>
                 <td>4</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('2002')" class="stock-id" title="點擊查看 K線+籌碼">2002</a></td>
-                <td>中鋼</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('2002')" class="stock-name" title="點擊查看 K線+籌碼">中鋼</a></td>
                 <td class="positive">+64,052,416</td>
                 <td class="neutral">+0</td>
                 <td class="positive">+4,654,766</td>
@@ -662,7 +667,7 @@
             </tr><tr>
                 <td>5</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('3481')" class="stock-id" title="點擊查看 K線+籌碼">3481</a></td>
-                <td>群創</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('3481')" class="stock-name" title="點擊查看 K線+籌碼">群創</a></td>
                 <td class="positive">+48,103,660</td>
                 <td class="negative">-23,908</td>
                 <td class="positive">+5,020,798</td>
@@ -678,7 +683,7 @@
             <tbody><tr>
                 <td>1</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('2892')" class="stock-id" title="點擊查看 K線+籌碼">2892</a></td>
-                <td>第一金</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('2892')" class="stock-name" title="點擊查看 K線+籌碼">第一金</a></td>
                 <td class="negative">-17,899,558</td>
                 <td class="positive">+1,718,341</td>
                 <td class="positive">+280,873</td>
@@ -686,7 +691,7 @@
             </tr><tr>
                 <td>2</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('1303')" class="stock-id" title="點擊查看 K線+籌碼">1303</a></td>
-                <td>南亞</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('1303')" class="stock-name" title="點擊查看 K線+籌碼">南亞</a></td>
                 <td class="negative">-22,708,891</td>
                 <td class="positive">+352,037</td>
                 <td class="negative">-356,930</td>
@@ -694,7 +699,7 @@
             </tr><tr>
                 <td>3</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('00881')" class="stock-id" title="點擊查看 K線+籌碼">00881</a></td>
-                <td>國泰台灣科技龍頭</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('00881')" class="stock-name" title="點擊查看 K線+籌碼">國泰台灣科技龍頭</a></td>
                 <td class="negative">-2,238,876</td>
                 <td class="neutral">+0</td>
                 <td class="negative">-22,342,671</td>
@@ -702,7 +707,7 @@
             </tr><tr>
                 <td>4</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('00632R')" class="stock-id" title="點擊查看 K線+籌碼">00632R</a></td>
-                <td>元大台灣50反1</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('00632R')" class="stock-name" title="點擊查看 K線+籌碼">元大台灣50反1</a></td>
                 <td class="negative">-2,045,000</td>
                 <td class="neutral">+0</td>
                 <td class="negative">-54,482,095</td>
@@ -710,7 +715,7 @@
             </tr><tr>
                 <td>5</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('2610')" class="stock-id" title="點擊查看 K線+籌碼">2610</a></td>
-                <td>華航</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('2610')" class="stock-name" title="點擊查看 K線+籌碼">華航</a></td>
                 <td class="negative">-78,294,809</td>
                 <td class="positive">+138,008</td>
                 <td class="negative">-1,548,315</td>
@@ -730,7 +735,7 @@
             <tbody><tr>
                 <td>1</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('3036')" class="stock-id" title="點擊查看 K線+籌碼">3036</a></td>
-                <td>文曄</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('3036')" class="stock-name" title="點擊查看 K線+籌碼">文曄</a></td>
                 <td>211.50</td>
                 <td class="negative"><span class="badge badge-danger">-9.42%</span></td>
                 <td>42,344</td>
@@ -741,7 +746,7 @@
             </tr><tr>
                 <td>2</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('3231')" class="stock-id" title="點擊查看 K線+籌碼">3231</a></td>
-                <td>緯創</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('3231')" class="stock-name" title="點擊查看 K線+籌碼">緯創</a></td>
                 <td>183.50</td>
                 <td class="negative"><span class="badge badge-danger">-3.17%</span></td>
                 <td>65,415</td>
@@ -752,7 +757,7 @@
             </tr><tr>
                 <td>3</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('2324')" class="stock-id" title="點擊查看 K線+籌碼">2324</a></td>
-                <td>仁寶</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('2324')" class="stock-name" title="點擊查看 K線+籌碼">仁寶</a></td>
                 <td>36.55</td>
                 <td class="negative"><span class="badge badge-warning">-2.01%</span></td>
                 <td>30,472</td>
@@ -763,7 +768,7 @@
             </tr><tr>
                 <td>4</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('6226')" class="stock-id" title="點擊查看 K線+籌碼">6226</a></td>
-                <td>光鼎</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('6226')" class="stock-name" title="點擊查看 K線+籌碼">光鼎</a></td>
                 <td>22.05</td>
                 <td class="negative"><span class="badge badge-danger">-3.50%</span></td>
                 <td>25,684</td>
@@ -774,7 +779,7 @@
             </tr><tr>
                 <td>5</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('2441')" class="stock-id" title="點擊查看 K線+籌碼">2441</a></td>
-                <td>超豐</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('2441')" class="stock-name" title="點擊查看 K線+籌碼">超豐</a></td>
                 <td>117.50</td>
                 <td class="negative"><span class="badge badge-danger">-4.47%</span></td>
                 <td>6,430</td>
@@ -785,7 +790,7 @@
             </tr><tr>
                 <td>6</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('8271')" class="stock-id" title="點擊查看 K線+籌碼">8271</a></td>
-                <td>宇瞻</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('8271')" class="stock-name" title="點擊查看 K線+籌碼">宇瞻</a></td>
                 <td>235.50</td>
                 <td class="negative"><span class="badge badge-danger">-4.66%</span></td>
                 <td>9,432</td>
@@ -796,7 +801,7 @@
             </tr><tr>
                 <td>7</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('4739')" class="stock-id" title="點擊查看 K線+籌碼">4739</a></td>
-                <td>康普</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('4739')" class="stock-name" title="點擊查看 K線+籌碼">康普</a></td>
                 <td>84.20</td>
                 <td class="negative"><span class="badge badge-danger">-3.77%</span></td>
                 <td>3,447</td>
@@ -807,7 +812,7 @@
             </tr><tr>
                 <td>8</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('1714')" class="stock-id" title="點擊查看 K線+籌碼">1714</a></td>
-                <td>和桐</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('1714')" class="stock-name" title="點擊查看 K線+籌碼">和桐</a></td>
                 <td>15.75</td>
                 <td class="negative"><span class="badge badge-warning">-2.78%</span></td>
                 <td>47,332</td>
@@ -818,7 +823,7 @@
             </tr><tr>
                 <td>9</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('3702')" class="stock-id" title="點擊查看 K線+籌碼">3702</a></td>
-                <td>大聯大</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('3702')" class="stock-name" title="點擊查看 K線+籌碼">大聯大</a></td>
                 <td>122.50</td>
                 <td class="negative"><span class="badge badge-warning">-2.39%</span></td>
                 <td>9,985</td>
@@ -829,7 +834,7 @@
             </tr><tr>
                 <td>10</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('1718')" class="stock-id" title="點擊查看 K線+籌碼">1718</a></td>
-                <td>中纖</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('1718')" class="stock-name" title="點擊查看 K線+籌碼">中纖</a></td>
                 <td>9.91</td>
                 <td class="negative"><span class="badge badge-warning">-2.84%</span></td>
                 <td>27,466</td>
@@ -840,7 +845,7 @@
             </tr><tr>
                 <td>11</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('2356')" class="stock-id" title="點擊查看 K線+籌碼">2356</a></td>
-                <td>英業達</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('2356')" class="stock-name" title="點擊查看 K線+籌碼">英業達</a></td>
                 <td>64.00</td>
                 <td class="negative"><span class="badge badge-warning">-2.29%</span></td>
                 <td>14,275</td>
@@ -851,7 +856,7 @@
             </tr><tr>
                 <td>12</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('2301')" class="stock-id" title="點擊查看 K線+籌碼">2301</a></td>
-                <td>光寶科</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('2301')" class="stock-name" title="點擊查看 K線+籌碼">光寶科</a></td>
                 <td>247.00</td>
                 <td class="negative"><span class="badge badge-warning">-2.18%</span></td>
                 <td>33,004</td>
@@ -862,7 +867,7 @@
             </tr><tr>
                 <td>13</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('1802')" class="stock-id" title="點擊查看 K線+籌碼">1802</a></td>
-                <td>台玻</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('1802')" class="stock-name" title="點擊查看 K線+籌碼">台玻</a></td>
                 <td>53.10</td>
                 <td class="negative"><span class="badge badge-warning">-2.75%</span></td>
                 <td>22,313</td>
@@ -873,7 +878,7 @@
             </tr><tr>
                 <td>14</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('1522')" class="stock-id" title="點擊查看 K線+籌碼">1522</a></td>
-                <td>堤維西</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('1522')" class="stock-name" title="點擊查看 K線+籌碼">堤維西</a></td>
                 <td>28.00</td>
                 <td class="negative"><span class="badge badge-danger">-5.88%</span></td>
                 <td>2,004</td>
@@ -884,7 +889,7 @@
             </tr><tr>
                 <td>15</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('2241')" class="stock-id" title="點擊查看 K線+籌碼">2241</a></td>
-                <td>艾姆勒</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('2241')" class="stock-name" title="點擊查看 K線+籌碼">艾姆勒</a></td>
                 <td>32.65</td>
                 <td class="negative"><span class="badge badge-danger">-6.98%</span></td>
                 <td>1,306</td>
@@ -895,7 +900,7 @@
             </tr><tr>
                 <td>16</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('8261')" class="stock-id" title="點擊查看 K線+籌碼">8261</a></td>
-                <td>富鼎</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('8261')" class="stock-name" title="點擊查看 K線+籌碼">富鼎</a></td>
                 <td>172.00</td>
                 <td class="negative"><span class="badge badge-danger">-7.77%</span></td>
                 <td>6,831</td>
@@ -906,7 +911,7 @@
             </tr><tr>
                 <td>17</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('3135')" class="stock-id" title="點擊查看 K線+籌碼">3135</a></td>
-                <td>凌航</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('3135')" class="stock-name" title="點擊查看 K線+籌碼">凌航</a></td>
                 <td>168.00</td>
                 <td class="negative"><span class="badge badge-danger">-9.92%</span></td>
                 <td>3,711</td>
@@ -917,7 +922,7 @@
             </tr><tr>
                 <td>18</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('6209')" class="stock-id" title="點擊查看 K線+籌碼">6209</a></td>
-                <td>今國光</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('6209')" class="stock-name" title="點擊查看 K線+籌碼">今國光</a></td>
                 <td>74.30</td>
                 <td class="negative"><span class="badge badge-danger">-3.13%</span></td>
                 <td>8,133</td>
@@ -928,7 +933,7 @@
             </tr><tr>
                 <td>19</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('6224')" class="stock-id" title="點擊查看 K線+籌碼">6224</a></td>
-                <td>聚鼎</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('6224')" class="stock-name" title="點擊查看 K線+籌碼">聚鼎</a></td>
                 <td>55.00</td>
                 <td class="negative"><span class="badge badge-warning">-2.65%</span></td>
                 <td>188</td>
@@ -939,7 +944,7 @@
             </tr><tr>
                 <td>20</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('3504')" class="stock-id" title="點擊查看 K線+籌碼">3504</a></td>
-                <td>揚明光</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('3504')" class="stock-name" title="點擊查看 K線+籌碼">揚明光</a></td>
                 <td>73.60</td>
                 <td class="negative"><span class="badge badge-danger">-4.54%</span></td>
                 <td>2,484</td>
@@ -950,7 +955,7 @@
             </tr><tr>
                 <td>21</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('6799')" class="stock-id" title="點擊查看 K線+籌碼">6799</a></td>
-                <td>來頡</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('6799')" class="stock-name" title="點擊查看 K線+籌碼">來頡</a></td>
                 <td>86.30</td>
                 <td class="negative"><span class="badge badge-danger">-5.58%</span></td>
                 <td>667</td>
@@ -961,7 +966,7 @@
             </tr><tr>
                 <td>22</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('2492')" class="stock-id" title="點擊查看 K線+籌碼">2492</a></td>
-                <td>華新科</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('2492')" class="stock-name" title="點擊查看 K線+籌碼">華新科</a></td>
                 <td>251.00</td>
                 <td class="negative"><span class="badge badge-warning">-2.14%</span></td>
                 <td>11,332</td>
@@ -972,7 +977,7 @@
             </tr><tr>
                 <td>23</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('1526')" class="stock-id" title="點擊查看 K線+籌碼">1526</a></td>
-                <td>日馳</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('1526')" class="stock-name" title="點擊查看 K線+籌碼">日馳</a></td>
                 <td>18.25</td>
                 <td class="negative"><span class="badge badge-danger">-4.70%</span></td>
                 <td>1,582</td>
@@ -983,7 +988,7 @@
             </tr><tr>
                 <td>24</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('2460')" class="stock-id" title="點擊查看 K線+籌碼">2460</a></td>
-                <td>建通</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('2460')" class="stock-name" title="點擊查看 K線+籌碼">建通</a></td>
                 <td>30.25</td>
                 <td class="negative"><span class="badge badge-warning">-2.58%</span></td>
                 <td>384</td>
@@ -994,7 +999,7 @@
             </tr><tr>
                 <td>25</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('1708')" class="stock-id" title="點擊查看 K線+籌碼">1708</a></td>
-                <td>東鹼</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('1708')" class="stock-name" title="點擊查看 K線+籌碼">東鹼</a></td>
                 <td>48.75</td>
                 <td class="negative"><span class="badge badge-warning">-2.01%</span></td>
                 <td>2,074</td>
@@ -1005,7 +1010,7 @@
             </tr><tr>
                 <td>26</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('3413')" class="stock-id" title="點擊查看 K線+籌碼">3413</a></td>
-                <td>京鼎</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('3413')" class="stock-name" title="點擊查看 K線+籌碼">京鼎</a></td>
                 <td>309.00</td>
                 <td class="negative"><span class="badge badge-danger">-3.44%</span></td>
                 <td>2,308</td>
@@ -1016,7 +1021,7 @@
             </tr><tr>
                 <td>27</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('6442')" class="stock-id" title="點擊查看 K線+籌碼">6442</a></td>
-                <td>光聖</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('6442')" class="stock-name" title="點擊查看 K線+籌碼">光聖</a></td>
                 <td>1,325.00</td>
                 <td class="negative"><span class="badge badge-danger">-6.36%</span></td>
                 <td>2,465</td>
@@ -1027,7 +1032,7 @@
             </tr><tr>
                 <td>28</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('6278')" class="stock-id" title="點擊查看 K線+籌碼">6278</a></td>
-                <td>台表科</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('6278')" class="stock-name" title="點擊查看 K線+籌碼">台表科</a></td>
                 <td>156.00</td>
                 <td class="negative"><span class="badge badge-danger">-4.00%</span></td>
                 <td>3,986</td>
@@ -1038,7 +1043,7 @@
             </tr><tr>
                 <td>29</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('4977')" class="stock-id" title="點擊查看 K線+籌碼">4977</a></td>
-                <td>眾達-KY</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('4977')" class="stock-name" title="點擊查看 K線+籌碼">眾達-KY</a></td>
                 <td>133.50</td>
                 <td class="negative"><span class="badge badge-danger">-3.61%</span></td>
                 <td>2,134</td>
@@ -1049,7 +1054,7 @@
             </tr><tr>
                 <td>30</td>
                 <td><a href="javascript:void(0)" onclick="selectStock('2332')" class="stock-id" title="點擊查看 K線+籌碼">2332</a></td>
-                <td>友訊</td>
+                <td><a href="javascript:void(0)" onclick="selectStock('2332')" class="stock-name" title="點擊查看 K線+籌碼">友訊</a></td>
                 <td>22.15</td>
                 <td class="negative"><span class="badge badge-warning">-2.42%</span></td>
                 <td>25,330</td>
@@ -1658,15 +1663,26 @@ const tdccData = {"week": "20260807", "cur": {"000218": 100.0, "000560": 100.0, 
         async function loadLiveStock(code) {
             const btn = document.getElementById('stockQueryBtn');
             if (btn) btn.disabled = true;
+            // 先切到 K線頁籤，讓使用者看到查詢進度
+            switchTab('tab-kline', document.querySelector('.tab-btn[data-tab="tab-kline"]'));
             qMsg('查詢中…', '');
             try {
                 const k = await fetchLiveKline(code);
                 if (!k.dates.length) throw new Error('查無資料，請確認代號');
+                const master = k.dates;
+                const name0 = k.name || code;
+                // 先畫 K 線（籌碼面板留空），立即有圖
+                drawStock({
+                    name: name0,
+                    kline: { dates: master, o: k.o, h: k.h, l: k.l, c: k.c, v: k.v },
+                    margin: { dates: master, balance: master.map(() => null), change: master.map(() => null) },
+                    short: { dates: master, balance: master.map(() => null), change: master.map(() => null) },
+                    inst: { dates: master, foreign: master.map(() => null), trust: master.map(() => null), dealer: master.map(() => null), total: master.map(() => null) }
+                }, code);
                 qMsg('K線完成，抓籌碼中…', '');
                 // 取最後 20 個交易日的融資/法人
-                const last = k.dates.slice(-20);
+                const last = master.slice(-20);
                 const [mar, inst] = await Promise.all([fetchLiveMargin(code, last), fetchLiveInst(code, last)]);
-                const master = k.dates;
                 const mbal = master.map(d => (d in mar.bal ? mar.bal[d] : null));
                 const mchg = master.map((d, i) => (d in mar.bal && i > 0 && master[i - 1] in mar.bal) ? mar.bal[d] - mar.bal[master[i - 1]] : null);
                 const sbal = master.map(d => (d in mar.short ? mar.short[d] : null));
@@ -1675,7 +1691,7 @@ const tdccData = {"week": "20260807", "cur": {"000218": 100.0, "000560": 100.0, 
                 const iT = master.map(d => (d in inst.data ? inst.data[d].t : null));
                 const iD = master.map(d => (d in inst.data ? inst.data[d].d2 : null));
                 const iTot = master.map(d => (d in inst.data ? inst.data[d].tot : null));
-                const name = mar.name || inst.name || k.name || code;
+                const name = mar.name || inst.name || name0;
                 const s = {
                     name: name,
                     kline: { dates: master, o: k.o, h: k.h, l: k.l, c: k.c, v: k.v },
@@ -1687,7 +1703,6 @@ const tdccData = {"week": "20260807", "cur": {"000218": 100.0, "000560": 100.0, 
                 if (box) box.innerHTML = '';
                 qMsg(name + '（即時查詢）', 'ok');
                 drawStock(s, code);
-                switchTab('tab-kline', document.querySelector('.tab-btn[data-tab="tab-kline"]'));
             } catch (e) {
                 qMsg('查詢失敗：' + e.message, 'err');
             } finally {
