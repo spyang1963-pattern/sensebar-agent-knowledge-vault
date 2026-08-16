@@ -36,6 +36,7 @@ GOOGLE_NEWS_ZH = "https://news.google.com/rss/search?q={q}&hl=zh-TW&gl=TW&ceid=T
 GOOGLE_NEWS_EN = "https://news.google.com/rss/search?q={q}&hl=en-US&gl=US&ceid=US:en"
 
 # Keyword queries (both languages). Format: (lang, query)
+# NOTE: use direction-neutral terms so both up/down days are captured.
 SEARCH_QUERIES = [
     # --- Taiwan market ---
     ("zh", '"中央銀行" 利率'),
@@ -43,6 +44,9 @@ SEARCH_QUERIES = [
     ("zh", "證交所 重大訊息"),
     ("zh", "央行 升息 降息"),
     ("zh", "台股 大跌"),
+    ("zh", "台股 大漲"),
+    ("zh", "台股 收盤"),
+    ("zh", "加權指數"),
     # --- Global macro / central banks ---
     ("en", "Federal Reserve rate decision"),
     ("en", "central bank policy"),
@@ -59,6 +63,7 @@ SEARCH_QUERIES = [
     ("en", "Taiwan strait"),
     # --- Equity markets ---
     ("en", "stock market selloff"),
+    ("en", "stock market rally"),
     ("en", "S&P 500 Nasdaq"),
     ("zh", "美股 大跌 暴漲"),
 ]
@@ -70,20 +75,51 @@ DIRECT_FEEDS = [
     ("bbcbusiness", "https://feeds.bbci.co.uk/news/business/rss.xml"),
     ("marketwatch", "https://feeds.marketwatch.com/marketwatch/topstories/"),
     ("nytbusiness", "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml"),
+    # Real-time feeds (verified fresh within minutes)
+    ("yahoo-tw-finance", "https://tw.finance.yahoo.com/rss"),
+    ("yahoo-tw-stock", "https://tw.stock.yahoo.com/rss"),
+    ("investing-com", "https://www.investing.com/rss/news.rss"),
+    ("seekingalpha", "https://seekingalpha.com/market_currents.xml"),
 ]
 
 TIMEOUT = 12
 HTTP_HEADERS = {"User-Agent": "Mozilla/5.0 (sensebar-financial-news/1.0)"}
 
+# --- Source governance (quality assurance) ---
+# Max entries collected per feed/query per run (avoids single-source dominance).
+MAX_PER_FEED = 30
+# Max total entries for google-news queries and direct feeds per run.
+MAX_GOOGLE_TOTAL = 400
+MAX_DIRECT_TOTAL = 200
+# Entries published older than this many hours are skipped (stale news).
+MAX_AGE_HOURS = 48
+# Sources allowed to bypass the age gate (official first-hand announcements).
+AGE_GATE_BYPASS = {"fed", "ecb"}
+
+
+def _too_old(entry):
+    """True if the entry's published time is older than the freshness gate."""
+    ts = entry.get("published_parsed") or entry.get("updated_parsed")
+    if not ts:
+        return False
+    try:
+        pub = datetime(*ts[:6], tzinfo=timezone.utc)
+    except Exception:
+        return False
+    age = (datetime.now(timezone.utc) - pub).total_seconds() / 3600
+    return age > MAX_AGE_HOURS
+
 
 def _pub_time(entry):
-    """Return ISO-8601 published time from an RSS entry (best effort)."""
+    """Return ISO-8601 published time from an RSS entry (best effort).
+
+    published_parsed is already UTC; time.mktime() would treat it as local
+    time and add a TZ offset, so build the datetime directly instead.
+    """
     ts = entry.get("published_parsed") or entry.get("updated_parsed")
     if ts:
         try:
-            return datetime.fromtimestamp(time.mktime(ts), tz=timezone.utc).isoformat(
-                timespec="seconds"
-            )
+            return datetime(*ts[:6], tzinfo=timezone.utc).isoformat(timespec="seconds")
         except Exception:
             pass
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -130,7 +166,10 @@ def collect_google_news():
         for fut in as_completed(futures):
             try:
                 i, e, f = fut.result()
-                inserted += i
+                if inserted + i <= MAX_GOOGLE_TOTAL:
+                    inserted += i
+                else:
+                    logger.info("google total cap hit (%d)", MAX_GOOGLE_TOTAL)
                 existing += e
                 failed += f
             except Exception as ex:
@@ -139,16 +178,27 @@ def collect_google_news():
     return inserted, existing, failed
 
 
-def _fetch_and_insert(url, source, lang):
-    """Fetch a feed and insert its entries. Returns (inserted, existing, failed)."""
+def _fetch_and_insert(url, source, lang, max_entries=MAX_PER_FEED, age_gate=True):
+    """Fetch a feed and insert its entries. Returns (inserted, existing, failed).
+
+    max_entries caps how many fresh entries we keep per feed/query.
+    age_gate skips entries older than MAX_AGE_HOURS (unless bypass source).
+    """
     inserted = existing = failed = 0
     feed = fetch_feed(url)
     if feed is None or not feed.entries:
         return 0, 0, 1
+    bypass_age = source in AGE_GATE_BYPASS
+    added = 0
     for entry in feed.entries:
+        if added >= max_entries:
+            break
         link = entry.get("link", "")
         title = entry.get("title", "").strip()
         if not link or not title:
+            continue
+        if age_gate and not bypass_age and _too_old(entry):
+            existing += 1
             continue
         r = db.insert_event(
             source=source,
@@ -160,6 +210,7 @@ def _fetch_and_insert(url, source, lang):
         )
         if r == "inserted":
             inserted += 1
+            added += 1
         else:
             existing += 1
     return inserted, existing, failed
@@ -169,13 +220,16 @@ def collect_direct_feeds():
     inserted = existing = failed = 0
     with ThreadPoolExecutor(max_workers=5) as pool:
         futures = {
-            pool.submit(_fetch_and_insert, url, name, "en"): name
+            pool.submit(_fetch_and_insert, url, name, "en", max_entries=MAX_PER_FEED, age_gate=True): name
             for name, url in DIRECT_FEEDS
         }
         for fut in as_completed(futures):
             try:
                 i, e, f = fut.result()
-                inserted += i
+                if inserted + i <= MAX_DIRECT_TOTAL:
+                    inserted += i
+                else:
+                    logger.info("direct total cap hit (%d)", MAX_DIRECT_TOTAL)
                 existing += e
                 failed += f
             except Exception as ex:

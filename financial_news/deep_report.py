@@ -6,25 +6,21 @@ Deep report generator - triggered right after the daily report is written.
 Workflow:
   1. Read today's daily report markdown (knowledge-base/金融/每日報告/YYYY-MM-DD.md)
   2. Send it to Gemini for a deeper multi-asset analysis
-  3. Render the analysis into a Word .docx (knowledge-base/金融/深度報告/YYYY-MM-DD.docx)
-  4. Email the .docx as an attachment (Gmail via stock-monitor/config.yaml)
-  5. Notify via LINE so the user knows the deep report is ready
+  3. Render the analysis into a Word .docx + Markdown (knowledge-base/金融/深度報告/)
+  4. Publish to GitHub Pages (via publisher/build.py); no email/LINE notifications
 
 Usage:
-  python deep_report.py              # deep report for today + email + LINE
+  python deep_report.py              # deep report for today
   python deep_report.py --day 2026-08-04
-  python deep_report.py --skip-email --skip-line   # only produce docx
+  python deep_report.py --skip-email --skip-line   # kept for backward compatibility
 """
 import os
 import re
 import sys
-import smtplib
 import argparse
 import logging
+from urllib.parse import quote_plus
 from datetime import datetime, timedelta, timezone
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.application import MIMEApplication
 
 try:
     from docx import Document
@@ -35,7 +31,6 @@ except ImportError:
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import log_util
-import notifier
 
 REPORT_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
@@ -146,7 +141,52 @@ def find_bigpickle_report(day):
     return None
 
 
-def deep_analyze(md_text, bigpickle_text=None, prev_days_text=None):
+def _verification_pass(analysis_text):
+    """Run a fact-check pass on the generated deep report. Returns (text, note)."""
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(api_key=_read_key())
+    check_prompt = (
+        "你是一名嚴謹的金融報告審稿人。以下是一份 AI 生成的《深度分析報告》。\n"
+        "請只檢查報告內容的『內部邏輯一致性』，判斷是否有：\n"
+        "1. 同一數字在文中前後矛盾（例如同一指數出現兩個不同價位/漲跌幅）\n"
+        "2. 明顯的日期/時間錯誤或不一致\n"
+        "3. 標的（代號/名稱）在文內自相矛盾或與報告內其他描述不符\n\n"
+        "【重要限制】你的知識庫可能過期，請勿使用任何外部知識判斷下列事項的真假，"
+        "包括但不限於：公司是否上市、股價高低是否合理、指數點位與匯率利率是否合理、"
+        "某產業趨勢是否存在。報告內容描述的是最新即時新聞，可能超出你的知識範圍。\n"
+        "若某個描述『僅與外部事實可能不符』但報告內部前後一致，請不要列出為疑點。\n"
+        "【判斷範例】報告寫『SpaceX 在那斯達克掛牌，代號 SPCX』。即使你以為 SpaceX "
+        "是未上市私人公司，也請不要列為疑點——你的知識可能過期，這是外部事實判斷。\n"
+        "只有當報告內部同時出現互相矛盾的說法（例如一處說 SpaceX 未上市、另一處說已上市）時，"
+        "才可列為疑點。\n\n"
+        "若發現內部矛盾，請輸出『修正清單』：每條為『【疑點】<出處> - <問題說明> - <建議修正>』。\n"
+        "若無問題，請輸出『未發現矛盾』。\n"
+        "請務必只基於報告內容本身的邏輯一致性判斷。\n\n"
+        f"報告內容：\n{analysis_text[:12000]}"
+    )
+    try:
+        resp = client.models.generate_content(
+            model=MODEL,
+            contents=check_prompt,
+            config=types.GenerateContentConfig(temperature=0.0),
+        )
+        note = (resp.text or "").strip()
+    except Exception as e:
+        return analysis_text, f"核查失敗（不影響報告）: {str(e)[:120]}"
+    if not note or "未發現矛盾" in note:
+        return analysis_text, "核查通過：未發現明顯矛盾"
+    # 有疑點 → 附註在報告開頭（不覆寫內容，供人工檢視）
+    if len(note) > 2000:
+        note = note[:2000] + "..."
+    header = ("> ⚠️ **AI 審稿疑點（自動核查發現，請人工確認）**\n>\n"
+              + "\n>\n".join("> " + ln if ln.strip() else "" for ln in note.splitlines())
+              + "\n\n---\n\n")
+    return header + analysis_text, f"核查發現疑點（已附註報告開頭）"
+
+
+def deep_analyze(md_text, bigpickle_text=None, prev_days_text=None, major_events_text=None):
     """Call Gemini for the deep analysis. Returns markdown text."""
     from google import genai
     from google.genai import types
@@ -162,6 +202,15 @@ def deep_analyze(md_text, bigpickle_text=None, prev_days_text=None):
             "【分析師人工報告（Big Pickle，含台股夜盤與跨日觀點，請融合其重點與視角）】\n"
             + bigpickle_text[:10000]
         )
+    if major_events_text:
+        parts.append(
+            "【今日重大事件清單（含來源與可引用之完整網址）】\n"
+            "請在報告『重大事件深度解讀』一節中，為每件重大事件附上來源說明，"
+            "格式為『[來源: 媒體名稱](網址)』，務必包含完整網址供讀者點擊核對。\n"
+            "若某事件標示『⚠️AI分歧』，表示兩個 AI 模型對其重要性判斷不一致，"
+            "請在報告中如實標註，並以更審慎的措辭描述。\n"
+            + major_events_text[:6000]
+        )
     contents = "\n\n---\n\n".join(parts)
 
     resp = client.models.generate_content(
@@ -175,6 +224,10 @@ def deep_analyze(md_text, bigpickle_text=None, prev_days_text=None):
     text = (resp.text or "").strip()
     text = re.sub(r"^```(?:markdown)?\s*\n?", "", text, flags=re.M)
     text = re.sub(r"\n?```\s*$", "", text, flags=re.M)
+    # Fact-check pass (free tier, does not overwrite content)
+    if not os.environ.get("NO_VERIFY_PASS"):
+        text, note = _verification_pass(text)
+        print(f"[deep_report] 自動核查: {note}")
     return text
 
 
@@ -304,6 +357,16 @@ def _docx_to_doc(docx_path, doc_path):
 
 def write_doc(analysis_md, day, now_str, label=""):
     os.makedirs(DEEP_DIR, exist_ok=True)
+    # Also persist the markdown into the KB so Obsidian can read the deep
+    # report (same folder, next to the .docx/.doc files).
+    md_path = os.path.join(DEEP_DIR, f"深度分析報告 {day} {label}.md").strip()
+    try:
+        header = f"> 報告時間：{now_str}\n\n---\n\n"
+        with open(md_path, "w", encoding="utf-8") as f:
+            f.write(header + analysis_md)
+        print(f"[deep_report] Markdown 已存知識庫: {md_path}")
+    except Exception as e:
+        print(f"[deep_report] Markdown 存檔失敗: {e}")
     docx_path = os.path.join(DEEP_DIR, f"{day}.docx")
     doc = Document()
     for style in ("Normal", "Heading 1", "Heading 2", "Heading 3", "Heading 4"):
@@ -332,60 +395,6 @@ def write_doc(analysis_md, day, now_str, label=""):
     return docx_path
 
 
-def _email_config():
-    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "stock-monitor", "config.yaml")
-    if not os.path.exists(cfg_path):
-        return None
-    try:
-        import yaml
-        with open(cfg_path, encoding="utf-8") as f:
-            cfg = yaml.safe_load(f) or {}
-        return cfg.get("channels", {}).get("email", {})
-    except Exception:
-        return None
-
-
-def send_email(docx_path, day, label="", recipients=None):
-    """Email the .docx attachment via Gmail."""
-    cfg = _email_config()
-    if not cfg or not cfg.get("enabled") or not cfg.get("sender_email"):
-        print("[deep_report] Email 未設定，跳過")
-        return False
-    sender = cfg["sender_email"]
-    if recipients is None:
-        recipients = [sender]
-    title = f"{label}深度分析報告" if label else "深度分析報告"
-    msg = MIMEMultipart()
-    msg["Subject"] = f"【{title}】{day} 金融市場深度解析"
-    msg["From"] = sender
-    msg["To"] = ", ".join(recipients)
-    body = (
-        f"<h2>金融情報系統 · {title}</h2>"
-        f"<p>報告日期：<b>{day}</b>　時段：<b>{label or '一般'}</b></p>"
-        f"<p>本報告由 AI 自動生成，針對今日重大事件與市場走勢進行深度分析，"
-        f"涵蓋股/債/匯/商品四大市場的短中長期展望。</p>"
-        f"<p>詳細內容請開啟附件《{os.path.basename(docx_path)}》。</p>"
-        f"<hr><p style='color:#888'>本郵件由金融情報系統自動寄送，僅供參考，不構成投資建議。</p>"
-    )
-    msg.attach(MIMEText(body, "html", "utf-8"))
-    with open(docx_path, "rb") as f:
-        part = MIMEApplication(f.read())
-        part.add_header("Content-Disposition", "attachment", filename=os.path.basename(docx_path))
-        msg.attach(part)
-    try:
-        server = smtplib.SMTP(cfg.get("smtp_server", "smtp.gmail.com"), int(cfg.get("smtp_port", 587)))
-        server.starttls()
-        server.login(sender, cfg["sender_password"])
-        server.sendmail(sender, recipients, msg.as_string())
-        server.quit()
-        print(f"[deep_report] Email 已寄給 {len(recipients)} 位")
-        return True
-    except Exception as e:
-        print(f"[deep_report] Email 失敗: {e}")
-        logger.error("email fail: %s", e)
-        return False
-
-
 def _prev_days_text(day):
     """Collect the previous two days' daily reports for cross-day analysis."""
     parts = []
@@ -401,6 +410,42 @@ def _prev_days_text(day):
     return "\n\n".join(parts)
 
 
+def _major_events_with_sources(day, limit=15):
+    """Pull today's important events with source links and verification status."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import db
+        conn = db.connect()
+        rows = conn.execute(
+            """SELECT id, title, link, source, published, severity, sentiment,
+                      impact_notes, verification, verifier_note
+               FROM events
+               WHERE is_noise=0 AND is_duplicate=0 AND severity>=2
+                 AND substr(published,1,10)=?
+               ORDER BY severity DESC, published DESC LIMIT ?""",
+            (day, limit),
+        ).fetchall()
+        conn.close()
+        lines = []
+        for r in rows:
+            flag = ""
+            if r["verification"] == "conflict":
+                flag = "  ⚠️AI分歧"
+            elif r["verification"] == "verified":
+                flag = "  ✅已複核"
+            link = r["link"] or ""
+            if "news.google.com" in link:
+                link = "https://news.google.com/search?q=" + quote_plus(r["title"])
+            lines.append(
+                f"- [{r['severity']}] {r['title']}{flag}\n"
+                f"  來源: {r['source']}\n"
+                f"  網址: {link}"
+            )
+        return "\n".join(lines) if lines else "（今日無重大事件）"
+    except Exception as e:
+        return f"（重大事件來源擷取失敗: {e}）"
+
+
 SLOT_LABELS = {"morning": "早上", "evening": "傍晚"}
 
 
@@ -409,6 +454,10 @@ def _slot_label(slot):
 
 
 def run(day=None, slot=None, skip_email=False, skip_line=False, force=False):
+    """Generate the deep report (Word + Markdown into KB; no email/LINE since 2026-08).
+
+    skip_email/skip_line are accepted for backward compatibility but are no-ops now.
+    """
     tz = timezone(timedelta(hours=8))
     now = datetime.now(tz)
     day = day or now.strftime("%Y-%m-%d")
@@ -441,21 +490,16 @@ def run(day=None, slot=None, skip_email=False, skip_line=False, force=False):
     if prev_days:
         print(f"[deep_report] 附加近兩日報告作跨日分析 ({len(prev_days)} 字)")
 
-    analysis_md = deep_analyze(md_text, bigpickle_text=bigpickle_text, prev_days_text=prev_days)
+    major_events = _major_events_with_sources(day)
+    print(f"[deep_report] 重大事件引註資料已載入")
+
+    analysis_md = deep_analyze(md_text, bigpickle_text=bigpickle_text,
+                               prev_days_text=prev_days, major_events_text=major_events)
     now_str = now.strftime("%Y-%m-%d %H:%M（台灣時間）")
     doc_path = write_doc(analysis_md, day, now_str, label=label)
     print(f"[deep_report] {label}深度報告已產生: {doc_path}")
+    print("[deep_report] 已停用 Email/LINE 寄送，報告由 GitHub Pages 發佈，Word 檔留存知識庫備份")
 
-    if not skip_email:
-        send_email(doc_path, day, label=label)
-    if not skip_line:
-        line_msg = (
-            f"【{label}深度分析報告已出爐】{day}\n"
-            f"已融合台股夜盤與跨日相關性分析，\n"
-            f"檔案: knowledge-base\\金融\\深度報告\\深度分析報告 {day} {label}.doc\n"
-            f"（詳情請查收 Email）"
-        )
-        notifier.send_line(line_msg)
     logger.info("deep report done: %s", doc_path)
     return doc_path
 

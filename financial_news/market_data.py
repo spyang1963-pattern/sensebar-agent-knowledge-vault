@@ -15,6 +15,7 @@ import time
 import argparse
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone, timedelta
 
 import requests
 
@@ -58,12 +59,19 @@ HTTP_HEADERS = {"User-Agent": "Mozilla/5.0 (sensebar-financial-news/1.0)"}
 
 
 def fetch_symbol(symbol):
-    """Return (symbol, price, change_pct) or None. Uses v8 chart API.
+    """Return (symbol, price, change_pct, asof_ts) or None. Uses v8 chart API.
 
     price/change_pct are derived from the daily close series: the last bar is
     the most recent close and the bar before it is the previous session, so
     change_pct is a true single-session change. (Do NOT use meta.chartPreviousClose:
     it is the close before the chart range, i.e. several days back.)
+
+    asof_ts is the epoch seconds of the bar the price came from (the actual
+    trading date the snapshot reflects) so callers can tell stale data apart.
+
+    Data freshness: if the last bar's close is None (session data not ready yet,
+    e.g. Yahoo lagging the close) the symbol is reported as None so the caller
+    does NOT silently reuse an older close as today's quote.
     """
     try:
         r = requests.get(
@@ -77,14 +85,32 @@ def fetch_symbol(symbol):
         quote = (result[0].get("indicators", {}).get("quote") or [{}])[0]
         closes = quote.get("close") or []
         pairs = [(t, c) for t, c in zip(ts, closes) if c is not None]
+        meta = result[0].get("meta") or {}
+        # Freshness guard: the newest bar returned by Yahoo may have close=None
+        # while the session is over (delayed data). Prefer meta.regularMarketPrice
+        # (Yahoo's canonical last price + its timestamp) when the chart bar lags,
+        # so we never serve an older close as today's quote.
+        if closes and len(closes) == len(ts) and closes[-1] is None:
+            rmt = meta.get("regularMarketTime")
+            rmp = meta.get("regularMarketPrice")
+            if rmt and rmp is not None and len(pairs) >= 1:
+                asof_ts = rmt
+                price = rmp
+                prev = pairs[-1][1]
+                if prev not in (None, 0):
+                    change_pct = round((price - prev) / prev * 100, 2)
+                    return symbol, price, change_pct, asof_ts
+            print(f"  {symbol}: data not ready (latest close missing), skipped")
+            return None
         if len(pairs) < 2:
             return None
+        asof_ts = pairs[-1][0]
         price = pairs[-1][1]
         prev = pairs[-2][1]
         if prev in (None, 0):
             return None
         change_pct = round((price - prev) / prev * 100, 2)
-        return symbol, price, change_pct
+        return symbol, price, change_pct, asof_ts
     except Exception as e:
         print(f"  {symbol}: ERR {str(e)[:60]}")
         return None
@@ -92,6 +118,7 @@ def fetch_symbol(symbol):
 
 def collect_snapshot():
     db.init_db()
+    db.ensure_schema()
     inserted = failed = 0
     with ThreadPoolExecutor(max_workers=10) as pool:
         futures = {pool.submit(fetch_symbol, s): s for s, _, _ in SYMBOLS}
@@ -100,16 +127,29 @@ def collect_snapshot():
             if res is None:
                 failed += 1
                 continue
-            symbol, price, change_pct = res
+            symbol, price, change_pct, asof_ts = res
             name = dict((s, n) for s, n, _ in SYMBOLS).get(symbol, symbol)
             cur = dict((s, c) for s, _, c in SYMBOLS).get(symbol, "USD")
+            asof_at = datetime.fromtimestamp(asof_ts, tz=timezone.utc).isoformat(timespec="seconds")
             db.insert_market_snapshot(
                 symbol=symbol, name=name, price=price,
                 change_pct=change_pct, currency=cur, source="yahoo",
+                asof_at=asof_at,
             )
             inserted += 1
     db.commit()
     return inserted, failed
+
+
+def _fmt_captured(ts):
+    """Convert captured_at ISO to Asia/Taipei display, or '' if unparsable."""
+    try:
+        d = datetime.fromisoformat(ts)
+        if d.tzinfo:
+            d = d.astimezone(timezone(timedelta(hours=8)))
+        return d.strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        return ts
 
 
 def latest_table():
@@ -121,6 +161,32 @@ def latest_table():
             arrow = "▲" if chg is not None and chg > 0 else ("▼" if chg is not None and chg < 0 else "―")
             rows.append(f"{name:<12} {snap['price']:>12,.2f} {cur:>4} {arrow}{chg if chg is not None else 0:+.2f}%")
     return rows
+
+
+def latest_meta():
+    """Snapshot metadata: (asof_display, asof_age_hours, stale).
+
+    Uses asof_at (the trading date the data reflects) instead of captured_at
+    so stale quotes are recognised even right after a collect round.
+    """
+    latest = None
+    for symbol, name, cur in SYMBOLS:
+        snap = db.latest_market_snapshot(symbol)
+        if snap:
+            d = snap.get("asof_at") or snap.get("captured_at")
+            if d and (latest is None or d > latest):
+                latest = d
+    if not latest:
+        return "無快照", None, True
+    display = _fmt_captured(latest)
+    try:
+        d = datetime.fromisoformat(latest)
+        now = datetime.now(timezone.utc)
+        age = (now - d).total_seconds() / 3600.0
+    except Exception:
+        age = None
+    stale = age is not None and age > 24
+    return display, age, stale
 
 
 def latest_structured():

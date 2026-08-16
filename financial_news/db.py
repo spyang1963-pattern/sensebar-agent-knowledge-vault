@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS events (
     sentiment TEXT,
     related_tickers TEXT,
     impact_notes TEXT,
+    verified_by TEXT,
+    verification TEXT,
+    verifier_note TEXT,
     status TEXT DEFAULT 'new',
     is_duplicate INTEGER DEFAULT 0,
     is_noise INTEGER DEFAULT 0
@@ -45,8 +48,7 @@ CREATE TABLE IF NOT EXISTS analysis_runs (
     prompt_version TEXT
 );
 
-CREATE TABLE IF NOT EXISTS market_snapshots (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE IF NOT EXISTS market_snapshots (    id INTEGER PRIMARY KEY AUTOINCREMENT,
     symbol TEXT,
     name TEXT,
     price REAL,
@@ -54,6 +56,7 @@ CREATE TABLE IF NOT EXISTS market_snapshots (
     currency TEXT,
     source TEXT,
     captured_at TEXT,
+    asof_at TEXT,
     UNIQUE(symbol, captured_at)
 );
 
@@ -77,6 +80,30 @@ def init_db():
     conn.executescript(SCHEMA)
     conn.commit()
     conn.close()
+
+
+def _ensure_column(conn, table, column, ddl):
+    cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+
+
+def ensure_schema():
+    """Add new columns to existing databases without dropping data."""
+    with _WRITE_LOCK:
+        conn = _master_conn()
+        _ensure_column(conn, "events", "verified_by", "TEXT")
+        _ensure_column(conn, "events", "verification", "TEXT")
+        _ensure_column(conn, "events", "verifier_note", "TEXT")
+        _ensure_column(conn, "market_snapshots", "asof_at", "TEXT")
+        _ensure_column(conn, "events", "dedup_key", "TEXT")
+        _ensure_column(conn, "events", "dedup_group", "TEXT")
+        _ensure_column(conn, "events", "trust", "REAL DEFAULT 0.8")
+        _ensure_column(conn, "events", "confidence", "REAL DEFAULT 0.6")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_events_dedup_key ON events(dedup_key)"
+        )
+        conn.commit()
 
 
 def _event_guid(source, title, link):
@@ -181,6 +208,64 @@ def update_analysis(eid, category, severity, sentiment, related_tickers, impact_
         )
 
 
+def set_confidence(eid, confidence):
+    """Store analysis confidence (0..1) for an event."""
+    with _WRITE_LOCK:
+        conn = _master_conn()
+        conn.execute(
+            "UPDATE events SET confidence=? WHERE id=?", (confidence, eid)
+        )
+
+
+def set_trust(eid, trust):
+    """Store source trust (0..1) for an event."""
+    with _WRITE_LOCK:
+        conn = _master_conn()
+        conn.execute("UPDATE events SET trust=? WHERE id=?", (trust, eid))
+
+
+def mark_dedup(keep_id, dup_ids):
+    """Merge duplicates into one representative event.
+
+    keep_id stays primary; each id in dup_ids is flagged is_duplicate=1 and
+    linked to the group (dedup_group=keep_id).
+    """
+    if not dup_ids:
+        return
+    with _WRITE_LOCK:
+        conn = _master_conn()
+        conn.execute(
+            "UPDATE events SET is_duplicate=1, dedup_group=? WHERE id IN ({})".format(
+                ",".join("?" * len(dup_ids))
+            ),
+            [keep_id] + list(dup_ids),
+        )
+
+
+def pending_dedup(limit=500):
+    """Events without a dedup_key, newest first (candidates to key)."""
+    conn = connect()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM events WHERE dedup_key IS NULL "
+            "ORDER BY published DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def update_verification(eid, verified_by, verification, verifier_note=""):
+    """Store the cross-verification result (second-model opinion)."""
+    with _WRITE_LOCK:
+        conn = _master_conn()
+        conn.execute(
+            "UPDATE events SET verified_by=?, verification=?, verifier_note=? WHERE id=?",
+            (verified_by, verification, verifier_note, eid),
+        )
+
+
 def unanalyzed(limit=200, language=None):
     """Events that passed noise filter but have not been analyzed."""
     conn = connect()
@@ -220,15 +305,32 @@ def recent_events(limit=50, severity_min=0, category=None):
         conn.close()
 
 
-def insert_market_snapshot(symbol, name, price, change_pct, currency, source):
+def events_fetched_since(ts, limit=60, severity_min=0):
+    """Events collected after an ISO timestamp (the ones that are new since the
+    last report run), newest first. Falls back to recent_events if ts is None."""
+    if not ts:
+        return recent_events(limit=limit, severity_min=severity_min)
+    conn = connect()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM events WHERE is_noise=0 AND is_duplicate=0 "
+            "AND severity>=? AND fetched_at>=? ORDER BY fetched_at DESC LIMIT ?",
+            (severity_min, ts, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def insert_market_snapshot(symbol, name, price, change_pct, currency, source, asof_at=None):
     with _WRITE_LOCK:
         conn = _master_conn()
         captured = datetime.now(timezone.utc).isoformat(timespec="seconds")
         conn.execute(
             """INSERT OR REPLACE INTO market_snapshots
-               (symbol, name, price, change_pct, currency, source, captured_at)
-               VALUES (?,?,?,?,?,?,?)""",
-            (symbol, name, price, change_pct, currency, source, captured),
+               (symbol, name, price, change_pct, currency, source, captured_at, asof_at)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (symbol, name, price, change_pct, currency, source, captured, asof_at),
         )
 
 
@@ -237,7 +339,7 @@ def latest_market_snapshot(symbol):
     try:
         rows = conn.execute(
             """SELECT * FROM market_snapshots WHERE symbol=?
-               ORDER BY captured_at DESC LIMIT 1""",
+               ORDER BY COALESCE(asof_at, captured_at) DESC, captured_at DESC LIMIT 1""",
             (symbol,),
         ).fetchall()
         return [dict(r) for r in rows][0] if rows else None
