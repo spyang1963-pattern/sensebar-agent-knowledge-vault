@@ -1,0 +1,3 @@
+# publisher 嵌套的 financial-reports repo（不納入主 repo）
+repo/
+__pycache__/

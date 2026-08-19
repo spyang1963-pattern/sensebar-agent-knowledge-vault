@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>市場行事曆 - 金融情報系統</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", "Microsoft JhengHei", sans-serif; margin: 0;
+         background: #f5f6f8; color: #1c1e21; line-height: 1.7; }
+  header { background: #1b2a4a; color: #fff; padding: 14px 24px;
+           display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; flex: 1; }
+  header nav a { color: #cdd8ee; text-decoration: none; margin-left: 14px; font-size: 14px; }
+  header nav a:hover, header nav a.active { color: #fff; text-decoration: underline; }
+  #clock { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+  .clk { background: rgba(255,255,255,.08); border-radius: 6px; padding: 4px 10px; }
+  .clk-city { color: #9fb0cf; margin-right: 6px; }
+  .clk-time { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .mkt { margin-left: 8px; font-size: 12px; padding: 1px 7px; border-radius: 9px; display: inline-block; }
+  .mkt.open { background: #2e7d32; color: #fff; }
+  .mkt.closed { background: #5a6474; color: #fff; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 20px; }
+  .card { background: #fff; border-radius: 8px; padding: 18px 22px; margin: 14px 0;
+          box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .card h2 { margin: 0 0 12px; font-size: 18px; border-bottom: 1px solid #e3e6eb; padding-bottom: 6px; }
+  .card h3 { margin: 14px 0 6px; font-size: 15px; }
+  .muted { color: #666; font-size: 13px; }
+  .big-clock { display: flex; gap: 22px; flex-wrap: wrap; }
+  .bc { flex: 1; min-width: 240px; background: #f4f6fa; border-radius: 8px; padding: 14px 18px; }
+  .bc .city { font-size: 13px; color: #4a5568; }
+  .bc .time { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 1px; }
+  .bc .date { color: #666; font-size: 13px; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; color: #fff; }
+  .tag.est { background: #8a6d1d; }
+  .tag.ok { background: #2e7d32; }
+  .impact { font-size: 11px; color: #fff; border-radius: 4px; padding: 1px 6px; }
+  .impact.high { background: #d64545; }
+  .impact.medium { background: #d98527; }
+  .impact.low { background: #7a8699; }
+  .ev { border-left: 3px solid #ccc; padding: 8px 12px; margin: 8px 0; background: #fafbfc; border-radius: 0 6px 6px 0; }
+  .ev.high { border-left-color: #d64545; }
+  .ev .top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .ev .iname { font-weight: 600; font-size: 14px; }
+  .ev .desc { color: #333; font-size: 14px; }
+  .ev .meta { color: #777; font-size: 12px; margin-top: 2px; }
+  .forecast { background: #eef4fb; border-radius: 6px; padding: 6px 10px; margin-top: 6px; font-size: 13px; color: #1b2a4a; }
+  .forecast b { color: #1459c8; }
+  table.cal { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 8px; }
+  table.cal th { background: #eef1f6; font-size: 12px; color: #4a5568; padding: 4px 0; border: 1px solid #d8dce3; }
+  table.cal td { border: 1px solid #d8dce3; vertical-align: top; height: 78px; padding: 3px; font-size: 12px; }
+  table.cal td.today { background: #fff8e1; outline: 2px solid #ca8a04; outline-offset: -2px; }
+  table.cal .dn { font-weight: 600; color: #33415c; }
+  table.cal .evdot { display: block; border-radius: 4px; color: #fff; font-size: 11px;
+         padding: 1px 5px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  table.cal .evdot.done { opacity: .5; text-decoration: line-through; }
+  .month-title { font-weight: 700; font-size: 15px; margin-top: 4px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; font-size: 12px; color: #4a5568; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .empty { color: #999; font-style: italic; }
+  footer { text-align: center; color: #999; font-size: 12px; padding: 20px; }
+  @media (max-width: 640px) { table.cal { font-size: 11px; } table.cal td { height: 60px; } .evdot { font-size: 10px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>金融情報系統報告</h1>
+  <nav>
+    <a href="{{ up }}index.html">首頁</a>
+    <a href="{{ up }}calendar.html" class="active">行事曆</a>
+    <a href="{{ up }}daily/{{ latest_daily_day }}.html">最新每日</a>
+    <a href="{{ up }}{{ latest_deep_slug }}.html">最新深度</a>
+  </nav>
+  <div id="clock">
+    <span class="clk"><span class="clk-city">台北</span><span class="clk-time" id="clk-tw">--:--:--</span><span class="mkt closed" id="tw-idx">…</span><span class="mkt closed" id="tx-day">…</span><span class="mkt closed" id="tx-night">…</span></span>
+    <span class="clk"><span class="clk-city">紐約</span><span class="clk-time" id="clk-ny">--:--:--</span><span class="mkt closed" id="ny-mkt">…</span><span class="mkt closed" id="ny-night">…</span></span>
+  </div>
+</header>
+<div class="wrap">
+  <div class="card">
+    <h2>即時時鐘 · 台北 / 紐約 對照</h2>
+    <div class="big-clock">
+      <div class="bc">
+        <div class="city">台北時間 (GMT+8)</div>
+        <div class="time" id="bc-tw">--:--:--</div>
+        <div class="date" id="bc-tw-d">...</div>
+        <span class="mkt closed" id="tw-idx2">…</span>
+        <span class="mkt closed" id="tx-day2">…</span>
+        <span class="mkt closed" id="tx-night2">…</span>
+      </div>
+      <div class="bc">
+        <div class="city">紐約時間 (美東 ET)</div>
+        <div class="time" id="bc-ny">--:--:--</div>
+        <div class="date" id="bc-ny-d">...</div>
+        <span class="mkt closed" id="ny-mkt2">…</span>
+        <span class="mkt closed" id="ny-night2">…</span>
+      </div>
+    </div>
+    <p class="muted" style="margin-bottom:0">加權指數 09:00-13:30 · 台指期日盤 08:45-13:45 · 台指期夜盤 15:00-次日05:00（台北時間，週一至五）· 美股 09:30-16:00 · 美股夜盤 16:00-20:00（美東，冬令延後1小時開收）</p>
+  </div>
+{% macro ev(e) %}
+<div class="ev {{ 'high' if e.impact=='high' else '' }}">
+  <div class="top">
+    <span class="iname">{{ e.institution }}</span>
+    <span class="tag" style="background:{{ cal.categories[e.category]['color'] }}">{{ e.cat_label }}</span>
+    {% if e.impact != 'medium' %}<span class="impact {{ e.impact }}">影響{{ e.impact_label }}</span>{% endif %}
+    {% if e.estimated %}<span class="tag est">日期估算</span>{% else %}<span class="tag ok">官方時程</span>{% endif %}
+  </div>
+  <div class="desc">{{ e.event }}</div>
+  <div class="meta">{{ e.date_display }} · 台灣時間 {{ e.time_tw }}（{{ e.tw_label }}）{% if e.time_et != '-' %} · 美東 {{ e.time_et }}{% endif %}{% if e.days_left is defined %}{% if e.done %} · <b style="color:#2e7d32">已完成</b>{% elif e.days_left==0 %} · <b>今天</b>{% elif e.days_left==1 %} · <b>明天</b>{% else %} · {{ e.days_left }}天後{% endif %}{% endif %}</div>
+  {% if e.forecast %}<div class="forecast"><b>法人預測方向：</b>{{ e.forecast }}</div>{% endif %}
+</div>
+{% endmacro %}
+  <div class="card">
+    <h2>今日 / 明日提醒</h2>
+    <h3>{{ cal.today_display }}（今日）</h3>
+    {% if cal.today_events %}
+      {% for e in cal.today_events %}{{ ev(e) }}{% endfor %}
+    {% else %}
+      <p class="empty">今日無排定的重大機構事件，仍請留意盤中突發新聞與 Fed 官員談話。</p>
+    {% endif %}
+    <h3>{{ cal.tomorrow_display }}（明日）</h3>
+    {% if cal.tomorrow_events %}
+      {% for e in cal.tomorrow_events %}{{ ev(e) }}{% endfor %}
+    {% else %}
+      <p class="empty">明日暫無排定的重大機構事件。</p>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h2>未來 7 天重點提醒</h2>
+    {% set soon = cal.upcoming | selectattr('days_left', 'ge', 0) | selectattr('days_left', 'le', 7) | list %}
+    {% if soon %}
+      {% for e in soon %}{{ ev(e) }}{% endfor %}
+    {% else %}
+      <p class="empty">未來 7 天沒有排定事件。</p>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h2>機構事件月曆</h2>
+    {% for m in cal.months %}
+      <div class="month-title">{{ m.title }}</div>
+      <table class="cal">
+        <tr><th>一</th><th>二</th><th>三</th><th>四</th><th>五</th><th>六</th><th>日</th></tr>
+        {% for week in m.cells %}
+        <tr>
+          {% for cell in week %}
+          <td{% if cell and cell.is_today %} class="today"{% endif %}>
+            {% if cell %}
+              <span class="dn">{{ cell.day }}</span>
+              {% for e in cell.events %}
+                <span class="evdot {{ 'done' if e.done else '' }}" style="background:{{ cal.categories[e.category]['color'] }}" title="{{ e.institution }}｜{{ e.event }}｜台灣時間 {{ e.time_tw }}{{ '｜已完成' if e.done else '' }}">{{ e.cat_label }}{% if e.time_tw != '-' %}:{{ e.time_tw }}{% endif %}</span>
+              {% endfor %}
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </table>
+    {% endfor %}
+    <div class="legend">
+      {% for k, c in cal.categories.items() %}
+      <span><i style="background:{{ c['color'] }}"></i>{{ c['label'] }}</span>
+      {% endfor %}
+    </div>
+    <p class="muted" style="margin-bottom:0">格內時間為台灣時間；「日期估算」為依慣例推算，實際日期請以發布機構為準。已過期的完成事項會保留約一個月（灰色刪除線），方便回顧。</p>
+  </div>
+  <div class="card">
+    <h2>法人機構預測方向</h2>
+    <p class="muted">以下為彙整市場共識之參考資訊，非投資建議；實際以官方發布與即時市場定價為準。</p>
+    {% for e in cal.forecasts %}
+      <div class="ev {{ 'high' if e.impact=='high' else '' }}">
+        <div class="top">
+          <span class="iname">{{ e.institution }}</span>
+          <span class="tag" style="background:{{ cal.categories[e.category]['color'] }}">{{ e.cat_label }}</span>
+          {% if e.estimated %}<span class="tag est">日期估算</span>{% else %}<span class="tag ok">官方時程</span>{% endif %}
+        </div>
+        <div class="desc">{{ e.event }}</div>
+        <div class="meta">{{ e.date_display }} · 台灣時間 {{ e.time_tw }}（{{ e.tw_label }}）{% if e.days_left is defined %}{% if e.done %} · <b style="color:#2e7d32">已完成</b>{% else %} · {{ e.days_left }}天後{% endif %}{% endif %}</div>
+        {% if e.forecast %}<div class="forecast"><b>法人預測方向：</b>{{ e.forecast }}</div>{% endif %}
+      </div>
+    {% endfor %}
+  </div>
+</div>
+<footer>由金融情報系統自動發佈 · 僅供參考，不構成投資建議</footer>
+<script>
+const WEEK = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function nowParts(tz){
+  const p = {};
+  new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', month: 'short',
+    day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+  }).formatToParts(new Date()).forEach(x => p[x.type] = x.value);
+  return p;
+}
+function marketOpen(tz, open, close){
+  const p = nowParts(tz);
+  const wd = WEEK.indexOf(p.weekday);
+  const m = parseInt(p.hour,10)*60 + parseInt(p.minute,10);
+  return wd>=1 && wd<=5 && m>=open && m<close;
+}
+// Taiwan index-futures night session 15:00 -> next-day 05:00 (crosses midnight):
+// 15:00-24:00 Mon-Fri, plus 00:00-05:00 Tue-Sat (Sat 00:00-05:00 is Fri night session).
+function nightOpen(tz){
+  const p = nowParts(tz);
+  const wd = WEEK.indexOf(p.weekday);
+  const m = parseInt(p.hour,10)*60 + parseInt(p.minute,10);
+  if (m >= 5*60 && m < 15*60) return false;   // 05:00-15:00 recess
+  if (m >= 15*60) return wd >= 1 && wd <= 5;   // 15:00-24:00 Mon-Fri
+  return wd >= 2 && wd <= 6;                   // 00:00-05:00 Tue-Sat
+}
+function pad(n){ return String(n).padStart(2,'0'); }
+function setMkt(id, open, label){
+  const el = document.getElementById(id);
+  el.className = 'mkt ' + (open ? 'open' : 'closed');
+  el.textContent = (label ? label + ' ' : '') + (open ? '開盤中' : '未開盤');
+}
+function tick(){
+  const tw = nowParts('Asia/Taipei');
+  const ny = nowParts('America/New_York');
+  document.getElementById('clk-tw').textContent = pad(tw.hour)+':'+pad(tw.minute)+':'+pad(tw.second);
+  document.getElementById('clk-ny').textContent = pad(ny.hour)+':'+pad(ny.minute)+':'+pad(ny.second);
+  document.getElementById('bc-tw').textContent = pad(tw.hour)+':'+pad(tw.minute)+':'+pad(tw.second);
+  document.getElementById('bc-ny').textContent = pad(ny.hour)+':'+pad(ny.minute)+':'+pad(ny.second);
+  document.getElementById('bc-tw-d').textContent = tw.month + ' ' + tw.day + '（' + tw.weekday + '）';
+  document.getElementById('bc-ny-d').textContent = ny.month + ' ' + ny.day + '（' + ny.weekday + '）';
+  // Taiwan: TWSE weighted index 09:00-13:30; TX futures day 08:45-13:45; TX night 15:00-05:00
+  setMkt('tw-idx',  marketOpen('Asia/Taipei', 9*60, 13*60+30), '加權');
+  setMkt('tx-day',  marketOpen('Asia/Taipei', 8*60+45, 13*60+45), '期日盤');
+  setMkt('tx-night', nightOpen('Asia/Taipei'), '期夜盤');
+  // US: regular session 09:30-16:00 ET; after-hours 16:00-20:00 ET
+  setMkt('ny-mkt',  marketOpen('America/New_York', 9*60+30, 16*60), '美股');
+  setMkt('ny-night', marketOpen('America/New_York', 16*60, 20*60), '美股夜');
+  // duplicate into the big-clock cards
+  setMkt('tw-idx2',  marketOpen('Asia/Taipei', 9*60, 13*60+30), '加權');
+  setMkt('tx-day2',  marketOpen('Asia/Taipei', 8*60+45, 13*60+45), '期日盤');
+  setMkt('tx-night2', nightOpen('Asia/Taipei'), '期夜盤');
+  setMkt('ny-mkt2',  marketOpen('America/New_York', 9*60+30, 16*60), '美股');
+  setMkt('ny-night2', marketOpen('America/New_York', 16*60, 20*60), '美股夜');
+}
+tick(); setInterval(tick, 1000);
+</script>
+</body>
+</html>
