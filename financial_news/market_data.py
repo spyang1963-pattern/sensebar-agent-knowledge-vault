@@ -57,6 +57,19 @@ SYMBOLS = [
 
 HTTP_HEADERS = {"User-Agent": "Mozilla/5.0 (sensebar-financial-news/1.0)"}
 
+# Display units: indices/DXY are points, yields are percent, everything else
+# keeps its quote currency (audit pass flagged TWD/USD on indices as errors).
+INDEX_SYMBOLS = {"^TWII", "^GSPC", "^IXIC", "^DJI", "^N225", "000001.SS", "HSI", "DX-Y.NYB"}
+YIELD_SYMBOLS = {"^TNX"}
+
+
+def _display_unit(symbol, cur):
+    if symbol in YIELD_SYMBOLS:
+        return "%"
+    if symbol in INDEX_SYMBOLS:
+        return "點"
+    return cur
+
 
 def fetch_symbol(symbol):
     """Return (symbol, price, change_pct, asof_ts) or None. Uses v8 chart API.
@@ -159,7 +172,8 @@ def latest_table():
         if snap and snap["price"] is not None:
             chg = snap["change_pct"]
             arrow = "▲" if chg is not None and chg > 0 else ("▼" if chg is not None and chg < 0 else "―")
-            rows.append(f"{name:<12} {snap['price']:>12,.2f} {cur:>4} {arrow}{chg if chg is not None else 0:+.2f}%")
+            unit = _display_unit(symbol, cur)
+            rows.append(f"{name:<12} {snap['price']:>12,.2f} {unit:>4} {arrow}{chg if chg is not None else 0:+.2f}%")
     return rows
 
 
