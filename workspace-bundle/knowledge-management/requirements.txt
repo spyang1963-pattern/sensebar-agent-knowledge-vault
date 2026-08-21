@@ -1,0 +1,15 @@
+# 知識管理專案套件
+# 基礎層套件已包含，這裡只列專屬的
+
+# 字幕處理
+whisper>=1.0.0
+groq>=0.4.0
+
+# 影片處理
+# ffmpeg 需系統安裝，不是 pip 套件
+
+# YouTube
+# yt-dlp 在基礎層
+
+# API
+google-genai>=0.3.0

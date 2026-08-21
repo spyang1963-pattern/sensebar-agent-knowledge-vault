@@ -1,0 +1,58 @@
+# workspace-bundle 預設設定
+# 此檔案跟著 Git 更新，不要放機器專用設定
+
+# ── 機器角色定義 ──
+# 每台機器在 machine.yaml 中指定自己扮演哪些角色
+roles:
+  collector: "收集器 - 負責抓取資料（YouTube/新聞）"
+  analyzer: "分析器 - 負責處理和分析（AI 轉錄/新聞分析）"
+  reporter: "報告器 - 負責產出報告和發布（GitHub Pages）"
+
+# ── 路徑設定 ──
+paths:
+  workspace: "D:\\AI-Agent-Workspace"
+  knowledge_base: "D:\\AI-Agent-Workspace\\knowledge-base"
+  youtube_videos: "D:\\YouTube_Videos"
+  financial_news: "D:\\AI-Agent-Workspace\\financial_news"
+  stock_monitor: "D:\\AI-Agent-Workspace\\stock-monitor"
+
+# ── 頻道監控設定 ──
+channel_watcher:
+  schedule: "daily 22:00"
+  max_initial_per_scan: 3
+  subtitle_langs:
+    - zh-Hant
+    - zh-TW
+    - zh
+    - en
+
+# ── 金融新聞設定 ──
+financial_news:
+  schedule: "every 30 minutes"
+  collect_sources:
+    - google_news
+    - direct_feeds
+  analyze_batch_size: 150
+  analyze_time_budget: 480
+
+# ── 通知設定 ──
+notification:
+  line_enabled: true
+  email_enabled: true
+  email_recipient: "spyang1963@gmail.com"
+
+# ── 套件需求 ──
+# 每個 role 需要的套件，setup 時自動安裝
+role_requirements:
+  collector:
+    - yt-dlp
+    - requests
+    - PyYAML
+    - feedparser
+  analyzer:
+    - google-genai
+    - groq
+    - whisper
+  reporter:
+    - flask
+    - python-docx

@@ -1,0 +1,22 @@
+# 基礎層套件（所有專案共用）
+yt-dlp>=2024.1.0
+requests>=2.31.0
+PyYAML>=6.0
+feedparser>=6.0.0
+watchdog>=3.0.0
+paramiko>=3.0.0
+
+# Vision Sidecar（讓純文字模型讀圖）
+groq>=0.12.0
+pymupdf>=1.24.0
+python-pptx>=1.0.0
+python-docx>=1.1.0
+pillow>=10.0.0
+
+# EP03 檔案處理工具（Office/PDF/資料分析/生圖/QR）
+openpyxl>=3.1.0
+markitdown[pdf,docx,pptx,xlsx]>=0.1.6
+reportlab>=4.0.0
+matplotlib>=3.8.0
+qrcode[pil]>=7.4.0
+youtube-transcript-api>=1.0.0

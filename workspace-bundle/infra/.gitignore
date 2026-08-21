@@ -1,0 +1,15 @@
+# 機器專用設定（每台不同）
+config/machine.yaml
+config/.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
