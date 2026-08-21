@@ -57,7 +57,7 @@ SYSTEM_PROMPT = """你是一名資深的國際金融分析師。使用者會給�
 針對股/債/匯/商品四大市場，給出今日整體方向與一句話總結。
 
 ## 二、行情快照與台股夜盤解析
-說明行情快照的時效性（若快照沿用舊收盤資料要註明），並重點解析台股夜盤／台指期的即時變動，以及與美股的背離或連動。
+系統會額外提供一份【今日最新行情快照（唯一可信來源）】：本節必須以該快照的數據與「快照資料時間」為準，嚴禁引用近兩日報告或分析師人工報告中的行情價格或快照時間作為當前行情。並重點解析台股夜盤／台指期的即時變動，以及與美股的背離或連動。
 
 ## 三、重大事件深度解讀
 針對報告中的重大事件（severity 較高者），逐一拆解：
@@ -141,6 +141,30 @@ def find_bigpickle_report(day):
     return None
 
 
+def _fresh_snapshot_text():
+    """Pull the latest market snapshot straight from the DB (same source the
+    daily report uses) so the model never relies on stale numbers found in
+    previous-day reports (2026-08-20 PC3 incident: deep report quoted the
+    prior day's close because prev-days text contained it)."""
+    try:
+        import market_data
+        table = market_data.latest_table()
+        if not table:
+            return None
+        cap_disp, age_h, stale = market_data.latest_meta()
+        warn = "（注意：快照已超過 24 小時未更新，請在報告中明確標示時效限制）" if stale else ""
+        return (
+            "【今日最新行情快照（系統直接自資料庫取得，唯一可信來源）】\n"
+            f"快照資料時間：{cap_disp}{warn}\n"
+            f"{table}\n"
+            "『二、行情快照』一節必須使用上表數據與時間；"
+            "嚴禁引用近兩日報告或 Big Pickle 報告中的行情價格或快照時間作為當前行情。"
+        )
+    except Exception as e:
+        print(f"[deep_report] fresh snapshot unavailable: {e}")
+        return None
+
+
 def _verification_pass(analysis_text):
     """Run a fact-check pass on the generated deep report. Returns (text, note)."""
     from google import genai
@@ -186,7 +210,8 @@ def _verification_pass(analysis_text):
     return header + analysis_text, f"核查發現疑點（已附註報告開頭）"
 
 
-def deep_analyze(md_text, bigpickle_text=None, prev_days_text=None, major_events_text=None):
+def deep_analyze(md_text, bigpickle_text=None, prev_days_text=None, major_events_text=None,
+                 snapshot_text=None):
     """Call Gemini for the deep analysis. Returns markdown text."""
     from google import genai
     from google.genai import types
@@ -195,6 +220,10 @@ def deep_analyze(md_text, bigpickle_text=None, prev_days_text=None, major_events
 
     parts = []
     parts.append("【今日金融重點報告】\n" + md_text[:12000])
+    if snapshot_text:
+        # placed immediately after today's report so it outranks the
+        # prev-days text that follows
+        parts.append(snapshot_text)
     if prev_days_text:
         parts.append("【近兩日金融重點報告（供跨日相關性分析）】\n" + prev_days_text)
     if bigpickle_text:
@@ -493,8 +522,13 @@ def run(day=None, slot=None, skip_email=False, skip_line=False, force=False):
     major_events = _major_events_with_sources(day)
     print(f"[deep_report] 重大事件引註資料已載入")
 
+    snapshot_text = _fresh_snapshot_text()
+    if snapshot_text:
+        print("[deep_report] 已注入今日最新行情快照（唯一可信來源）")
+
     analysis_md = deep_analyze(md_text, bigpickle_text=bigpickle_text,
-                               prev_days_text=prev_days, major_events_text=major_events)
+                               prev_days_text=prev_days, major_events_text=major_events,
+                               snapshot_text=snapshot_text)
     now_str = now.strftime("%Y-%m-%d %H:%M（台灣時間）")
     doc_path = write_doc(analysis_md, day, now_str, label=label)
     print(f"[deep_report] {label}深度報告已產生: {doc_path}")
