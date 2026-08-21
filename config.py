@@ -16,6 +16,7 @@ MACHINE_ALIASES = {
     "laptop-vag7lbd2": "notebook",
     "desktop-nl6va8t": "pc2",
     "desktop-ndlv9li": "pc1",
+    "desktop-mfkvcso": "pc3",
 }
 
 def get_machine():
@@ -64,6 +65,13 @@ MACHINE_PATHS = {
         "logs": r"D:\AI-Agent-Workspace\logs",
         "shared": SHARED_ROOT,
     },
+    "pc3": {
+        "videos": r"D:\YouTube_Videos",
+        "output": r"D:\sensebar-agent-knowledge-vault\output",
+        "working": r"D:\sensebar-agent-knowledge-vault\working",
+        "logs": r"D:\sensebar-agent-knowledge-vault\logs",
+        "shared": SHARED_ROOT,
+    },
 }
 
 # 取得當前機器的路徑
@@ -82,6 +90,7 @@ MACHINE_ROLES = {
     "pc2": "downloader",      # 負責YouTube下載+轉寫
     "pc1": "adhoc_worker",    # 負責臨時任務
     "notebook": "harvester",  # 負責收成+KB管理
+    "pc3": "harvester",       # 接手收成+KB管理（2026-08 起與 notebook 交接）
 }
 
 def get_machine_role():
