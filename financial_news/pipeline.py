@@ -72,7 +72,7 @@ def run_analyze(batch_size=40, time_budget=None):
     return analyzed, quota_hit
 
 
-def run_report(deep=False, slot=None):
+def run_report(deep=False, slot=None, no_push=False):
     # Always refresh the market snapshot right before writing a report so the
     # report never reuses yesterday's quotes (Yahoo close can lag by hours).
     try:
@@ -125,7 +125,12 @@ def run_report(deep=False, slot=None):
     try:
         import publisher.build as publisher
         publisher.build()
-        publisher.push()
+        if no_push:
+            msg3 = "publish: build only (--no-push), site not pushed"
+            print(msg3)
+            logger.info(msg3)
+        else:
+            publisher.push()
     except Exception as e:
         msg3 = f"publish failed: {e}"
         print(msg3)
@@ -179,6 +184,8 @@ def main():
                         help="deep report slot (morning/evening)")
     parser.add_argument("--time-budget", type=int, default=None,
                         help="max seconds for analysis pass (default 300 or $ANALYSIS_TIME_BUDGET)")
+    parser.add_argument("--no-push", action="store_true",
+                        help="build the site locally but skip git push")
     args = parser.parse_args()
 
     if args.full:
@@ -191,7 +198,8 @@ def main():
         if args.analyze:
             run_analyze(args.batch, time_budget=args.time_budget)
         if args.report:
-            run_report(deep=args.deep or not args.no_deep, slot=args.slot)
+            run_report(deep=args.deep or not args.no_deep, slot=args.slot,
+                       no_push=args.no_push)
         if not any([args.collect, args.filter, args.analyze, args.report]):
             parser.print_help()
 
