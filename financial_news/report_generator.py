@@ -97,7 +97,9 @@ def generate_report(events, title_date=None, new_events=None, since_display=None
     lines.append("")
 
     # --- New events since last run (time flow) ---
-    new_events = [e for e in (new_events or []) if e["severity"] >= 1]
+    # Recency feed: show everything fetched since the previous write,
+    # including not-yet-analyzed events (they carry severity=0). The point
+    # of this section is "what just arrived", not importance ranking.
     if new_events:
         lines.append("## 🆕 本次新增事件")
         lines.append("")
