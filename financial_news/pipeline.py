@@ -198,8 +198,9 @@ def main():
         if args.analyze:
             run_analyze(args.batch, time_budget=args.time_budget)
         if args.report:
-            run_report(deep=args.deep or not args.no_deep, slot=args.slot,
-                       no_push=args.no_push)
+            # Deep analysis must be requested explicitly (--deep). The old
+            # "default-on" behavior silently burned a Gemini call every tick.
+            run_report(deep=args.deep, slot=args.slot, no_push=args.no_push)
         if not any([args.collect, args.filter, args.analyze, args.report]):
             parser.print_help()
 
