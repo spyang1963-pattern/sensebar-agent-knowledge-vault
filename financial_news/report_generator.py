@@ -109,7 +109,7 @@ def generate_report(events, title_date=None, new_events=None, since_display=None
         for e in sorted(new_events, key=lambda x: x["fetched_at"] or "", reverse=True):
             cat = CATEGORY_NAMES.get(e["category"], e["category"] or "未分類")
             senti = e["sentiment"] or "neutral"
-            ts = _fmt_ts(e["fetched_at"] or e["published"])
+            ts = _fmt_ts(e["published"] or e["fetched_at"])
             lines.append(f"- `[{ts}]` **{_sev_badge(e['severity'])}[{cat}][{senti}]** {e['title']} `{e['source']}`")
             lines.append(f"  - 影響: {e['impact_notes'] or '無'}")
             if e.get("related_tickers"):
