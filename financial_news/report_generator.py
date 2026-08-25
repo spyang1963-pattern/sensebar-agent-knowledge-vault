@@ -101,12 +101,17 @@ def generate_report(events, title_date=None, new_events=None, since_display=None
     # including not-yet-analyzed events (they carry severity=0). The point
     # of this section is "what just arrived", not importance ranking.
     if new_events:
+        important = [e for e in new_events if e["severity"] >= 1]
+        others = [e for e in new_events if e["severity"] < 1]
         lines.append("## 🆕 本次新增事件")
         lines.append("")
         label = f"（自上次產出 {since_display} 以來）" if since_display else ""
-        lines.append(f"> 本次新增 {len(new_events)} 筆{label}")
+        summary = f"> 本次新增 {len(new_events)} 筆{label}"
+        if important:
+            summary += f"，重要 {len(important)} 筆"
+        lines.append(summary)
         lines.append("")
-        for e in sorted(new_events, key=lambda x: x["fetched_at"] or "", reverse=True):
+        for e in sorted(important, key=lambda x: x["fetched_at"] or "", reverse=True):
             cat = CATEGORY_NAMES.get(e["category"], e["category"] or "未分類")
             senti = e["sentiment"] or "neutral"
             ts = _fmt_ts(e["published"] or e["fetched_at"])
@@ -114,6 +119,17 @@ def generate_report(events, title_date=None, new_events=None, since_display=None
             lines.append(f"  - 影響: {e['impact_notes'] or '無'}")
             if e.get("related_tickers"):
                 lines.append(f"  - 標的: `{e['related_tickers']}`")
+            lines.append("")
+        if others:
+            shown = sorted(others, key=lambda x: x["fetched_at"] or "", reverse=True)[:15]
+            lines.append(f"**其他同時段收錄（未分析，共 {len(others)} 筆）**：")
+            lines.append("")
+            for e in shown:
+                ts = _fmt_ts(e["published"] or e["fetched_at"])
+                lines.append(f"- `[{ts}]` {e['title']}（`{e['source']}`）")
+            hidden = len(others) - len(shown)
+            if hidden > 0:
+                lines.append(f"- ……等，其餘 {hidden} 筆從略")
             lines.append("")
         lines.append("---")
         lines.append("")
