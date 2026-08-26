@@ -76,13 +76,6 @@ def connect():
     return conn
 
 
-def init_db():
-    conn = connect()
-    conn.executescript(SCHEMA)
-    conn.commit()
-    conn.close()
-
-
 def _ensure_column(conn, table, column, ddl):
     cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
     if column not in cols:
@@ -101,6 +94,7 @@ def ensure_schema():
         _ensure_column(conn, "events", "dedup_group", "TEXT")
         _ensure_column(conn, "events", "trust", "REAL DEFAULT 0.8")
         _ensure_column(conn, "events", "confidence", "REAL DEFAULT 0.6")
+        _ensure_column(conn, "events", "last_analyzed_at", "TEXT")
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_events_dedup_key ON events(dedup_key)"
         )
@@ -127,11 +121,6 @@ def _master_conn():
 def init_db():
     conn = connect()
     conn.executescript(SCHEMA)
-    # Migration: add last_analyzed_at for existing databases
-    try:
-        conn.execute("ALTER TABLE events ADD COLUMN last_analyzed_at TEXT")
-    except sqlite3.OperationalError:
-        pass  # column already exists
     conn.commit()
     conn.close()
 
