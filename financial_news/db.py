@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS events (
     verifier_note TEXT,
     status TEXT DEFAULT 'new',
     is_duplicate INTEGER DEFAULT 0,
-    is_noise INTEGER DEFAULT 0
+    is_noise INTEGER DEFAULT 0,
+    last_analyzed_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS analysis_runs (
@@ -126,6 +127,11 @@ def _master_conn():
 def init_db():
     conn = connect()
     conn.executescript(SCHEMA)
+    # Migration: add last_analyzed_at for existing databases
+    try:
+        conn.execute("ALTER TABLE events ADD COLUMN last_analyzed_at TEXT")
+    except sqlite3.OperationalError:
+        pass  # column already exists
     conn.commit()
     conn.close()
 
@@ -201,10 +207,12 @@ def mark_duplicate(ids):
 def update_analysis(eid, category, severity, sentiment, related_tickers, impact_notes):
     with _WRITE_LOCK:
         conn = _master_conn()
+        analyzed_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
         conn.execute(
             """UPDATE events SET category=?, severity=?, sentiment=?,
-               related_tickers=?, impact_notes=?, status='analyzed' WHERE id=?""",
-            (category, severity, sentiment, related_tickers, impact_notes, eid),
+               related_tickers=?, impact_notes=?, status='analyzed',
+               last_analyzed_at=? WHERE id=?""",
+            (category, severity, sentiment, related_tickers, impact_notes, analyzed_at, eid),
         )
 
 
@@ -314,8 +322,9 @@ def events_fetched_since(ts, limit=60, severity_min=0):
     try:
         rows = conn.execute(
             "SELECT * FROM events WHERE is_noise=0 AND is_duplicate=0 "
-            "AND severity>=? AND fetched_at>=? ORDER BY fetched_at DESC LIMIT ?",
-            (severity_min, ts, limit),
+            "AND severity>=? AND (fetched_at>=? OR last_analyzed_at>=?) "
+            "ORDER BY fetched_at DESC LIMIT ?",
+            (severity_min, ts, ts, limit),
         ).fetchall()
         return [dict(r) for r in rows]
     finally:
