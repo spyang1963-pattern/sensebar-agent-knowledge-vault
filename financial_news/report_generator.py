@@ -96,6 +96,30 @@ def generate_report(events, title_date=None, new_events=None, since_display=None
     lines.append("> 本報告由 AI 自動生成，僅供參考，不構成投資建議。")
     lines.append("")
 
+    # --- Today's scheduled calendar events (data-release focus) ---
+    try:
+        from datetime import date as _date
+        from calendar_engine import upcoming_events
+        try:
+            today = _date.fromisoformat(date_str)
+        except Exception:
+            today = now.date()
+        evts = upcoming_events(today, days=1)
+        if evts:
+            lines.append("## 📅 行事曆排期事件")
+            lines.append("")
+            lines.append("> 下列為今日／近期已排定、可能影響市場的重要事件（法人預期供參考）：")
+            lines.append("")
+            for e in evts:
+                flag = "⭐ 今天" if e["date"] == today.isoformat() else f"📅 {e['date']}"
+                fcast = f"\n>   法人預期：{e['forecast']}" if e.get("forecast") else ""
+                lines.append(f"- {flag} [{e['impact_label']}]{e['institution']}：{e['event']}{fcast}")
+            lines.append("")
+            lines.append("---")
+            lines.append("")
+    except Exception:
+        pass
+
     # --- New events since last run (time flow) ---
     # Recency feed: show everything fetched since the previous write,
     # including not-yet-analyzed events (they carry severity=0). The point

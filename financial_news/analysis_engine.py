@@ -61,7 +61,17 @@ SYSTEM_PROMPT = """你是一名專業的國際金融分析師。你的任務是�
 - severity 只給 0-3；0=無影響，3=重大事件（戰爭、央行重大決策、系統性風險）
 - outlook 必須簡潔具體，不要空泛
 - watch 標明是「看好」或「警示」
+- 若今日有行事曆排期事件（CPI/NFP/FOMC等），與該事件相關的新聞**必須**給 severity >= 2 且在 impact_notes 裡明確提及該事件名稱與數據
 """
+
+
+def _calendar_context():
+    """Inject today's calendar events into analysis prompts."""
+    try:
+        from calendar_engine import event_summary_for_prompt
+        return event_summary_for_prompt()
+    except Exception:
+        return ""
 
 
 def _read_key():
@@ -109,7 +119,7 @@ def analyze_batch(events, model=MODEL, max_attempts=8):
         f"   摘要: {ev['summary'][:300]}"
         for ev in events
     )
-    prompt = f"請分析以下 {len(events)} 則新聞事件：\n\n{payload}\n\n{EVENT_PROMPT_SUFFIX}"
+    prompt = f"{_calendar_context()}請分析以下 {len(events)} 則新聞事件：\n\n{payload}\n\n{EVENT_PROMPT_SUFFIX}"
 
     last_err = ""
     for attempt in range(max_attempts):

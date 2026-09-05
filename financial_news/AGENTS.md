@@ -82,3 +82,16 @@
 - 根因：`build.py::collect_reports()` 的 `items.sort(key=lambda x: (x["day"], x["slot"]), reverse=True)` 用中文 slot 排序——「早上」(U+65E9) 的 Unicode 大於「傍晚」(U+508D)，reverse 後**早上反而排前面**，`latest_deep = next(...)` 取到早上報告。
 - 修正：sort key 改用 slot 數值 rank：`{"": 0, "早上": 0, "傍晚": 1}.get(x["slot"], 0)`，傍晚排前面。
 - 教訓：① 中文當排序 key 依賴 Unicode 順序極易出錯，需用數值 rank。② `deep_day_slug` 用 `sorted(slug)[-1]` 依賴字串 'pm'>'am' 恰巧正確，勿改成中文比較。③ 判定「報告有沒有發布」以 repo 根 deep/ 檔案與 git log 為準，不要只看導覽連結。④ 回報「沒發布」前先 fetch 線上 URL 本身（如直接開 deep/2026-08-13-pm.html），確認檔案存在與內容日期。
+
+## 行事曆驅動引擎（2026-09-05 新增）
+- `calendar_engine.py`：以 `publisher\market_calendar.py::build_calendar()` 為資料源，提供 `today_events` / `upcoming_events` / `event_queries`（排期分類→Google News 查詢）／`event_summary_for_prompt`（分析/深度報告必覆蓋上下文）／`coverage_check`（品質稽核用）。
+- 已接入四處：`news_collector.collect_google_news()`（動態查詢與靜態 SEARCH_QUERIES 合併去重）、`analysis_engine`（prompt 前綴注入排期摘要）、`deep_report.deep_analyze()`（【行事曆排期事件】區塊＋SYSTEM_PROMPT「三、數據決戰焦點」）、`report_generator.generate_report()`（📅 行事曆排期事件區塊）、`quality_audit`（排期覆蓋稽核）。
+- ⚠️ `build_calendar()` 回傳的 dict **沒有** 扁平 `events` 鍵！事件分散在 `today_events` / `tomorrow_events` / `upcoming` / `months`（`upcoming` 是完整扁平清單，含過去 30 天保留事件）。calendar_engine 一律讀 `d["upcoming"]`。
+- ⚠️ 任何新寫的「區塊渲染」放進 report_generator 時，`today` 要用報告標題日期（`_date.fromisoformat(title_date)`）而非實際時間，否則離線測試（title_date 與現在日期不同）會看不到區塊。
+
+## ⚠️ Windows 檔案編碼災難（2026-09-05 實際發生）
+- 現象：用 PowerShell 5.1 `Get-Content -Raw` + `-replace` + `Set-Content` 改含中文的 .py，結果整個檔案變亂碼（GBK/UTF-8 雙重轉碼），deep_report.py 一度損毀（靠 git checkout 還原）。
+- 教訓：**絕不要用 PowerShell `-replace`/`Set-Content` 改含中文的檔案**。改用 edit 工具（原子替換）或 `python -c`／既有 python 腳本改檔。本機 PowerShell 輸出的中文也會被 GBK 弄糊，讀檔用 Read 工具，跑腳本加 `$env:PYTHONIOENCODING="utf-8"`。
+
+## ⚠️ quality_audit --recent 參數既有 bug（2026-09-05 修復）
+- 原本 `audit(recent_hours=...)` 的 volume 查詢以 `" WHERE 1=1"` 搭配 1 個 bind param → `sqlite3.ProgrammingError`。已改 `" WHERE 1=1" + base`，`--recent` 現在可用。

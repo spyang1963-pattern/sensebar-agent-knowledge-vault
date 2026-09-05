@@ -153,9 +153,17 @@ def fetch_feed(url, hard_timeout=25):
 
 def collect_google_news():
     inserted = existing = failed = 0
+    # Merge static + calendar-driven queries (today's scheduled events)
+    try:
+        from calendar_engine import event_queries
+        dynamic = event_queries()
+    except Exception:
+        dynamic = []
+    static_keys = {(l, q) for l, q in SEARCH_QUERIES}
+    merged = SEARCH_QUERIES + [q for q in dynamic if q not in static_keys]
     jobs = [
         (lang, query, GOOGLE_NEWS_ZH if lang == "zh" else GOOGLE_NEWS_EN)
-        for lang, query in SEARCH_QUERIES
+        for lang, query in merged
     ]
     with ThreadPoolExecutor(max_workers=6) as pool:
         futures = {

@@ -59,26 +59,29 @@ SYSTEM_PROMPT = """你是一名資深的國際金融分析師。使用者會給�
 ## 二、行情快照與台股夜盤解析
 系統會額外提供一份【今日最新行情快照（唯一可信來源）】：本節必須以該快照的數據與「快照資料時間」為準，嚴禁引用近兩日報告或分析師人工報告中的行情價格或快照時間作為當前行情。並重點解析台股夜盤／台指期的即時變動，以及與美股的背離或連動。
 
-## 三、重大事件深度解讀
+## 三、數據決戰焦點（如有排期事件）
+若提供了【行事曆排期事件】，本節**必須存在**，逐一說明每個排期事件的：最新公布之數據／結果（若當日已公布）、對市場的即時影響（含具體數字）、以及後續觀察點。此節排在重大事件解讀之前。若當日無排期事件，可略過此節。
+
+## 四、重大事件深度解讀
 針對報告中的重大事件（severity 較高者），逐一拆解：
 - 事件核心
 - 對股/債/匯/商品的傳導路徑
 - 關聯標的（台股代號/美股代號）
 - 未來一週可能的走勢
 
-## 四、跨日相關性分析
+## 五、跨日相關性分析
 如有近兩日報告，分析近三日市場演變的因果閉環與主軸（例如地緣、債市、資金輪動、台股背離），點出趨勢如何延續或轉折。
 
-## 五、分類展望
+## 六、分類展望
 分別就股市、債市、匯市、商品(油金)、地緣政治，給出短(1週)/中(1月)/長(1季)展望。資訊不足的項目要誠實說明，不要編造。
 
-## 六、風險與機會
+## 七、風險與機會
 列出本報告中最值得關注的風險（警示）與機會（看好），各列 3-5 項，每項含標的與理由。
 
-## 七、操作建議摘要
+## 八、操作建議摘要
 以投資者視角，給出 3-5 條具體、可執行的觀察重點（不是投資建議），並註明需要盯盤的關鍵指標（如油價、美債殖利率、台指期夜盤）。
 
-## 八、免責聲明
+## 九、免責聲明
 本報告由 AI 自動生成，僅供參考，不構成投資建議。
 
 格式要求（重要）：
@@ -224,6 +227,14 @@ def deep_analyze(md_text, bigpickle_text=None, prev_days_text=None, major_events
     client = genai.Client(api_key=_read_key())
 
     parts = []
+    # Calendar-driven context: force coverage of scheduled high-impact events.
+    try:
+        from calendar_engine import event_summary_for_prompt
+        cal_ctx = event_summary_for_prompt()
+        if cal_ctx:
+            parts.append("【行事曆排期事件（本報告必須主動覆蓋，不可忽略）】\n" + cal_ctx)
+    except Exception:
+        pass
     parts.append("【今日金融重點報告】\n" + md_text[:12000])
     if snapshot_text:
         # placed immediately after today's report so it outranks the

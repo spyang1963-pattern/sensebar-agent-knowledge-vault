@@ -44,7 +44,7 @@ def audit(recent_hours=None):
 
         # 1. volume
         total = conn.execute(
-            "SELECT COUNT(*) FROM events" + (" WHERE 1=1" if since else ""), params
+            "SELECT COUNT(*) FROM events" + (" WHERE 1=1" + base if since else ""), params
         ).fetchone()[0]
         out["total_events"] = total
 
@@ -134,6 +134,29 @@ def audit(recent_hours=None):
                 out["snapshot_age_h"] = round((now - ts).total_seconds() / 3600, 1)
             except Exception:
                 pass
+
+        # 9. calendar coverage: today's high-impact events vs collected titles
+        try:
+            from calendar_engine import coverage_check
+            cv = {}
+            missed = []
+            for ev in coverage_check():
+                kw = ev["event"][:40]
+                row = conn.execute(
+                    "SELECT COUNT(*) n FROM events WHERE is_noise=0 AND is_duplicate=0"
+                    " AND title LIKE ?" + base.replace("fetched_at", "published"),
+                    params + [f"%{kw}%"],
+                ).fetchone()
+                covered = (row and row["n"] > 0)
+                cv[ev["event"][:30]] = covered
+                if not covered:
+                    missed.append(ev["event"][:30])
+            out["calendar_today_high"] = len(cv)
+            out["calendar_covered"] = sum(1 for v in cv.values() if v)
+            out["calendar_missed"] = missed
+        except Exception:
+            out["calendar_today_high"] = 0
+            out["calendar_missed"] = []
     finally:
         conn.close()
     return out
