@@ -1,0 +1,13 @@
+{
+  "name": "test-hello",
+  "description": "自主任務層健康測試：每跑一次在 TEMP 寫一行時間戳",
+  "workdir": "D:\\sensebar-agent-knowledge-vault\\workspace-bundle\\infra\\autonomy",
+  "command": [
+    "python", "-c",
+    "import datetime,os;open(os.path.join(os.environ.get('TEMP','.'),'autonomy_hello_ts.txt'),'a').write(datetime.datetime.now().isoformat()+chr(10))"
+  ],
+  "schedule": { "kind": "daily", "start": "23:59" },
+  "timeout_min": 10,
+  "log": "D:\\sensebar-agent-knowledge-vault\\workspace-bundle\\infra\\autonomy\\state\\test-hello.log",
+  "notify_on_fail": true
+}

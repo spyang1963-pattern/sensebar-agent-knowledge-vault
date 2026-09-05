@@ -1,0 +1,25 @@
+﻿{
+    "name":  "finance-morning",
+    "description":  "金融早報 06:00（日報＋深度分析早上檔＋發佈）",
+    "workdir":  "D:\\sensebar-agent-knowledge-vault\\financial_news",
+    "command":  [
+                    "python",
+                    "-X",
+                    "utf8",
+                    "pipeline.py",
+                    "--report",
+                    "--deep",
+                    "--slot",
+                    "morning"
+                ],
+    "schedule":  {
+                     "kind":  "daily",
+                     "start":  "06:00"
+                 },
+    "timeout_min":  60,
+    "log":  "D:\\sensebar-agent-knowledge-vault\\financial_news\\logs\\autonomy\\finance-morning.log",
+    "notify_on_fail":  true,
+    "hosts":  [
+                  "desktop-mfkcvso"
+              ]
+}

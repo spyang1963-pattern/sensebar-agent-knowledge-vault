@@ -1,0 +1,27 @@
+﻿{
+    "name":  "finance-pipeline",
+    "description":  "金融新聞 30 分鐘滾動：收集→過濾→分析→報告→發佈",
+    "workdir":  "D:\\sensebar-agent-knowledge-vault\\financial_news",
+    "command":  [
+                    "python",
+                    "-X",
+                    "utf8",
+                    "pipeline.py",
+                    "--full",
+                    "--batch",
+                    "150",
+                    "--time-budget",
+                    "480"
+                ],
+    "schedule":  {
+                     "kind":  "interval",
+                     "minutes":  30,
+                     "start":  "00:00"
+                 },
+    "timeout_min":  75,
+    "log":  "D:\\sensebar-agent-knowledge-vault\\financial_news\\logs\\autonomy\\finance-pipeline.log",
+    "notify_on_fail":  true,
+    "hosts":  [
+                  "desktop-mfkcvso"
+              ]
+}

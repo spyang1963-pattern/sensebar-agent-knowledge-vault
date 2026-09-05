@@ -1,0 +1,7 @@
+{
+  "repos": [
+    { "path": "D:\\sensebar-agent-knowledge-vault", "hosts": ["desktop-mfkcvso"] }
+  ],
+  "pull_window": [[5, 45]],
+  "notify_telegram": true
+}
