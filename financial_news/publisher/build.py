@@ -119,14 +119,18 @@ def build():
         if it["kind"] == "deep":
             deep_by_day.setdefault(it["day"], []).append(it)
     deep_days = sorted(deep_by_day.keys(), reverse=True)
-    deep_day_slug = {
-        d: sorted(x["slug"] for x in deep_by_day[d])[-1] for d in deep_by_day
+    deep_day_slots = {
+        d: sorted(
+            ({"slot": x["slot"], "slug": x["slug"]} for x in deep_by_day[d]),
+            key=lambda x: {"": 0, "早上": 0, "傍晚": 1}.get(x["slot"], 0),
+        )
+        for d in deep_by_day
     }
     nav = {
         "latest_daily_day": latest_daily["day"] if latest_daily else "",
         "latest_deep_slug": latest_deep["slug"] if latest_deep else "",
         "deep_days": deep_days,
-        "deep_day_slug": deep_day_slug,
+        "deep_day_slots": deep_day_slots,
     }
 
     for it in items:

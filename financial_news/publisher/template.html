@@ -97,7 +97,9 @@
       <a href="{{ up }}index.html">← 首頁</a>
       {% if kind == 'deep' %}
         {% for d in deep_days %}
-        <a href="{{ up }}{{ deep_day_slug[d] }}.html">{{ d }}</a>
+        {% for it in deep_day_slots[d] %}
+        <a href="{{ up }}{{ it.slug }}.html">{{ d }}{{ ' ' + ('早上' if it.slot == '早上' else '傍晚') if it.slot else '' }}</a>
+        {% endfor %}
         {% endfor %}
       {% else %}
         {% for d in day_list %}
