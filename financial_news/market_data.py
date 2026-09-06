@@ -35,6 +35,7 @@ SYMBOLS = [
     ("2881.TW", "富邦金", "TWD"),
     ("^GSPC", "S&P 500", "USD"),
     ("^IXIC", "納斯達克", "USD"),
+    ("^SOX", "費城半導體指數", "USD"),
     ("^DJI", "道瓊", "USD"),
     ("^N225", "日經225", "JPY"),
     ("000001.SS", "上證指數", "CNY"),
@@ -59,7 +60,7 @@ HTTP_HEADERS = {"User-Agent": "Mozilla/5.0 (sensebar-financial-news/1.0)"}
 
 # Display units: indices/DXY are points, yields are percent, everything else
 # keeps its quote currency (audit pass flagged TWD/USD on indices as errors).
-INDEX_SYMBOLS = {"^TWII", "^GSPC", "^IXIC", "^DJI", "^N225", "000001.SS", "HSI", "DX-Y.NYB"}
+INDEX_SYMBOLS = {"^TWII", "^GSPC", "^IXIC", "^SOX", "^DJI", "^N225", "000001.SS", "HSI", "DX-Y.NYB"}
 YIELD_SYMBOLS = {"^TNX"}
 
 

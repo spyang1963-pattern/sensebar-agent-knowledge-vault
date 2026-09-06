@@ -49,6 +49,15 @@ def _sanitize_links(html):
     return re.sub(r'<a href="([^"]+)">(.*?)</a>', repl, html, flags=re.S)
 
 
+def _colorize_arrows(html):
+    """Wrap up/down arrows with Taiwan-market red-up/green-down colors."""
+    html = html.replace(
+        "▲", '<span style="color:#c0392b;font-weight:bold">▲</span>')
+    html = html.replace(
+        "▼", '<span style="color:#2e7d32;font-weight:bold">▼</span>')
+    return html
+
+
 def _day_key(name):
     m = re.search(r"(\d{4}-\d{2}-\d{2})", name)
     return m.group(1) if m else "0000-00-00"
@@ -134,7 +143,7 @@ def build():
     }
 
     for it in items:
-        html_body = _sanitize_links(HTML_MD.convert(it["md_text"]))
+        html_body = _colorize_arrows(_sanitize_links(HTML_MD.convert(it["md_text"])))
         HTML_MD.reset()
         html = tpl.render(
             title=it["title"],
