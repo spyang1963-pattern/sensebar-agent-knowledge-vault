@@ -1,4 +1,4 @@
-# missionctl.ps1 - Autonomy Layer: register/manage Windows scheduled tasks
+﻿# missionctl.ps1 - Autonomy Layer: register/manage Windows scheduled tasks
 # from mission manifest JSON files.
 #
 # Usage (run on the TARGET machine, must be its own local python/shell):
