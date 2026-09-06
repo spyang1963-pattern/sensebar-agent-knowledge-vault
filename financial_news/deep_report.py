@@ -339,42 +339,36 @@ def _clean_heading_noise(md):
     - In section 八, flatten every `###` title back to a bold list item so
       the "字體過大 / 行距過大" (h3 gaps) is removed.
     """
+    def _strip_embedded(m):
+        # - **#### 文字**  ->  - **文字**
+        emb = re.match(r"^(-\s+)\*\*#+\s*(.+?)\*\*(\s*)$", m)
+        if emb:
+            return f"{emb.group(1)}**{emb.group(2)}**{emb.group(3)}"
+        emb2 = re.match(r"^(-\s+)\*\*#+\s*(.+?)\*\*(.*)$", m)
+        if emb2:
+            return f"{emb2.group(1)}**{emb2.group(2)}**{emb2.group(3)}"
+        return m
+
     def _sec(m):
         head = m.group(1)
         num = m.group(2)
         body = m.group(3)
         out = []
         for line in body.split("\n"):
-            indent = line[: len(line) - len(line.lstrip())]
             stripped = line.strip()
             # embedded heading markers inside bold list items
             if re.match(r"^-\s+\*\*#+\s+", stripped):
                 if num == "七":
                     t = re.sub(r"^-\s+\*\*#+\s*(.+?)\*\*\s*$", r"\1", stripped)
-                    out.append(f"{indent}- <strong style=\"color:#145c3a\">{t}</strong>")
+                    out.append(f'- <strong style="color:#145c3a">{t}</strong>')
                     continue
-                emb = re.match(r"^(-\s+)\*\*#+\s*(.+?)\*\*(.*)$", stripped)
-                if emb:
-                    out.append(f"{indent}{emb.group(1)}**{emb.group(2)}**{emb.group(3)}")
-                else:
-                    out.append(line)
+                line = _strip_embedded(stripped)
+                out.append(line)
                 continue
-            # section 七: "標的 / 理由 / 方向" sub-item titles are also sub
-            # levels — tint their bold text green, keeping the indented row so
-            # they read as a distinct sub level (row + color separation).
-            if num == "七":
-                sub = re.match(r"^(-)(\s*)\*\*(標的|理由|方向)\*\*(\s*[:：].*)$", stripped)
-                if sub:
-                    out.append(
-                        f"{indent}{sub.group(1)}{sub.group(2)}"
-                        f"<strong style=\"color:#145c3a\">{sub.group(3)}</strong>"
-                        f"{sub.group(4)}"
-                    )
-                    continue
             # section 八: flatten ### titles to bold list items
             if num == "八" and re.match(r"^#{1,6}\s+\S", stripped):
                 t = re.sub(r"^#{1,6}\s+", "", stripped).strip()
-                out.append(f"{indent}- **{t}**")
+                out.append(f"- **{t}**")
                 continue
             out.append(line)
         return head + "\n" + "\n".join(out)
