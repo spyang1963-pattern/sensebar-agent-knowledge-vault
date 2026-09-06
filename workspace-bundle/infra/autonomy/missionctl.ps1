@@ -9,10 +9,11 @@
 #   .\missionctl.ps1 -Action remove -Mission finance-pipeline
 #   .\missionctl.ps1 -Action selfheal                       # run watchdog once (console, test)
 #
-# For "run whether user is logged on or not", it uses the same Password
-# principal pattern as financial_news\fix_finance_tasks.ps1 (prompts once for
-# the Windows password). If you cancel the prompt, tasks register as
-# Interactive (still fine while the user stays logged in).
+# Task logon strategy (PC3 has no known password):
+#   1) If the user enters a password at the prompt, try Password logon
+#      (runs even when logged out).
+#   2) If cancelled, fall back to Interactive (runs while the user stays
+#      logged on - the common AnyDesk setup).
 
 param(
     [Parameter(Mandatory = $true)]
@@ -32,16 +33,55 @@ $cmd = Get-Command python -ErrorAction SilentlyContinue
 if ($cmd) { $py = $cmd.Source } else { Write-Error "找不到 python，請先確認已安裝並在 PATH"; exit 1 }
 
 function New-Principal {
+    # Returns $null when the user cancelled (no password supplied) -
+    # callers must treat that as "use Interactive logon".
     param([string]$User = $env:USERNAME)
-    $tryPassword = $false
+    $cred = $null
     try {
-        $cred = Get-Credential -UserName $User -Message "輸入 Windows 登入密碼（讓任務在未登入時也能執行）"
-        $tryPassword = $true
-    } catch { $tryPassword = $false }
-    if ($tryPassword) {
+        $cred = Get-Credential -UserName $User -Message "輸入 Windows 登入密碼（讓任務在未登入時也能執行）；取消＝僅登入時執行"
+    } catch {
+        $cred = $null
+    }
+    if ($null -ne $cred) {
         return ,(New-ScheduledTaskPrincipal -UserId $User -LogonType Password -RunLevel Highest)
     }
-    return ,(New-ScheduledTaskPrincipal -UserId $User -LogonType Interactive -RunLevel Highest)
+    return ,$null
+}
+
+function Register-TaskAny {
+    # Register a task using any working logon mode. Tries Password when a
+    # password was supplied, else Interactive. Never prints a false "OK"
+    # on failure (ErrorAction Stop + real exit code).
+    param(
+        [string]$TaskName,
+        $Action,
+        $Trigger,
+        $Settings,
+        $Description
+    )
+    $prin = New-Principal
+    if ($null -ne $prin) {
+        try {
+            Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger `
+                -Settings $Settings -Principal $prin -Description $Description `
+                -Force -ErrorAction Stop | Out-Null
+            Write-Output "OK: $TaskName installed (Password, 未登入也執行)"
+            return $true
+        } catch {
+            Write-Output "  密碼註冊失敗 ($($_.Exception.Message))，改用 Interactive…"
+        }
+    }
+    try {
+        $prinI = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
+        Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger `
+            -Settings $Settings -Principal $prinI -Description $Description `
+            -Force -ErrorAction Stop | Out-Null
+        Write-Output "OK: $TaskName installed (Interactive, 需登入才執行)"
+        return $true
+    } catch {
+        Write-Error "FAILED: 無法註冊 $TaskName - $($_.Exception.Message)"
+        exit 1
+    }
 }
 
 function New-TriggerFromJson {
@@ -66,9 +106,7 @@ switch ($Action) {
         $act = New-ScheduledTaskAction -Execute $py -Argument "-X utf8 `"$self\self_heal.py`"" -WorkingDirectory $self
         $trg = New-ScheduledTaskTrigger -Once -At (Get-Date -Hour 0 -Minute 0 -Second 0) -RepetitionInterval (New-TimeSpan -Minutes 30) -RepetitionDuration (New-TimeSpan -Days 3650)
         $set = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
-        $prin = New-Principal
-        Register-ScheduledTask -TaskName $tname -Action $act -Trigger $trg -Settings $set -Principal $prin -Description "Autonomy 看門狗（自動 pull/自癒/通知）" -Force | Out-Null
-        Write-Output "OK: $tname installed"
+        Register-TaskAny -TaskName $tname -Action $act -Trigger $trg -Settings $set -Description "Autonomy 看門狗（自動 pull/自癒/通知）"
     }
 
     "install" {
@@ -79,16 +117,14 @@ switch ($Action) {
         $act = New-ScheduledTaskAction -Execute $py -Argument "-X utf8 `"$self\runner.py`" `"$Mission`" --reason schedule" -WorkingDirectory $self
         $trg = New-TriggerFromJson $m.schedule
         $set = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes $tmin)
-        $prin = New-Principal
-        Register-ScheduledTask -TaskName $tname -Action $act -Trigger $trg -Settings $set -Principal $prin -Description $m.description -Force | Out-Null
-        Write-Output "OK: $tname installed from $Mission"
+        Register-TaskAny -TaskName $tname -Action $act -Trigger $trg -Settings $set -Description $m.description
         Write-Output "    手動即時測試: .\$($MyInvocation.MyCommand.Name) -Action run -Mission $($m.name)"
     }
 
     "remove" {
         if (-not $Mission) { Write-Error "-Mission 需要任務名稱"; exit 1 }
         $tname = "Autonomy_" + $Mission.TrimEnd(".json")
-        Unregister-ScheduledTask -TaskName $tname -Confirm:$false
+        Unregister-ScheduledTask -TaskName $tname -Confirm:$false -ErrorAction SilentlyContinue
         Write-Output "OK: $tname removed"
     }
 
