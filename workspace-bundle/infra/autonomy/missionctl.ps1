@@ -95,8 +95,10 @@ function New-TriggerFromJson {
     $mins = [int]$Sched.minutes
     $sh, $sm = "0", "0"
     if ($Sched.start -and ($Sched.start -match ":")) { $sh, $sm = ($Sched.start -split ":") }
+    # if start time already passed today, begin immediately
+    # (rolling interval tasks must not be deferred a whole day).
     $at = Get-Date -Hour ([int]$sh) -Minute ([int]$sm) -Second 0
-    if ($at -lt (Get-Date)) { $at = $at.AddDays(1) }
+    if ($at -lt (Get-Date)) { $at = Get-Date }
     return New-ScheduledTaskTrigger -Once -At $at -RepetitionInterval (New-TimeSpan -Minutes $mins) -RepetitionDuration (New-TimeSpan -Days 3650)
 }
 
