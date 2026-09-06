@@ -269,12 +269,11 @@ def deep_analyze(md_text, bigpickle_text=None, prev_days_text=None, major_events
     text = (resp.text or "").strip()
     text = re.sub(r"^```(?:markdown)?\s*\n?", "", text, flags=re.M)
     text = re.sub(r"\n?```\s*$", "", text, flags=re.M)
-    # Normalize sections 三/四 event headings: models often emit flat
-    # `- **Title**` list items instead of real heading levels. Convert the
-    # event title (a bold item with NO trailing ": content") to h3 and its
-    # sub-items (bold item WITH ": content") to h4 so the site template picks
-    # up distinct h3/h4 heading blocks with large gaps.
-    text = _normalize_event_headings(text)
+    # Keep the original flat, dense list layout of sections 三/四 (no heading
+    # blocks). Only tint the focus-event title — a bold item with NO trailing
+    # ": content" — in dark red, so the key focus stands out purely by color
+    # without adding any heading-type gaps or wasting vertical space.
+    text = _colorize_focus_titles(text)
     # Fact-check pass (free tier, does not overwrite content)
     if not os.environ.get("NO_VERIFY_PASS"):
         text, note = _verification_pass(text)
@@ -282,13 +281,14 @@ def deep_analyze(md_text, bigpickle_text=None, prev_days_text=None, major_events
     return text
 
 
-def _normalize_event_headings(md):
-    """Promote flat `- **Title**` items inside sections 三 & 四 to h3/h4.
+def _colorize_focus_titles(md):
+    """Tint focus-event titles inside sections 三 & 四 (keep flat layout).
 
-    Only applied to the span between "## 三、" and "## 五、" so that other
-    sections (五/六/七/八, which legitimately use flat bold lists) are left
-    untouched. A bold item with no trailing ": content" becomes a section
-    title (### event); one with ": content" becomes a subtitle (####).
+    Does NOT promote anything to heading levels. Within "## 三、".."## 五、",
+    a bold `- **Title**` item with no trailing ": content" is a focus-event
+    title — its bold text is painted dark red. Bold items that carry
+    ": content" (sub-items) and everything else are left exactly as-is, so
+    the report keeps its original dense, non-gappy appearance.
     """
     def _repl(m):
         head = m.group(1)
@@ -297,17 +297,13 @@ def _normalize_event_headings(md):
         out = []
         for line in body.split("\n"):
             stripped = line.strip()
-            hit = re.match(r"^-\s+\*\*(.+?)\*\*\s*[:：]\s*(.*)$", stripped)
-            if hit and hit.group(2).strip():
-                out.append(f"#### {hit.group(1).strip()}")
-                out.append(hit.group(2).strip())
-                out.append("")
+            ev = re.match(r"^(-\s+)\*\*(.+?)\*\*\s*$", stripped)
+            if ev:
+                out.append(
+                    f"{ev.group(1)}<strong style=\"color:#b02020\">{ev.group(2)}</strong>"
+                )
             else:
-                hit2 = re.match(r"^-\s+\*\*(.+?)\*\*\s*$", stripped)
-                if hit2:
-                    out.append(f"### {hit2.group(1).strip()}")
-                else:
-                    out.append(line)
+                out.append(line)
         return head + "\n" + "\n".join(out) + tail
 
     return re.sub(
