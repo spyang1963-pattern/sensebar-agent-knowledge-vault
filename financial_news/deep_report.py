@@ -282,14 +282,20 @@ def deep_analyze(md_text, bigpickle_text=None, prev_days_text=None, major_events
 
 
 def _colorize_focus_titles(md):
-    """Tint focus-event titles inside sections 三 & 四 (keep flat layout).
+    """Give focus events a dark-red title while keeping the flat dense layout.
 
-    Does NOT promote anything to heading levels. Within "## 三、".."## 五、",
-    a bold `- **Title**` item with no trailing ": content" is a focus-event
-    title — its bold text is painted dark red. Bold items that carry
-    ": content" (sub-items) and everything else are left exactly as-is, so
-    the report keeps its original dense, non-gappy appearance.
+    Models vary: they may emit a Markdown heading (`### Title`) or a flat
+    bold `- **Title**`. Either way, within "## 三、".."## 五、" the focus-event
+    line is turned back into a plain list item whose bold text is painted
+    dark red, so the report never shows heading blocks / big gaps. Sub-item
+    bold lines (with ": content") and everything else are left untouched.
     """
+    def _as_red_li(title):
+        t = title.strip()
+        t = re.sub(r"^[#*\s]+", "", t)
+        t = re.sub(r"\*\*$", "", t.strip())
+        return f"- <strong style=\"color:#b02020\">{t}</strong>"
+
     def _repl(m):
         head = m.group(1)
         body = m.group(2)
@@ -297,13 +303,17 @@ def _colorize_focus_titles(md):
         out = []
         for line in body.split("\n"):
             stripped = line.strip()
+            h = re.match(r"^#{1,6}\s+(.+)$", stripped)
+            if h:
+                out.append(_as_red_li(h.group(1)))
+                continue
             ev = re.match(r"^(-\s+)\*\*(.+?)\*\*\s*$", stripped)
             if ev:
                 out.append(
                     f"{ev.group(1)}<strong style=\"color:#b02020\">{ev.group(2)}</strong>"
                 )
-            else:
-                out.append(line)
+                continue
+            out.append(line)
         return head + "\n" + "\n".join(out) + tail
 
     return re.sub(
