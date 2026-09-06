@@ -15,7 +15,9 @@ import common
 
 
 def _read_mission(arg):
-    with open(arg, encoding="utf-8") as f:
+    # Mission files may carry a UTF-8 BOM (PS 5.1 writes them BOM'd); read
+    # with utf-8-sig so json.load doesn't fail on the BOM (see common.py).
+    with open(arg, encoding="utf-8-sig") as f:
         return json.load(f)
 
 
