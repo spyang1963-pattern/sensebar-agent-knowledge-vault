@@ -303,7 +303,7 @@ def _colorize_focus_titles(md):
         out = []
         for line in body.split("\n"):
             stripped = line.strip()
-            h = re.match(r"^#{1,6}\s+(.+)$", stripped)
+            h = re.match(r"^#{3,6}\s+(.+)$", stripped)
             if h:
                 out.append(_as_red_li(h.group(1)))
                 continue
