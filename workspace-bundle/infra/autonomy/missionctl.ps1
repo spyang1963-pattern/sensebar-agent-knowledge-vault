@@ -87,8 +87,9 @@ function Register-TaskAny {
 function New-TriggerFromJson {
     param($Sched)
     if ($Sched.kind -eq "daily") {
-        $h, $m = ($Sched.start -split ":")
-        return New-ScheduledTaskTrigger -Daily -At (New-TimeSpan -Hours ([int]$h) -Minutes ([int]$m))
+        $at = $Sched.start
+        if ($at -notmatch ":") { $at = "$at:00" }
+        return New-ScheduledTaskTrigger -Daily -At $at
     }
     # interval
     $mins = [int]$Sched.minutes
@@ -106,7 +107,7 @@ switch ($Action) {
         $act = New-ScheduledTaskAction -Execute $py -Argument "-X utf8 `"$self\self_heal.py`"" -WorkingDirectory $self
         $trg = New-ScheduledTaskTrigger -Once -At (Get-Date -Hour 0 -Minute 0 -Second 0) -RepetitionInterval (New-TimeSpan -Minutes 30) -RepetitionDuration (New-TimeSpan -Days 3650)
         $set = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
-        Register-TaskAny -TaskName $tname -Action $act -Trigger $trg -Settings $set -Description "Autonomy 看門狗（自動 pull/自癒/通知）"
+        Register-TaskAny -TaskName $tname -Action $act -Trigger $trg -Settings $set -Description "Autonomy 看門狗（自動 pull/自癒/通知）" | Out-Null
     }
 
     "install" {
@@ -117,7 +118,7 @@ switch ($Action) {
         $act = New-ScheduledTaskAction -Execute $py -Argument "-X utf8 `"$self\runner.py`" `"$Mission`" --reason schedule" -WorkingDirectory $self
         $trg = New-TriggerFromJson $m.schedule
         $set = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes $tmin)
-        Register-TaskAny -TaskName $tname -Action $act -Trigger $trg -Settings $set -Description $m.description
+        Register-TaskAny -TaskName $tname -Action $act -Trigger $trg -Settings $set -Description $m.description | Out-Null
         Write-Output "    手動即時測試: .\$($MyInvocation.MyCommand.Name) -Action run -Mission $($m.name)"
     }
 
