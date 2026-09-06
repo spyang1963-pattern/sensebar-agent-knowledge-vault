@@ -303,6 +303,12 @@ def _colorize_focus_titles(md):
         out = []
         for line in body.split("\n"):
             stripped = line.strip()
+            sec = re.match(r"^#{1,6}\s*([一二三四五六七八]、.+)$", stripped)
+            if sec:
+                # Section heading (e.g. "### 四、重大事件深度解讀"): normalize to
+                # h2 so it matches "## 三、數據決戰焦點" in size/color/level.
+                out.append(f"## {sec.group(1)}")
+                continue
             h = re.match(r"^#{3,6}\s+(.+)$", stripped)
             if h:
                 out.append(_as_red_li(h.group(1)))
