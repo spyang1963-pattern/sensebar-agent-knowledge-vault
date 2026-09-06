@@ -274,6 +274,11 @@ def deep_analyze(md_text, bigpickle_text=None, prev_days_text=None, major_events
     # ": content" — in dark red, so the key focus stands out purely by color
     # without adding any heading-type gaps or wasting vertical space.
     text = _colorize_focus_titles(text)
+    # Clean up heading noise the model sometimes leaves in sections 六/七/八:
+    # strip stray "#### " prefixes embedded in bold list items, tint section
+    # 七 sub-items green, and flatten section 八 titles back to bold list items
+    # so the report stays dense and readable (no oversized heading gaps).
+    text = _clean_heading_noise(text)
     # Fact-check pass (free tier, does not overwrite content)
     if not os.environ.get("NO_VERIFY_PASS"):
         text, note = _verification_pass(text)
@@ -319,6 +324,58 @@ def _colorize_focus_titles(md):
     return re.sub(
         r"(##\s*三、[^\n]*\n)(.*?)(\n##\s*五、)",
         _repl,
+        md,
+        flags=re.S,
+    )
+
+
+def _clean_heading_noise(md):
+    """Clean heading noise the model leaves in sections 六/七/八.
+
+    - Strip stray heading markers embedded in bold list items like
+      `- **#### 短期 (1週)**` across the whole doc -> `- **短期 (1週)**`.
+    - In section 七, such sub-item lines are additionally tinted green so
+      they read as a distinct sub level (separate from the dark-red focus).
+    - In section 八, flatten every `###` title back to a bold list item so
+      the "字體過大 / 行距過大" (h3 gaps) is removed.
+    """
+    def _strip_embedded(m):
+        # - **#### 文字**  ->  - **文字**
+        emb = re.match(r"^(-\s+)\*\*#+\s*(.+?)\*\*(\s*)$", m)
+        if emb:
+            return f"{emb.group(1)}**{emb.group(2)}**{emb.group(3)}"
+        emb2 = re.match(r"^(-\s+)\*\*#+\s*(.+?)\*\*(.*)$", m)
+        if emb2:
+            return f"{emb2.group(1)}**{emb2.group(2)}**{emb2.group(3)}"
+        return m
+
+    def _sec(m):
+        head = m.group(1)
+        num = m.group(2)
+        body = m.group(3)
+        out = []
+        for line in body.split("\n"):
+            stripped = line.strip()
+            # embedded heading markers inside bold list items
+            if re.match(r"^-\s+\*\*#+\s+", stripped):
+                if num == "七":
+                    t = re.sub(r"^-\s+\*\*#+\s*(.+?)\*\*\s*$", r"\1", stripped)
+                    out.append(f'- <strong style="color:#145c3a">{t}</strong>')
+                    continue
+                line = _strip_embedded(stripped)
+                out.append(line)
+                continue
+            # section 八: flatten ### titles to bold list items
+            if num == "八" and re.match(r"^#{1,6}\s+\S", stripped):
+                t = re.sub(r"^#{1,6}\s+", "", stripped).strip()
+                out.append(f"- **{t}**")
+                continue
+            out.append(line)
+        return head + "\n" + "\n".join(out)
+
+    return re.sub(
+        r"(##\s*([一二三四五六七八九十]+)、[^\n]*\n)(.*?)(?=\n##\s*[一二三四五六七八九十]+、|\Z)",
+        _sec,
         md,
         flags=re.S,
     )
