@@ -269,11 +269,55 @@ def deep_analyze(md_text, bigpickle_text=None, prev_days_text=None, major_events
     text = (resp.text or "").strip()
     text = re.sub(r"^```(?:markdown)?\s*\n?", "", text, flags=re.M)
     text = re.sub(r"\n?```\s*$", "", text, flags=re.M)
+    # Normalize sections 三/四 event headings: models often emit flat
+    # `- **Title**` list items instead of real heading levels. Convert the
+    # event title (a bold item with NO trailing ": content") to h3 and its
+    # sub-items (bold item WITH ": content") to h4 so the site template picks
+    # up distinct h3/h4 colors.
+    text = _normalize_event_headings(text)
     # Fact-check pass (free tier, does not overwrite content)
     if not os.environ.get("NO_VERIFY_PASS"):
         text, note = _verification_pass(text)
         print(f"[deep_report] 自動核查: {note}")
     return text
+
+
+def _normalize_event_headings(md):
+    """Promote flat `- **Title**` items inside sections 三 & 四 to h3/h4.
+
+    Only applied to the span between "## 三、" and "## 五、" so that other
+    sections (五/六/七/八, which legitimately use flat bold lists) are left
+    untouched. A bold item with no trailing ": content" becomes a section
+    title (### event); one with ": content" becomes a subtitle (####).
+    """
+    def _repl(m):
+        head = m.group(1)
+        body = m.group(2)
+        tail = m.group(3)
+        out = []
+        for line in body.split("\n"):
+            stripped = line.strip()
+            # bold item followed by ": content" -> subtitle (h4)
+            hit = re.match(r"^-\s+\*\*(.+?)\*\*\s*[:：]\s*(.*)$", stripped)
+            if hit and hit.group(2).strip():
+                out.append(f"#### {hit.group(1).strip()}")
+                out.append(hit.group(2).strip())
+                out.append("")
+            else:
+                # bold item with no trailing content -> event title (h3)
+                hit2 = re.match(r"^-\s+\*\*(.+?)\*\*\s*$", stripped)
+                if hit2:
+                    out.append(f"### {hit2.group(1).strip()}")
+                else:
+                    out.append(line)
+        return head + "\n" + "\n".join(out) + tail
+
+    return re.sub(
+        r"(##\s*三、[^\n]*\n)(.*?)(\n##\s*五、)",
+        _repl,
+        md,
+        flags=re.S,
+    )
 
 
 FONT_NAME = "華康仿宋體W4"
