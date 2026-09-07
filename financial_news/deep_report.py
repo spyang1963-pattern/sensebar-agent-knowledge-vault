@@ -346,63 +346,80 @@ def _colorize_focus_titles(md):
 
 
 def _flatten_heading_noise(md):
-    """Apply the section 三/四 flat style to the whole report (五/六/七/八…).
-
-    Every heading line is collapsed to a plain `- ` list item with black-bold
-    text (no `###` blocks, no enlarged line gaps), and section headings such
-    as "### 四、重大事件深度解讀" are normalized to "## " so all sections
-    share the same level. Embedded noise like "- **#### 短期 (1週)**" is also
-    stripped of its '#' prefixes. Line spacing stays minimal everywhere.
+    """Flat+dense style across the report; from section 五 onward use COLOR to
+    show hierarchy exactly like sections 三/四: primary titles dark red, sub
+    titles black-bold. Everything stays on one flat `- ` list level so heading
+    blocks and enlarged line gaps never appear. Section headings normalize to
+    "## ". Indentation (pre-collapse) decides primary vs sub level.
     """
 
-    def _black_li(title):
-        t = title.strip()
+    def _clean_title(t):
+        t = t.strip()
         t = re.sub(r"^[#*+\s]+", "", t)
         t = re.sub(r"\*\*$", "", t.strip())
-        return f"- <strong style=\"color:#000\">{t}</strong>"
+        return t.strip()
 
-    out = []
-    for line in md.split("\n"):
-        stripped = line.strip()
-        if not stripped:
+    def _bold_li(color, title, rest):
+        inner = f"<strong style=\"color:{color}\">{title}</strong>"
+        return f"- {inner}{rest}" if rest else f"- {inner}"
+
+    def _color_for(indented, tiered):
+        if not tiered:
+            return "#000"
+        return "#000" if indented else "#b02020"
+
+    def _process(txt, tiered):
+        out = []
+        for line in txt.split("\n"):
+            stripped = line.strip()
+            if not stripped:
+                out.append(line)
+                continue
+            sec = re.match(r"^#{1,6}\s*([一二三四五六七八九十]、.+)$", stripped)
+            if sec:
+                out.append(f"## {sec.group(1)}")
+                continue
+            embedded = re.match(
+                r"^(-\s+)\*\*#+(.+?)\*\*(\s*[:：].*)?$", stripped
+            )
+            bare = re.match(
+                r"^(-\s+)#{1,6}\s*(.+?)(\s*[:：].*)?$", stripped
+            )
+            if embedded:
+                out.append(_bold_li("#000", _clean_title(embedded.group(2)),
+                                     (embedded.group(3) or "").strip()))
+                continue
+            if bare:
+                out.append(_bold_li("#000", _clean_title(bare.group(2)),
+                                     (bare.group(3) or "").strip()))
+                continue
+            h = re.match(r"^#{3,6}\s+(.+)$", stripped)
+            if h:
+                out.append(_bold_li("#b02020" if tiered else "#000",
+                                     _clean_title(h.group(1)), ""))
+                continue
+            li = re.match(r"^(\s*)[-*+]\s+", line)
+            if li:
+                item = re.match(
+                    r"^(-\s+)\*\*(.+?)\*\*\s*([:：].*)?$", stripped
+                )
+                if item:
+                    indented = bool(li.group(1))
+                    rest = (item.group(3) or "").strip()
+                    out.append(_bold_li(_color_for(indented, tiered),
+                                        item.group(2).strip(), rest))
+                    continue
+            if stripped.startswith(("- ", "* ", "+ ")):
+                out.append(stripped)
+                continue
             out.append(line)
-            continue
-        sec = re.match(r"^#{1,6}\s*([一二三四五六七八九十]、.+)$", stripped)
-        if sec:
-            out.append(f"## {sec.group(1)}")
-            continue
-        embedded = re.match(
-            r"^(-\s+)\*\*#+(.+?)\*\*(\s*[:：].*)?$", stripped
-        )
-        bare = re.match(
-            r"^(-\s+)#{1,6}\s*(.+?)(\s*[:：].*)?$", stripped
-        )
-        if embedded:
-            label = embedded.group(2).strip()
-            rest = (embedded.group(3) or "").strip()
-            if rest:
-                out.append(f"{embedded.group(1)}<strong style=\"color:#000\">{label}</strong>{rest}")
-            else:
-                out.append(f"{embedded.group(1)}<strong style=\"color:#000\">{label}</strong>")
-            continue
-        if bare:
-            label = bare.group(2).strip()
-            rest = (bare.group(3) or "").strip()
-            if rest:
-                out.append(f"{bare.group(1)}<strong style=\"color:#000\">{label}</strong>{rest}")
-            else:
-                out.append(f"{bare.group(1)}<strong style=\"color:#000\">{label}</strong>")
-            continue
-        h = re.match(r"^#{3,6}\s+(.+)$", stripped)
-        if h:
-            out.append(_black_li(h.group(1)))
-            continue
-        # Collapse nested list levels to a single flat level (same as 三/四).
-        if stripped.startswith(("- ", "* ", "+ ")):
-            out.append(stripped)
-            continue
-        out.append(line)
-    return "\n".join(out)
+        return "\n".join(out)
+
+    idx = md.find("## 五、")
+    if idx < 0:
+        return _process(md, tiered=False)
+    return (_process(md[:idx], tiered=False) + "\n"
+            + _process(md[idx:], tiered=True))
 
 
 FONT_NAME = "華康仿宋體W4"
