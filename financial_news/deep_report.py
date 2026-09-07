@@ -386,6 +386,10 @@ def _flatten_heading_noise(md):
         if h:
             out.append(_black_li(h.group(1)))
             continue
+        # Collapse nested list levels to a single flat level (same as 三/四).
+        if stripped.startswith(("- ", "* ", "+ ")):
+            out.append(stripped)
+            continue
         out.append(line)
     return "\n".join(out)
 
