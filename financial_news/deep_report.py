@@ -374,6 +374,9 @@ def _flatten_heading_noise(md):
         embedded = re.match(
             r"^(-\s+)\*\*#+(.+?)\*\*(\s*[:：].*)?$", stripped
         )
+        bare = re.match(
+            r"^(-\s+)#{1,6}\s*(.+?)(\s*[:：].*)?$", stripped
+        )
         if embedded:
             label = embedded.group(2).strip()
             rest = (embedded.group(3) or "").strip()
@@ -381,6 +384,14 @@ def _flatten_heading_noise(md):
                 out.append(f"{embedded.group(1)}<strong style=\"color:#000\">{label}</strong>{rest}")
             else:
                 out.append(f"{embedded.group(1)}<strong style=\"color:#000\">{label}</strong>")
+            continue
+        if bare:
+            label = bare.group(2).strip()
+            rest = (bare.group(3) or "").strip()
+            if rest:
+                out.append(f"{bare.group(1)}<strong style=\"color:#000\">{label}</strong>{rest}")
+            else:
+                out.append(f"{bare.group(1)}<strong style=\"color:#000\">{label}</strong>")
             continue
         h = re.match(r"^#{3,6}\s+(.+)$", stripped)
         if h:
