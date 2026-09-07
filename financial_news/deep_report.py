@@ -86,6 +86,7 @@ SYSTEM_PROMPT = """你是一名資深的國際金融分析師。使用者會給�
 
 格式要求（重要）：
 - 每個「##」大標題下，先列出**次重點標題**（用 `###` 或 `- **次重點標題**`），其下再給該次重點的**細部說明**一到數行。
+- **層次必須分明**：`###`＝主項；主項之下的子項一律用 `####` 標題，或用**兩空格縮排**的 `  - **子項標題**：`（注意前導兩空格），**嚴禁把子項也用頂格 `- ` 書寫在與 `###` 同行同一層**，否則層次會消失。尤其三/四/五/六/七/八章：主項與子項的層級必須能從縮排或 `####` 區分出來。
 - 全文的重要結論、關鍵事項、警示重點請用 **粗體（Markdown 雙星號）** 標示，方便快速掃讀。
 - 開頭不要重複「報告時間」（系統會自動加）。
 - 禁止使用 LaTeX 數學符號（如 $\rightarrow$、$\to$、$=$ 這類寫法）；箭頭一律直接寫「→」，其餘關係用一般文字。
@@ -393,10 +394,13 @@ def _flatten_heading_noise(md):
                 out.append(_bold_li("#000", _clean_title(bare.group(2)),
                                      (bare.group(3) or "").strip()))
                 continue
-            h = re.match(r"^#{3,6}\s+(.+)$", stripped)
+            h = re.match(r"^(\#{3,6})\s+(.+)$", stripped)
             if h:
-                out.append(_bold_li("#b02020" if tiered else "#000",
-                                     _clean_title(h.group(1)), ""))
+                if tiered:
+                    col = "#b02020" if len(h.group(1)) == 3 else "#000"
+                else:
+                    col = "#000"
+                out.append(_bold_li(col, _clean_title(h.group(2)), ""))
                 continue
             li = re.match(r"^(\s*)[-*+]\s+", line)
             if li:
