@@ -364,13 +364,10 @@ def _flatten_heading_noise(md):
         inner = f"<strong style=\"color:{color}\">{title}</strong>"
         return f"- {inner}{rest}" if rest else f"- {inner}"
 
-    def _color_for(indented, tiered):
-        if not tiered:
-            return "#000"
-        return "#000" if indented else "#b02020"
-
     def _process(txt, tiered):
         out = []
+        cur_sec = ""
+        group7 = False
         for line in txt.split("\n"):
             stripped = line.strip()
             if not stripped:
@@ -378,6 +375,8 @@ def _flatten_heading_noise(md):
                 continue
             sec = re.match(r"^#{1,6}\s*([一二三四五六七八九十]、.+)$", stripped)
             if sec:
+                cur_sec = sec.group(1)[0]
+                group7 = False
                 out.append(f"## {sec.group(1)}")
                 continue
             embedded = re.match(
@@ -408,10 +407,28 @@ def _flatten_heading_noise(md):
                     r"^(-\s+)\*\*(.+?)\*\*\s*([:：].*)?$", stripped
                 )
                 if item:
-                    indented = bool(li.group(1))
+                    title = item.group(2).strip()
                     rest = (item.group(3) or "").strip()
-                    out.append(_bold_li(_color_for(indented, tiered),
-                                        item.group(2).strip(), rest))
+                    col = "#000"
+                    if tiered:
+                        g7head = re.match(
+                            r"^(風險|機會)\s*[\(（](警示|看好)[\)）]?\s*$",
+                            title,
+                        )
+                        if li.group(1):
+                            col = "#000"
+                        elif cur_sec == "六" and re.match(
+                                r"^(短期|中期|長期)\s*[\(（]", title):
+                            col = "#000"
+                        elif cur_sec == "七" and group7 and not g7head:
+                            col = "#000"
+                        else:
+                            col = "#b02020"
+                    out.append(_bold_li(col, title, rest))
+                    if cur_sec == "七" and (g7head or re.match(
+                            r"^風險\s*[\(（]?(警示)[\)）]?\s*$|^機會\s*[\(（]?(看好)[\)）]?\s*$",
+                            title)):
+                        group7 = True
                     continue
             if stripped.startswith(("- ", "* ", "+ ")):
                 out.append(stripped)
