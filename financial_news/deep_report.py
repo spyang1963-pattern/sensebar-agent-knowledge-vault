@@ -57,7 +57,7 @@ SYSTEM_PROMPT = """你是一名資深的國際金融分析師。使用者會給�
 針對股/債/匯/商品四大市場，給出今日整體方向與一句話總結。**務必包含費城半導體指數（費半）**——它是與台股、台積電、AI 供應鏈連動最強的美股半導體指標，請列出其點位漲跌並說明對台股的意涵。
 
 ## 二、行情快照與台股夜盤解析
-系統會額外提供一份【今日最新行情快照（唯一可信來源）】：本節必須以該快照的數據與「快照資料時間」為準，嚴禁引用近兩日報告或分析師人工報告中的行情價格或快照時間作為當前行情。並重點解析台股夜盤／台指期的即時變動，以及與美股的背離或連動。**「台股夜盤與美股連動解析」必須包含費城半導體指數（費半）**，因為費半與台股半導體供應鏈連動性最強，是台指期夜盤最重要的風向指標，請明確寫出費半漲跌與台股夜盤的對應關係。漲跌一律用「▲上漲/▼下跌」符號標示，且**上漲用紅色、下跌用綠色**（在 Markdown 中以 `<span style="color:#c0392b">` 紅色標示 ▲，`<span style="color:#2e7d32">` 綠色標示 ▼），讓紅漲綠跌一目了然。
+系統會額外提供一份【今日最新行情快照（唯一可信來源）】：本節必須以該快照的數據與「快照資料時間」為準，嚴禁引用近兩日報告或分析師人工報告中的行情價格或快照時間作為當前行情。並重點解析台股夜盤／台指期的即時變動，以及與美股的背離或連動。**「台股夜盤與美股連動解析」必須包含費城半導體指數（費半）**，因為費半與台股半導體供應鏈連動性最強，是台指期夜盤最重要的風向指標，請明確寫出費半漲跌與台股夜盤的對應關係。漲跌一律用「▲上漲/▼下跌」符號標示，且**上漲用紅色、下跌用綠色**（在 Markdown 中以 `<span style="color:#c0392b">` 紅色標示 ▲，`<span style="color:#2e7d32">` 綠色標示 ▼），讓紅漲綠跌一目了然。**行情快照中的每個指數／匯率／原油／黃金／個股，必須單獨一列一列列出**（例如 `- 加權指數：46,551.13 點（▲+1.51%）`、`- 台積電：2,410.00 TWD（▲+0.84%）`），**禁止把多個標的併在同一列**用頓號串聯。
 
 ## 三、數據決戰焦點（如有排期事件）
 若提供了【行事曆排期事件】，本節**必須存在**，每個排期事件單獨用 `###` 標題；其下用 `####` 依序列出：最新公布之結果（若當日已公布）、對市場的即時影響（含具體數字）、後續觀察點。此節排在重大事件解讀之前。若當日無排期事件，可略過此節。
@@ -273,7 +273,9 @@ def deep_analyze(md_text, bigpickle_text=None, prev_days_text=None, major_events
     # blocks). Only tint the focus-event title — a bold item with NO trailing
     # ": content" — in dark red, so the key focus stands out purely by color
     # without adding any heading-type gaps or wasting vertical space.
-    text = _colorize_focus_titles(text)
+    # Then apply the same flat style to sections 五/六/七/八… and normalize
+    # every section heading to `## ` so sizes/levels stay consistent.
+    text = _flatten_heading_noise(_colorize_focus_titles(text))
     # Fact-check pass (free tier, does not overwrite content)
     if not os.environ.get("NO_VERIFY_PASS"):
         text, note = _verification_pass(text)
@@ -282,13 +284,13 @@ def deep_analyze(md_text, bigpickle_text=None, prev_days_text=None, major_events
 
 
 def _colorize_focus_titles(md):
-    """Give focus events dark red and sub-items green, keeping the flat layout.
+    """Give focus events dark red and sub-items black-bold, keeping flat layout.
 
     Models vary: they may emit a Markdown heading (`### Title`) or a flat
     bold `- **Title**`. Either way, within "## 三、".."## 五、" every line is
     kept as a plain `- ` list item (no heading blocks / no big gaps):
       - focus-event title (bold item with NO trailing ": content") -> dark red
-      - sub-item title (bold item WITH ": content")               -> green
+      - sub-item title (bold item WITH ": content")               -> black bold
     """
     def _as_red_li(title):
         t = title.strip()
@@ -319,11 +321,11 @@ def _colorize_focus_titles(md):
                 rest = (sub.group(3) or "").strip()
                 if rest:
                     out.append(
-                        f"{sub.group(1)}<strong style=\"color:#145c3a\">{label}</strong>：{rest}"
+                        f"{sub.group(1)}<strong style=\"color:#000\">{label}</strong>：{rest}"
                     )
                 else:
                     out.append(
-                        f"{sub.group(1)}<strong style=\"color:#145c3a\">{label}</strong>"
+                        f"{sub.group(1)}<strong style=\"color:#000\">{label}</strong>"
                     )
                 continue
             ev = re.match(r"^(-\s+)\*\*(.+?)\*\*\s*$", stripped)
@@ -336,11 +338,56 @@ def _colorize_focus_titles(md):
         return head + "\n" + "\n".join(out) + tail
 
     return re.sub(
-        r"(##\s*三、[^\n]*\n)(.*?)(\n##\s*五、)",
+        r"(#{1,6}\s*三、[^\n]*\n)(.*?)(\n#{1,6}\s*五、)",
         _repl,
         md,
         flags=re.S,
     )
+
+
+def _flatten_heading_noise(md):
+    """Apply the section 三/四 flat style to the whole report (五/六/七/八…).
+
+    Every heading line is collapsed to a plain `- ` list item with black-bold
+    text (no `###` blocks, no enlarged line gaps), and section headings such
+    as "### 四、重大事件深度解讀" are normalized to "## " so all sections
+    share the same level. Embedded noise like "- **#### 短期 (1週)**" is also
+    stripped of its '#' prefixes. Line spacing stays minimal everywhere.
+    """
+
+    def _black_li(title):
+        t = title.strip()
+        t = re.sub(r"^[#*+\s]+", "", t)
+        t = re.sub(r"\*\*$", "", t.strip())
+        return f"- <strong style=\"color:#000\">{t}</strong>"
+
+    out = []
+    for line in md.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            out.append(line)
+            continue
+        sec = re.match(r"^#{1,6}\s*([一二三四五六七八九十]、.+)$", stripped)
+        if sec:
+            out.append(f"## {sec.group(1)}")
+            continue
+        embedded = re.match(
+            r"^(-\s+)\*\*#+(.+?)\*\*(\s*[:：].*)?$", stripped
+        )
+        if embedded:
+            label = embedded.group(2).strip()
+            rest = (embedded.group(3) or "").strip()
+            if rest:
+                out.append(f"{embedded.group(1)}<strong style=\"color:#000\">{label}</strong>{rest}")
+            else:
+                out.append(f"{embedded.group(1)}<strong style=\"color:#000\">{label}</strong>")
+            continue
+        h = re.match(r"^#{3,6}\s+(.+)$", stripped)
+        if h:
+            out.append(_black_li(h.group(1)))
+            continue
+        out.append(line)
+    return "\n".join(out)
 
 
 FONT_NAME = "華康仿宋體W4"

@@ -96,44 +96,6 @@ def generate_report(events, title_date=None, new_events=None, since_display=None
     lines.append("> 本報告由 AI 自動生成，僅供參考，不構成投資建議。")
     lines.append("")
 
-    # --- New events since last run: pinned at top as the freshest info ---
-    # Recency feed: show everything fetched since the previous write,
-    # including not-yet-analyzed events (they carry severity=0). The point
-    # of this section is "what just arrived", not importance ranking.
-    # All entries are listed in full so the header count == listed count.
-    if new_events:
-        important = [e for e in new_events if e["severity"] >= 1]
-        others = [e for e in new_events if e["severity"] < 1]
-        lines.append("## 🆕 本次新增事件（置頂：最新產出）")
-        lines.append("")
-        label = f"（自上次產出 {since_display} 以來）" if since_display else ""
-        summary = f"> 本次新增 **{len(new_events)} 筆**{label}"
-        if important:
-            summary += f"，重要 {len(important)} 筆"
-        lines.append(summary)
-        lines.append("")
-        if important:
-            lines.append("**重要事件（severity ≥ 1）**：")
-            lines.append("")
-            for e in sorted(important, key=lambda x: x["fetched_at"] or "", reverse=True):
-                cat = CATEGORY_NAMES.get(e["category"], e["category"] or "未分類")
-                senti = e["sentiment"] or "neutral"
-                ts = _fmt_ts(e["published"] or e["fetched_at"])
-                lines.append(f"- `[{ts}]` **{_sev_badge(e['severity'])}[{cat}][{senti}]** {e['title']} `{e['source']}`")
-                lines.append(f"  - 影響: {e['impact_notes'] or '無'}")
-                if e.get("related_tickers"):
-                    lines.append(f"  - 標的: `{e['related_tickers']}`")
-                lines.append("")
-        if others:
-            lines.append(f"**其他同時段收錄（未分析，共 {len(others)} 筆）**：")
-            lines.append("")
-            for e in sorted(others, key=lambda x: x["fetched_at"] or "", reverse=True):
-                ts = _fmt_ts(e["published"] or e["fetched_at"])
-                lines.append(f"- `[{ts}]` {e['title']}（`{e['source']}`）")
-            lines.append("")
-        lines.append("---")
-        lines.append("")
-
     # --- Today's scheduled calendar events (data-release focus) ---
     try:
         from datetime import date as _date
@@ -157,6 +119,44 @@ def generate_report(events, title_date=None, new_events=None, since_display=None
             lines.append("")
     except Exception:
         pass
+
+    # --- New events since last run: second section (the freshest info) ---
+    # Recency feed: show everything fetched since the previous write,
+    # including not-yet-analyzed events (they carry severity=0). The point
+    # of this section is "what just arrived", not importance ranking.
+    # All entries are listed in full so the header count == listed count.
+    if new_events:
+        important = [e for e in new_events if e["severity"] >= 1]
+        others = [e for e in new_events if e["severity"] < 1]
+        lines.append("## 🆕 本次新增事件（置頂：最新產出）")
+        lines.append("")
+        label = f"（自上次產出 {since_display} 以來）" if since_display else ""
+        summary = f"> 本次新增 **{len(new_events)} 筆**{label}"
+        if important:
+            summary += f"，重要 {len(important)} 筆"
+        lines.append(summary)
+        lines.append("")
+        if important:
+            lines.append("**重要事件（severity ≥ 1）**：")
+            lines.append("")
+            for e in sorted(important, key=lambda x: x["fetched_at"] or "", reverse=True):
+                cat = CATEGORY_NAMES.get(e["category"], e["category"] or "未分類")
+                senti = e["sentiment"] or "neutral"
+                ts = _fmt_ts(e["published"] or e["fetched_at"])
+                lines.append(f"- **[{ts}]** **{_sev_badge(e['severity'])}[{cat}][{senti}]** {e['title']} `{e['source']}`")
+                lines.append(f"  - <strong style=\"color:#174ea6\">影響</strong>: {e['impact_notes'] or '無'}")
+                if e.get("related_tickers"):
+                    lines.append(f"  - <strong style=\"color:#174ea6\">標的</strong>: `{e['related_tickers']}`")
+                lines.append("")
+        if others:
+            lines.append(f"**其他同時段收錄（未分析，共 {len(others)} 筆）**：")
+            lines.append("")
+            for e in sorted(others, key=lambda x: x["fetched_at"] or "", reverse=True):
+                ts = _fmt_ts(e["published"] or e["fetched_at"])
+                lines.append(f"- **[{ts}]** {e['title']}（`{e['source']}`）")
+            lines.append("")
+        lines.append("---")
+        lines.append("")
 
     # --- Market snapshot ---
     lines.append("## 市場行情快照")
@@ -188,10 +188,10 @@ def generate_report(events, title_date=None, new_events=None, since_display=None
             cat = CATEGORY_NAMES.get(e["category"], e["category"] or "未分類")
             senti = e["sentiment"] or "neutral"
             ts = _fmt_ts(e["published"])
-            lines.append(f"- `[{ts}]` **{_sev_badge(e['severity'])}[{cat}][{senti}]** {e['title']}")
-            lines.append(f"  - 影響: {e['impact_notes'] or '無'}")
+            lines.append(f"- **[{ts}]** **{_sev_badge(e['severity'])}[{cat}][{senti}]** {e['title']}")
+            lines.append(f"  - <strong style=\"color:#174ea6\">影響</strong>: {e['impact_notes'] or '無'}")
             if e.get("related_tickers"):
-                lines.append(f"  - 標的: `{e['related_tickers']}`")
+                lines.append(f"  - <strong style=\"color:#174ea6\">標的</strong>: `{e['related_tickers']}`")
             lines.append("")
     lines.append("---")
     lines.append("")
@@ -213,8 +213,8 @@ def generate_report(events, title_date=None, new_events=None, since_display=None
                         reverse=True):
             senti = e["sentiment"] or "neutral"
             ts = _fmt_ts(e["published"])
-            lines.append(f"- `[{ts}]` **{_sev_badge(e['severity'])}[{senti}]** {e['title']}")
-            lines.append(f"  - 影響: {e['impact_notes'] or '無'}")
+            lines.append(f"- **[{ts}]** **{_sev_badge(e['severity'])}[{senti}]** {e['title']}")
+            lines.append(f"  - <strong style=\"color:#174ea6\">影響</strong>: {e['impact_notes'] or '無'}")
             lines.append("")
     lines.append("---")
     lines.append("")
@@ -225,7 +225,7 @@ def generate_report(events, title_date=None, new_events=None, since_display=None
     for e in sorted(events, key=lambda x: x["published"] or "", reverse=True):
         ts = _fmt_ts(e["published"])
         lines.append(
-            f"- `[{ts}]` **{_sev_badge(e['severity'])}** {e['title']} `{e['source']}`"
+            f"- **[{ts}]** **{_sev_badge(e['severity'])}** {e['title']} `{e['source']}`"
         )
     lines.append("")
     return "\n".join(lines)
