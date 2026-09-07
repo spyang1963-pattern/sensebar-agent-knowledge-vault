@@ -416,7 +416,7 @@ def _flatten_heading_noise(md):
                             title,
                         )
                         if cur_sec == "七" and re.match(r"^(標的|理由)$", title):
-                            col = "#174ea6"
+                            col = "#4caf50"
                         elif li.group(1):
                             col = "#000"
                         elif cur_sec == "六" and re.match(
