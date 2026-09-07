@@ -125,11 +125,11 @@ def generate_report(events, title_date=None, new_events=None, since_display=None
     # including not-yet-analyzed events (they carry severity=0). The point
     # of this section is "what just arrived", not importance ranking.
     # All entries are listed in full so the header count == listed count.
+    lines.append("## 🆕 本次新增事件（置頂：最新產出）")
+    lines.append("")
     if new_events:
         important = [e for e in new_events if e["severity"] >= 1]
         others = [e for e in new_events if e["severity"] < 1]
-        lines.append("## 🆕 本次新增事件（置頂：最新產出）")
-        lines.append("")
         label = f"（自上次產出 {since_display} 以來）" if since_display else ""
         summary = f"> 本次新增 **{len(new_events)} 筆**{label}"
         if important:
@@ -155,8 +155,12 @@ def generate_report(events, title_date=None, new_events=None, since_display=None
                 ts = _fmt_ts(e["published"] or e["fetched_at"])
                 lines.append(f"- **[{ts}]** {e['title']}（`{e['source']}`）")
             lines.append("")
-        lines.append("---")
+    else:
+        label = f"（自上次產出 {since_display} 以來）" if since_display else ""
+        lines.append(f"> 本次新增 **0 筆**{label}，本次產出期間沒有新收錄到的事件。")
         lines.append("")
+    lines.append("---")
+    lines.append("")
 
     # --- Market snapshot ---
     lines.append("## 市場行情快照")

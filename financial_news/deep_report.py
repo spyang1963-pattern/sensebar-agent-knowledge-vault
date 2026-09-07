@@ -415,7 +415,9 @@ def _flatten_heading_noise(md):
                             r"^(風險|機會)\s*[\(（](警示|看好)[\)）]?\s*$",
                             title,
                         )
-                        if li.group(1):
+                        if cur_sec == "七" and re.match(r"^(標的|理由)$", title):
+                            col = "#174ea6"
+                        elif li.group(1):
                             col = "#000"
                         elif cur_sec == "六" and re.match(
                                 r"^(短期|中期|長期)\s*[\(（]", title):
