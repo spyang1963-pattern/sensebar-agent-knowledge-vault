@@ -1,6 +1,6 @@
 ﻿$ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-. "D:\AI-Agent-Workspace\XQ-AI神隊友\routines\_excel.ps1"
+. (Join-Path $PSScriptRoot '_excel.ps1')
 $conn = Connect-XQSheet
 $hit = $conn.Hit
 $ws = $hit.WS; $rows = $hit.Rows; $cols = $hit.Cols

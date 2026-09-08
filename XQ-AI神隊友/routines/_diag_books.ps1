@@ -1,6 +1,6 @@
 ﻿$ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-. "D:\AI-Agent-Workspace\XQ-AI神隊友\routines\_excel.ps1"
+. (Join-Path $PSScriptRoot '_excel.ps1')
 $apps = New-Object System.Collections.Generic.List[object]
 foreach ($n in [RotHelper]::Names()) {
     if ($n -match '^!\{') { continue }
