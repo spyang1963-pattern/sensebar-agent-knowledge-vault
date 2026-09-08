@@ -10,7 +10,6 @@ Usage:
   python publisher/deploy.py --no-push  # copy only (dry deploy)
 """
 import os
-import sys
 import shutil
 import argparse
 import subprocess
@@ -19,14 +18,24 @@ from datetime import datetime, timezone, timedelta
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "routines", "outputs", "xq_dashboard.html")
 PUB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "repo")
+REPO_URL = "https://github.com/spyang1963-pattern/xq-dashboard.git"
 TZ = timezone(timedelta(hours=8))
+
+
+def ensure_checkout():
+    if os.path.isdir(os.path.join(PUB_DIR, ".git")):
+        return
+    os.makedirs(os.path.dirname(PUB_DIR), exist_ok=True)
+    if os.path.exists(PUB_DIR):
+        raise SystemExit(f"[deploy] repo dir exists but not a git checkout: {PUB_DIR}")
+    print(f"[deploy] cloning {REPO_URL} -> {PUB_DIR}")
+    subprocess.run(["git", "clone", REPO_URL, PUB_DIR], check=True)
 
 
 def deploy():
     if not os.path.isfile(SRC):
         raise SystemExit(f"[deploy] source not found: {SRC}")
-    if not os.path.isdir(os.path.join(PUB_DIR, ".git")):
-        raise SystemExit(f"[deploy] not a git checkout: {PUB_DIR}")
+    ensure_checkout()
 
     shutil.copy2(SRC, os.path.join(PUB_DIR, "index.html"))
     now = datetime.now(TZ).strftime("%Y-%m-%d %H:%M")
