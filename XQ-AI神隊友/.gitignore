@@ -1,0 +1,5 @@
+# XQ-AI神隊友 — 不入 sensebar 大倉的檔案（PC3 從零累積）
+routines/snapshots/
+routines/outputs/
+__pycache__/
+*.pyc

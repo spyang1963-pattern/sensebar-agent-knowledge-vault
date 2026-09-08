@@ -1,0 +1,3 @@
+# publisher 嵌的 xq-dashboard Pages repo（不納入 sensebar-agent-knowledge-vault 大倉）
+repo/
+__pycache__/

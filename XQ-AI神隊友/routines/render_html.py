@@ -1,0 +1,1549 @@
+# ============================================================
+#  render_html.py ─ XQ-AI神隊友 盤中報告 HTML 看板產生器
+#
+#  作用：把 snapshots\ 的即時快照 CSV 轉成「一眼抓到關鍵」的互動 HTML。
+#        （取代原本只有純文字 .md 的報告呈現方式）
+#
+#  用法：
+#    python render_html.py --kind rank
+#    python render_html.py --kind breadth
+#    python render_html.py --kind notes
+#    python render_html.py --all
+#    python render_html.py --kind rank --csv <某快照.csv> --out <輸出路徑.html>   # 指定檔案
+#
+#  設計原則（對應 CLAUDE.md「文體通用規則」）：
+#    1. 頂部「一句話結論」大字
+#    2. 資金相關用橫條視覺化，顏色＝漲跌（紅漲綠跌）
+#    3. 技術欄位 hover 顯示口語解釋
+#    4. 矛盾／反差做成紅色警示卡，並附「這代表什麼」
+#    5. 結尾「該盯的變數」
+#
+#  歷史與比較：自動掃 snapshots\{kind}_*.csv 全部同類檔，
+#       取得「上一份」做「與前份比」，故每次快照就自然累積歷史。
+#
+#  輸出：routines\outputs\{kind}_{yyyyMMdd_HHmmss}.html
+#  （之後可上 GitHub Pages，見 README 的部署段落）
+# ============================================================
+import argparse
+import io
+import json
+import os
+import re
+import sys
+from datetime import datetime
+
+# ---------- 路徑 ----------
+ROOT = os.path.dirname(os.path.abspath(__file__))
+SNAPSHOT_DIR = os.path.join(ROOT, "snapshots")
+OUTPUT_DIR = os.path.join(ROOT, "outputs")
+GROUPS_FILE = os.path.join(ROOT, "groups.ps1")
+GROUPS_EXTRA = os.path.join(ROOT, "groups_extra.ps1")
+
+# ---------- 參數（對齊 analyze_breadth.ps1 的判定門檻） ----------
+MIN_MEMBERS = 3
+ALIGN_RATIO = 0.75
+SPLIT_PCT = 3
+SOLO_STRONG_PCT = 5
+SOLO_REST_PCT = 2
+LIMIT_PCT = 9.5
+HOT_TURN = 10
+FAKE_DEV = -1.5
+HIDDEN_DEV = 1.5
+WEAK_TOP = 30
+WEAK_PCT = -2
+# 以下是 notes（作法三）的門檻（對齊 analyze_notes.ps1）
+NEAR_UP_PCT = 8.0      # 接近漲停：漲幅 ≥ +8% 但未鎖死
+NEAR_DOWN_PCT = -8.5   # 接近跌停：漲幅 ≤ -8.5%
+BIG_MOVE_PCT = 2.5     # 大幅位移：與上一份相比漲幅變化 ≥ |2.5%|
+KEY_CODES = ['2330', '2454', '2317', '3037', '2408', '2492', '6173', '3653']
+
+# 各 kind 的分析範圍（成交值前 N 名）
+UNIVERSE = {"rank": 50, "breadth": 200, "notes": 160}
+
+
+# ============================================================
+#  族群分類：解析 groups.ps1 / groups_extra.ps1
+# ============================================================
+def parse_groups_file(path):
+    """解析 '代碼'='族群名' 格式，回傳 {code: name}。忽略註解與 $Global 行。"""
+    groups = {}
+    if not os.path.exists(path):
+        return groups
+    try:
+        with io.open(path, "r", encoding="utf-8-sig", errors="replace") as f:
+            for line in f:
+                line = line.split("#")[0].strip()
+                m = re.match(r"^'([A-Za-z0-9\-]+)'\s*=\s*'(.+?)'$", line)
+                if m:
+                    groups[m.group(1).strip()] = m.group(2).strip()
+    except Exception as e:
+        print(f"WARN 讀取 {path} 失敗: {e}", file=sys.stderr)
+    return groups
+
+
+def build_group_map():
+    g = parse_groups_file(GROUPS_FILE)
+    extra = parse_groups_file(GROUPS_EXTRA)
+    g.update(extra)  # groups_extra 覆蓋主檔
+    return g
+
+
+# ============================================================
+#  讀取快照
+# ============================================================
+def list_snapshots(kind):
+    """回傳同 kind 的 {stamp: path}，依時間排序（stamp = yyyyMMdd_HHmmss）。"""
+    pat = re.compile(r"^" + re.escape(kind) + r"_(\d{8}_\d{6})\.csv$")
+    found = {}
+    if os.path.isdir(SNAPSHOT_DIR):
+        for fn in os.listdir(SNAPSHOT_DIR):
+            m = pat.match(fn)
+            if m:
+                found[m.group(1)] = os.path.join(SNAPSHOT_DIR, fn)
+    return dict(sorted(found.items()))
+
+
+def load_csv(path):
+    """讀快照 CSV，回傳 list[dict]，欄位轉 double。"""
+    rows = []
+    with io.open(path, "r", encoding="utf-8-sig", errors="replace") as f:
+        header = f.readline().strip().replace("\ufeff", "").split(",")
+        header = [h.strip().strip('"') for h in header]
+        for line in f:
+            if not line.strip():
+                continue
+            cells = [c.strip().strip('"') for c in line.rstrip("\n").split(",")]
+            d = dict(zip(header, cells))
+            for k in ("Close", "Chg", "Vol", "Turn", "Dev", "IO", "BidQ", "AskQ", "Cap", "Val"):
+                try:
+                    d[k] = float(d[k])
+                except (KeyError, ValueError):
+                    d[k] = 0.0
+            rows.append(d)
+    return rows
+
+
+# ============================================================
+#  數值格式化
+# ============================================================
+def fmt(v, nd=1):
+    try:
+        return f"{float(v):.{nd}f}"
+    except (TypeError, ValueError):
+        return "0"
+
+
+def fmt_chg(v):
+    v = float(v)
+    return f"+{v:.2f}%" if v > 0 else (f"{v:.2f}%" if v < 0 else "0.00%")
+
+
+def chg_class(v):
+    """成交量/漲幅的紅綠 class。台股紅漲綠跌。"""
+    v = float(v)
+    if v > 0:
+        return "up"
+    if v < 0:
+        return "down"
+    return "flat"
+
+
+# 欄位 hover 口語翻譯（對應 CLAUDE.md「欄位口語翻譯」）
+FIELD_TIPS = {
+    "IO": "內外盤比：委買/委賣掛單比值，>50 表示買方掛單多（偏多），<50 賣方掛單多（偏空）。不是成交方向，是掛單厚度。",
+    "Dev": "乖離：成交價相對「當日均價」的差距%。正值＝收在均價上方，負值＝收在均價下方。負很多＝開高走低或殺到尾盤。",
+    "Turn": "換手率：當日總量 ÷ 股本。越高表示籌碼換手越激烈；低換手鎖漲停＝籌碼極輕，高換手才漲停＝激烈對戰。",
+    "BidQ": "委買：買盤排隊張數。",
+    "AskQ": "委賣：賣盤排隊張數。",
+    "Val": "成交值：該股成交總額（億元）。",
+}
+
+
+# ============================================================
+#  作法一：族群資金排行資料
+# ============================================================
+def build_rank(groups, path, top_n=50):
+    all_rows = [r for r in load_csv(path) if r["Code"] not in ("TSE", "OTC")]
+    all_rows.sort(key=lambda r: r["Val"], reverse=True)
+    top = all_rows[:top_n]
+    for i, r in enumerate(top, 1):
+        r["Rk"] = i
+        r["Grp"] = groups.get(r["Code"], "未分類")
+
+    tot = sum(r["Val"] for r in top)
+
+    # 族群彙總
+    grp = {}
+    for r in top:
+        grp.setdefault(r["Grp"], []).append(r)
+    groups_rows = []
+    for g, mem in grp.items():
+        val = sum(r["Val"] for r in mem)
+        avg = sum(r["Chg"] for r in mem) / len(mem)
+        up = sum(1 for r in mem if r["Chg"] > 0)
+        dn = sum(1 for r in mem if r["Chg"] < 0)
+        mem_sorted = sorted(mem, key=lambda r: r["Val"], reverse=True)
+        groups_rows.append({
+            "G": g, "N": len(mem), "Val": val, "Pct": val / tot * 100 if tot else 0,
+            "Avg": avg, "Up": up, "Dn": dn,
+            "Mem": mem_sorted,
+        })
+    groups_rows.sort(key=lambda r: r["Val"], reverse=True)
+    tot = round(tot, 1)
+
+    unclassified = [r for r in top if r["Grp"] == "未分類"]
+
+    # 前 3 大資金族群
+    top3 = groups_rows[:3]
+
+    # 矛盾股：成交值 top 但收黑（量最大卻綠的）
+    contradictions = [r for r in top if r["Chg"] < 0][:3]
+
+    # ---------- ① 各筆意義：把 raw 欄位轉成「這代表什麼」 ----------
+    for r in top:
+        r["Why"] = interpret_stock(r, tot)
+
+    # ---------- ② 整體結構診斷 ----------
+    structure = diagnose_structure(groups_rows, all_rows, tot)
+
+    # ---------- ③ 趨勢：與前一份同 kind 快照比較 ----------
+    prev_rows = load_previous(kind="rank", path=path)
+    trend = compare_rank(prev_rows, top, all_rows) if prev_rows else None
+    history_count = len(list_snapshots("rank"))
+
+    return {
+        "kind": "rank", "file": os.path.basename(path), "stamp": guess_stamp(path),
+        "total": len(all_rows), "top_n": top_n, "top_total": tot,
+        "top": top, "groups": groups_rows, "unclassified": unclassified,
+        "top3": top3, "contradictions": contradictions,
+        "structure": structure, "trend": trend, "history_count": history_count,
+    }
+
+
+# ============================================================
+#  作法二：齊漲分歧診斷資料（對齊 analyze_breadth.ps1 的口徑）
+# ============================================================
+def build_breadth(groups, path, top_n=None):
+    top_n = top_n or UNIVERSE["breadth"]
+    all_rows = [r for r in load_csv(path) if r["Code"] not in ("TSE", "OTC")]
+    all_rows.sort(key=lambda r: r["Val"], reverse=True)
+    top = all_rows[:top_n]
+    rank_map = {r["Code"]: i + 1 for i, r in enumerate(top)}
+
+    # 族群歸類
+    grp = {}
+    unclassified = []
+    for r in top:
+        g = groups.get(r["Code"])
+        if not g:
+            unclassified.append(r)
+            continue
+        grp.setdefault(g, []).append(r)
+
+    rows = []
+    for g, mem in grp.items():
+        mem = sorted(mem, key=lambda r: r["Chg"], reverse=True)
+        n = len(mem)
+        up = sum(1 for r in mem if r["Chg"] > 0)
+        dn = sum(1 for r in mem if r["Chg"] < 0)
+        val = round(sum(r["Val"] for r in mem), 1)
+        lu = sum(1 for r in mem if r["Chg"] >= LIMIT_PCT and r["AskQ"] == 0)
+        ld = sum(1 for r in mem if r["Chg"] <= -LIMIT_PCT and r["BidQ"] == 0)
+        hi = max(r["Chg"] for r in mem)
+        lo = min(r["Chg"] for r in mem)
+        tags = []
+        if n >= MIN_MEMBERS:
+            if up / n >= ALIGN_RATIO and up >= MIN_MEMBERS:
+                tags.append("RALLY")
+            if dn / n >= ALIGN_RATIO and dn >= MIN_MEMBERS:
+                tags.append("SELLOFF")
+            if hi >= SPLIT_PCT and lo <= -SPLIT_PCT:
+                tags.append("SPLIT")
+            strong = [r for r in mem if r["Chg"] >= SOLO_STRONG_PCT]
+            rest = [r for r in mem if r["Chg"] < SOLO_STRONG_PCT]
+            if len(strong) == 1 and sum(1 for r in rest if abs(r["Chg"]) > SOLO_REST_PCT) == 0:
+                tags.append("SOLO")
+        else:
+            tags.append("THIN")
+        rows.append({
+            "G": g, "N": n, "Up": up, "Dn": dn, "Val": val, "LU": lu, "LD": ld,
+            "Hi": hi, "Lo": lo, "Ratio": round(up / n, 3), "Avg": round(sum(r["Chg"] for r in mem) / n, 2),
+            "Tags": tags, "Mem": mem,
+        })
+    rows.sort(key=lambda r: r["Val"], reverse=True)
+
+    # 個股訊號
+    def sig(title, cond, sort_key, detail):
+        items = [r for r in top if cond(r)]
+        items.sort(key=sort_key, reverse=True)
+        return {"title": title, "items": items, "detail": detail}
+
+    signals = [
+        sig("漲停鎖死", lambda r: r["Chg"] >= LIMIT_PCT and r["AskQ"] == 0,
+            lambda r: r["Val"], "漲幅 ≥ +9.5% 且委賣挂 0，買不到＝籌碼極度稀缺"),
+        sig("跌停鎖死", lambda r: r["Chg"] <= -LIMIT_PCT and r["BidQ"] == 0,
+            lambda r: r["Val"], "跌幅 ≤ -9.5% 且委買挂 0，想走也賣不掉"),
+        sig("換手異常", lambda r: r["Turn"] >= HOT_TURN,
+            lambda r: r["Turn"], f"換手率 ≥ {HOT_TURN}%，籌碼激烈交換"),
+        sig("假強勢", lambda r: r["Chg"] > 0 and r["Dev"] <= FAKE_DEV,
+            lambda r: r["Val"], "漲幅為正但收在均價下方（開高走低），漲是假象"),
+        sig("隱藏買盤", lambda r: r["Chg"] < 0 and r["Dev"] >= HIDDEN_DEV,
+            lambda r: r["Val"], "漲幅為負但收在均價上方（低開走高），有人在偷接"),
+        sig("量大走弱", lambda r: rank_map.get(r["Code"], 999) <= WEAK_TOP and r["Chg"] <= WEAK_PCT,
+            lambda r: r["Val"], f"成交值前 {WEAK_TOP} 名且漲幅 ≤ {WEAK_PCT}%，大資金壓著往下走"),
+    ]
+
+    up_top = len([r for r in top if r["Chg"] > 0])
+    dn_top = len([r for r in top if r["Chg"] < 0])
+    flat_top = len([r for r in top if r["Chg"] == 0])
+    up_all = len([r for r in all_rows if r["Chg"] > 0])
+    dn_all = len([r for r in all_rows if r["Chg"] < 0])
+    cut = top[-1] if top else None
+
+    # 最反直覺的一件事：找標籤中的關鍵矛盾
+    counter = []
+    if rows:
+        biggest = rows[0]
+        if "SELLOFF" in biggest["Tags"]:
+            counter.append(f"成交值最大的族群「{biggest['G']}」（{biggest['Val']:.0f}億）竟然齊跌 {biggest['Dn']}/{biggest['N']}——大資金在主軸退潮")
+        elif "SPLIT" in biggest["Tags"] and biggest["Val"] >= rows[1]["Val"] * 1.2 if len(rows) > 1 else False:
+            counter.append(f"成交值最大的族群「{biggest['G']}」內部嚴重分歧（高點 {biggest['Hi']:+g}% / 低點 {biggest['Lo']:+g}%）——這不是族群行情，是資金在族內挑股")
+
+    return {
+        "kind": "breadth", "file": os.path.basename(path), "stamp": guess_stamp(path),
+        "top_n": top_n, "total": len(all_rows), "cut": cut,
+        "up_top": up_top, "dn_top": dn_top, "flat_top": flat_top,
+        "up_all": up_all, "dn_all": dn_all,
+        "rows": rows, "unclassified": unclassified, "signals": signals,
+        "counter": counter,
+    }
+
+
+# ============================================================
+#  作法三：盤中觀察三段資料（對齊 analyze_notes.ps1 的口徑）
+# ============================================================
+def build_notes(groups, path):
+    all_rows = load_csv(path)
+    idx = [r for r in all_rows if r["Code"] in ("TSE", "OTC")]
+    s = [r for r in all_rows if r["Code"] not in ("TSE", "OTC")]
+    s.sort(key=lambda r: r["Val"], reverse=True)
+    s = s[:UNIVERSE["notes"]]
+
+    for r in s:
+        r["G"] = groups.get(r["Code"])
+
+    prev = load_previous(kind="notes", path=path)
+    pmap = {r["Code"]: r for r in prev} if prev else {}
+
+    up_all = sum(1 for r in s if r["Chg"] > 0)
+    dn_all = sum(1 for r in s if r["Chg"] < 0)
+    flat_all = sum(1 for r in s if r["Chg"] == 0)
+    tot_val = round(sum(r["Val"] for r in s), 1)
+
+    prev_stat = None
+    if prev:
+        pu = sum(1 for r in prev if r["Chg"] > 0)
+        pd = sum(1 for r in prev if r["Chg"] < 0)
+        pv = round(sum(r["Val"] for r in prev), 1)
+        prev_stat = {"up": pu, "dn": pd, "total_val": pv,
+                     "d_up": up_all - pu, "d_dn": dn_all - pd, "d_val": round(tot_val - pv, 1)}
+
+    # 族群全樣本（含與前份增量）
+    grp = {}
+    for r in s:
+        if r["G"]:
+            grp.setdefault(r["G"], []).append(r)
+    grp_rows = []
+    for g, mem in grp.items():
+        n = len(mem)
+        v = round(sum(r["Val"] for r in mem), 2)
+        u = sum(1 for r in mem if r["Chg"] > 0)
+        d = sum(1 for r in mem if r["Chg"] < 0)
+        f = sum(1 for r in mem if r["Chg"] == 0)
+        av = round(sum(r["Chg"] for r in mem) / n, 2)
+        sorted_c = sorted(r["Chg"] for r in mem)
+        md = round(sorted_c[n // 2], 2)
+        dv = da = 0.0
+        if prev:
+            pg = [r for r in prev if groups.get(r["Code"]) == g]
+            if pg:
+                dv = round(v - round(sum(r["Val"] for r in pg), 2), 2)
+                da = round(av - round(sum(r["Chg"] for r in pg) / len(pg), 2), 2)
+        grp_rows.append({"G": g, "N": n, "V": v, "U": u, "D": d, "F": f,
+                         "A": av, "M": md, "DV": dv, "DA": da,
+                         "Pct": round(v / tot_val * 100, 2) if tot_val else 0})
+    grp_rows.sort(key=lambda r: r["V"], reverse=True)
+
+    def parted(title, cond, key, prevkey=None):
+        out = []
+        for r in s:
+            if cond(r):
+                item = {"r": r}
+                p = pmap.get(r["Code"])
+                if prev and p:
+                    item["prev_chg"] = p["Chg"]
+                    item["prev_vol"] = p["Vol"]
+                else:
+                    item["is_new"] = True
+                out.append(item)
+        out.sort(key=lambda x: x["r"][key], reverse=True)
+        return {"title": title, "items": out}
+
+    locks = [
+        parted("漲停鎖死", lambda r: r["Chg"] >= LIMIT_PCT and r["AskQ"] == 0, "Val"),
+        parted("接近漲停", lambda r: r["Chg"] >= NEAR_UP_PCT and r["AskQ"] > 0, "Chg"),
+        parted("跌停鎖死", lambda r: r["Chg"] <= -LIMIT_PCT and r["BidQ"] == 0, "Val"),
+        parted("接近跌停", lambda r: r["Chg"] <= NEAR_DOWN_PCT, "Chg"),
+        parted("換手異常", lambda r: r["Turn"] >= HOT_TURN, "Turn"),
+        parted("假強勢", lambda r: r["Chg"] > 0 and r["Dev"] <= FAKE_DEV, "Val"),
+        parted("重挫", lambda r: r["Chg"] <= WEAK_PCT, "Val"),
+    ]
+
+    # 翻紅翻黑（與前份比較）
+    flipped_red = [r for r in s if r["Chg"] < 0 and r["Code"] in pmap and pmap[r["Code"]]["Chg"] > 0]
+    flipped_green = [r for r in s if r["Chg"] > 0 and r["Code"] in pmap and pmap[r["Code"]]["Chg"] < 0]
+    flipped_red.sort(key=lambda r: r["Val"], reverse=True)
+    flipped_green.sort(key=lambda r: r["Val"], reverse=True)
+
+    # 大幅位移（與前份比）
+    big_movers = []
+    if prev:
+        for r in s:
+            p = pmap.get(r["Code"])
+            if p and abs(r["Chg"] - p["Chg"]) >= BIG_MOVE_PCT:
+                big_movers.append({"r": r, "prev_chg": p["Chg"], "d": round(r["Chg"] - p["Chg"], 2)})
+        big_movers.sort(key=lambda x: x["r"]["Val"], reverse=True)
+        big_movers = big_movers[:20]
+
+    key_codes = []
+    for c in KEY_CODES:
+        for r in s:
+            if r["Code"] == c:
+                p = pmap.get(c)
+                key_codes.append({"r": r, "prev_chg": p["Chg"] if p else None,
+                                  "prev_vol": p["Vol"] if p else None})
+                break
+
+    return {
+        "kind": "notes", "file": os.path.basename(path), "stamp": guess_stamp(path),
+        "total": len(s), "idx": idx, "up_all": up_all, "dn_all": dn_all,
+        "flat_all": flat_all, "tot_val": tot_val, "prev_stat": prev_stat,
+        "groups": grp_rows, "locks": locks, "flipped_red": flipped_red,
+        "flipped_green": flipped_green, "big_movers": big_movers, "key_codes": key_codes,
+        "unclassified": [r for r in s if not r["G"]][:15],
+    }
+
+
+# ============================================================
+#  ① 各筆意義判讀：把 raw 欄位轉成「這代表什麼」
+# ============================================================
+def interpret_stock(r, tot):
+    """回傳一串短句，說明這檔的量/價/掛單合起來代表什麼。"""
+    tags = []
+    chg = r["Chg"]
+    val = r["Val"]
+    io = r["IO"]
+    dev = r["Dev"]
+    turn = r["Turn"]
+    cap = r["Cap"]
+
+    # 量 vs 漲跌
+    is_mega = val >= tot * 0.05  # 前50名某檔佔5%以上，算重磅
+    if is_mega and chg < 0:
+        tags.append(f"重磅量卻收黑 {fmt_chg(chg)}：資金留在這檔但股價不認帳，偏出貨")
+    elif is_mega and chg > 0:
+        tags.append(f"重磅量+收紅 {fmt_chg(chg)}：真金白銀在接，是承接型量")
+    elif chg < -2 and val >= 20:
+        tags.append(f"量大走弱 {fmt_chg(chg)}：量出來方向卻向下")
+    elif chg > 2 and val >= 20:
+        tags.append(f"量大走強 {fmt_chg(chg)}：有量又有方向")
+
+    # 內外盤比（掛單厚度）
+    if 0 < io < 40:
+        tags.append(f"內外盤比 {fmt(io,0)}：賣方掛單厚，上檔有壓力")
+    elif io > 60:
+        tags.append(f"內外盤比 {fmt(io,0)}：買方掛單厚，下檔有撐")
+
+    # 乖離（收盤相對均價）
+    if dev <= -2.5:
+        tags.append(f"乖離 {fmt(dev,1)}：收在均價下方很多，開高走低、動能弱")
+    elif dev >= 2.5:
+        tags.append(f"乖離 +{fmt(dev,1)}：收在均價上方很多，尾盤有買盤承接")
+
+    # 換手
+    if turn >= 10:
+        tags.append(f"換手 {fmt(turn,1)}%：爆量對戰")
+    elif turn >= 3 and chg > 5:
+        tags.append(f"換手 {fmt(turn,1)}% 高換手卻大漲：籌碼激烈但有人願意接")
+    elif turn <= 0.3 and chg >= 9:
+        tags.append(f"換手僅 {fmt(turn,2)}% 卻鎖漲：籌碼極輕")
+
+    # 委買委賣極端
+    delta = (r["BidQ"] - r["AskQ"]) if (r["BidQ"] + r["AskQ"]) > 0 else 0.0
+    total_q = r["BidQ"] + r["AskQ"]
+    if total_q > 0 and abs(delta) / total_q > 0.8:
+        tags.append("委買/委賣掛單嚴重失衡" + ("（買方厚）" if delta > 0 else "（賣方厚）"))
+
+    return "; ".join(tags) if tags else "量價動能平淡，暫無明顯訊號"
+
+
+# ============================================================
+#  ② 整體結構診斷：整張盤的資金涵義
+# ============================================================
+def diagnose_structure(groups_rows, all_rows, tot):
+    findings = []
+    if not groups_rows:
+        return []
+
+    biggest = groups_rows[0]
+    # 集中度：前50名 vs 全表
+    total_all = sum(r["Val"] for r in all_rows) or 1
+    concentration = tot / total_all * 100
+    if concentration >= 60:
+        findings.append(("資金集中度", f"前{50}名成交值 {tot:.0f}億占全表 {concentration:.0f}%，屬高度集中——少數族群在撐盤，像單一主軸行情"))
+    elif concentration >= 40:
+        findings.append(("資金集中度", f"前{50}名占全表 {concentration:.0f}%，中度集中，資金分散在幾個族群"))
+
+    # 最大族群：量 vs 方向
+    if biggest["Avg"] < 0:
+        findings.append(("主軸訊號", f"最大資金族群「{biggest['G']}」成交值 {biggest['Val']:.0f}億（佔 {biggest['Pct']:.0f}%）卻收黑（平均 {fmt_chg(biggest['Avg'])}）——主軸在退潮，資金留在原地但方向不認帳，這是今天最重要的盤面訊息"))
+    else:
+        findings.append(("主軸訊號", f"最大資金族群「{biggest['G']}」成交值 {biggest['Val']:.0f}億（佔 {biggest['Pct']:.0f}%）且收紅（平均 {fmt_chg(biggest['Avg'])}）——有人真金白銀在接，主軸正向"))
+
+    # 上中下游結構：找成交值前幾名的族群是否屬於同一條供應鏈
+    # （用族群名關鍵字粗略分層）
+    LAYER_MAP = {
+        "ABF載板": "基板層", "銅箔基板CCL": "材料層", "PCB": "板廠層",
+        "PCB鑽孔設備耗材": "設備層", "記憶體": "顆粒層", "矽晶圓": "材料層",
+        "晶圓代工": "生產層", "封測": "封測層", "IP矽智財": "設計層",
+    }
+    layer_hit = {}
+    for g in groups_rows[:10]:
+        layer = LAYER_MAP.get(g["G"])
+        if layer:
+            layer_hit.setdefault(layer, []).append(g["G"])
+    if len(layer_hit) >= 3:
+        layers = "、".join(f"{l}({'、'.join(v)})" for l, v in layer_hit.items())
+        findings.append(("上下游結構", f"資金同時出現在 {layers}——多層供應鏈都有錢，屬「題材型」整鏈定價；反之若只集中在單層，則偏個股消息"))
+
+    # 量小但全紅的族群（小盤輪動）
+    small_red = [g for g in groups_rows if g["N"] >= 2 and g["Up"] == g["N"] and g["Val"] <= biggest["Val"] * 0.6]
+    small_red.sort(key=lambda g: g["Val"], reverse=True)
+    if small_red:
+        names = "、".join(g["G"] for g in small_red[:3])
+        findings.append(("小盤輪動", f"量較小的「{names}」全紅在走——資金除了穩住主軸，也在往小盤/二線切，屬高低切換手信號"))
+
+    # 全場漲跌家數
+    up = sum(1 for r in all_rows if r["Chg"] > 0)
+    dn = sum(1 for r in all_rows if r["Chg"] < 0)
+    if up > dn * 1.5:
+        findings.append(("漲跌家數", f"全表上漲 {up} / 下跌 {dn}，多方家數明顯較多，但散落在中小型（大資金主軸反而收黑）"))
+    elif dn > up:
+        findings.append(("漲跌家數", f"全表上漲 {up} / 下跌 {dn}，空方家數較多"))
+
+    return findings
+
+
+# ============================================================
+#  ③ 趨勢：載入「前一份」同 kind 快照
+# ============================================================
+def load_previous(kind, path):
+    """回傳前一份快照的 list[dict]，沒有就回傳 None。"""
+    snaps = list_snapshots(kind)
+    stamps = list(snaps.keys())
+    cur = guess_stamp(path)
+    if cur not in snaps:
+        snaps[cur] = path  # 指定的檔案可能不在目錄清單
+        stamps = sorted(snaps.keys())
+    idx = stamps.index(cur) if cur in stamps else -1
+    if idx <= 0:
+        return None
+    prev_stamp = stamps[idx - 1]
+    return load_csv(snaps[prev_stamp])
+
+
+def compare_rank(prev_rows, cur_top, cur_all):
+    """比較這輪與前輪的資金位移，回傳 list[dict]（只有有意義的變化才列）。
+
+    verdict：把「資金(成交值)增減」與「股價方向(收紅/收黑)」合看，
+    - 量增價漲 → 進貨（資金進場且股價跟漲，多方主導）
+    - 量增價跌 → 疑似出貨（有人在這個量出，價不漲反跌）
+    - 量縮價漲 → 惜售（沒人賣，但也沒有新資金推）
+    - 量縮價跌 → 退潮（資金撤、價走弱）
+    """
+    prev = [r for r in prev_rows if r["Code"] not in ("TSE", "OTC")]
+    prev_map = {r["Code"]: r for r in prev}
+    out = []
+
+    def verdict(dv, chg):
+        if dv > 0 and chg >= 0:
+            return "進貨", "key-red"
+        if dv > 0 and chg < 0:
+            return "疑似出貨", "key-green"
+        if dv < 0 and chg >= 0:
+            return "惜售", "key-yellow"
+        return "退潮", "key-green"
+
+    # 這輪成交量最大的前 5 檔，跟前輪相比是增是減
+    for r in cur_top[:5]:
+        p = prev_map.get(r["Code"])
+        if not p:
+            continue
+        dv = r["Val"] - p["Val"]
+        dchg = r["Chg"] - p["Chg"]
+        if abs(dv) >= 2 or abs(dchg) >= 1.5:
+            v, cls = verdict(dv, r["Chg"])
+            price_dir = "股價收紅" if r["Chg"] >= 0 else "股價收黑"
+            out.append({
+                "type": "money",
+                "label": r["Name"],
+                "verdict": v, "vcls": cls,
+                "text": f"成交值 {fmt(p['Val'])}({fmt_chg(p['Chg'])}) → {fmt(r['Val'])}億({fmt_chg(r['Chg'])})，" +
+                        ("資金流入" if dv > 0 else "資金流出") + f" {fmt(abs(dv))}億、{price_dir}" +
+                        (f"，漲幅轉強 {fmt_chg(dchg)}" if dchg > 0 else f"，漲幅轉弱 {fmt_chg(dchg)}")
+            })
+
+    return out
+
+
+def stamp_display(stamp):
+    """yyyyMMdd_HHmmss → 2026-09-04 09:27:10"""
+    try:
+        return datetime.strptime(stamp, "%Y%m%d_%H%M%S").strftime("%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return stamp
+
+
+def guess_stamp(path):
+    m = re.search(r"(\d{8}_\d{6})\.csv$", path)
+    return m.group(1) if m else "unknown"
+
+
+# ============================================================
+#  一句話結論（供 rank 用）
+# ============================================================
+def kw(tag, text):
+    """把關鍵字包上顏色 class。"""
+    return f'<span class="{tag}">{text}</span>'
+
+
+def one_line_rank(d):
+    g = d["groups"]
+    if not g:
+        return "資料不足，尚無法下結論。"
+    biggest = g[0]
+    parts = []
+    bigcls = "key-green" if biggest["Avg"] < 0 else "key-red"
+    if biggest["Avg"] < 0:
+        parts.append(f"最大資金族群「{kw(bigcls, biggest['G'])}」({biggest['Val']:.0f}億)卻在{kw('key-green', '收黑')}")
+    else:
+        parts.append(f"最大資金族群「{kw(bigcls, biggest['G'])}」({biggest['Val']:.0f}億){kw('key-red', '紅盤')}")
+    # 找「量小但全紅」的組裝/下游族群
+    small_red = [x for x in g if x["N"] >= 2 and x["Up"] == x["N"] and 0 < x["Val"] <= biggest["Val"] * 0.6]
+    small_red.sort(key=lambda x: x["Val"], reverse=True)
+    if small_red:
+        parts.append(f"小股數的「{kw('key-red', small_red[0]['G'])}」{kw('key-red', '全紅')}在走")
+    contrad = d["contradictions"]
+    if contrad:
+        top0 = contrad[0]
+        parts.append(f"頭號矛盾「{kw('key-green', top0['Name'])}」量排前卻{kw('key-green', '收黑')}")
+    return "今天：" + "；".join(parts) + "。"
+
+
+# ============================================================
+#  HTML 產生
+# ============================================================
+CSS = """
+:root{--up:#d64541;--down:#2e9e5b;--flat:#9a9a9a;--bg:#0f1420;--card:#181f30;--line:#2a3350;--txt:#e8ecf5;--sub:#9aa7c4;--warn:#ffd166;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5}
+.wrap{max-width:1060px;margin:0 auto;padding:18px}
+header{padding:16px 0 10px;border-bottom:1px solid var(--line)}
+h1{font-size:20px;margin:0 0 4px}
+.meta{color:var(--sub);font-size:12.5px}
+.verdict{background:linear-gradient(135deg,#1d2a4a,#232f4e);border:1px solid #31406a;border-left:5px solid var(--warn);border-radius:10px;padding:14px 16px;margin:16px 0;font-size:16px;font-weight:600}
+.verdict small{display:block;color:var(--sub);font-weight:400;font-size:12px;margin-top:4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:16px 0}
+.card h2{font-size:14px;margin:0 0 10px;color:var(--sub);text-transform:uppercase;letter-spacing:.5px}
+table{width:100%;border-collapse:collapse}
+th,td{padding:7px 8px;text-align:left;border-bottom:1px solid #222b40;font-variant-numeric:tabular-nums}
+th{color:var(--sub);font-size:12px;font-weight:600;cursor:pointer;user-select:none;white-space:nowrap}
+th:hover{color:var(--txt)}
+tr:hover td{background:#1c2438}
+.num{text-align:right}
+.up{color:var(--up);font-weight:600}.down{color:var(--down);font-weight:600}.flat{color:var(--flat)}
+.barwrap{background:#202a44;border-radius:4px;height:14px;width:100%;overflow:hidden}
+.bar{height:100%;border-radius:4px}
+.pill{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11.5px;font-weight:600;margin-left:6px}
+.pill.up{background:rgba(214,69,65,.18)}.pill.down{background:rgba(46,158,91,.18)}
+.contra-card{background:#2a1a1d;border:1px solid #5a2530;border-left:5px solid var(--up);border-radius:10px;padding:12px 14px;margin:10px 0}
+.contra-card .t{font-weight:700;font-size:15px}
+.contra-card .w{color:#ff9f9a;font-size:12.5px;margin-top:3px}
+.contra-card .why{color:var(--warn);font-size:12.5px;margin-top:5px}
+.diag{display:flex;flex-wrap:wrap;gap:10px}
+.diag-item{flex:1;min-width:220px;background:#1d2840;border:1px solid #2f3d63;border-radius:10px;padding:10px 12px}
+.diag-item .k{display:block;font-size:11px;color:var(--sub);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.diag-item .v{font-size:13px}
+.diag-item.alert{background:#2a1a1d;border-color:#5a2530}
+.flow{background:#202a44;border-radius:4px;height:12px;width:100%;overflow:hidden}
+.flow .fbar{height:100%;border-radius:4px}
+.key-red{color:var(--up);font-weight:700}
+.key-green{color:var(--down);font-weight:700}
+.key-yellow{color:var(--warn);font-weight:700}
+.trend-item{background:#1b2438;border:1px solid #2c3858;border-radius:8px;padding:8px 12px;margin:6px 0;font-size:13px}
+.trend-item .arrow{font-weight:700;margin-right:6px}
+.trend-empty{color:var(--sub);font-style:italic;font-size:13px}
+.stock-why{color:#b9c3dd;font-size:12px;font-weight:400}
+.watch li{margin:4px 0}
+.tip{border-bottom:1px dashed #3a4568;cursor:help}
+.rest-row{display:none}
+.rest-inline{display:none}
+.expand-btn{background:#243156;border:1px solid #3a4a7a;color:#cfe0ff;border-radius:20px;padding:4px 16px;font-size:12.5px;font-weight:600;cursor:pointer;margin-top:8px}
+.expand-btn:hover{background:#31406a}
+.rest-open .rest-row{display:table-row}
+.rest-open .rest-inline{display:block}
+.unclassified{color:var(--warn)}
+.tag{display:inline-block;padding:1px 8px;border-radius:8px;font-size:11px;font-weight:700;margin:1px}
+.tag.RALLY{background:#5a2030;color:#ffb3ad}.tag.SELLOFF{background:#1e4a34;color:#a5e8c3}.tag.SPLIT{background:#4a3a1e;color:#ffe0a0}.tag.SOLO{background:#28406a;color:#bcd2ff}.tag.THIN{background:#333;color:#bbb}
+.footer{color:var(--sub);font-size:11.5px;border-top:1px solid var(--line);padding-top:10px;margin-top:18px}
+.tabbar{display:flex;gap:8px;margin:14px 0 4px;border-bottom:1px solid var(--line);padding-bottom:8px;flex-wrap:wrap}
+.tabbtn{background:none;border:none;color:var(--sub);font-size:14px;font-weight:600;padding:6px 14px;cursor:pointer;border-radius:8px}
+.tabbtn.active{background:#31406a;color:#fff}
+.histbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:10px 0}
+.dot{background:#1d2840;border:1px solid #2f3d63;color:#bcd2ff;border-radius:14px;padding:4px 10px;font-size:11.5px;cursor:pointer;min-width:52px;text-align:center}
+.dot.active{background:#4a3a1e;border-color:var(--warn);color:#ffe0a0;font-weight:700}
+.histnote{color:var(--sub);font-size:12px;margin:8px 0 4px}
+@media(max-width:640px){.wrap{padding:10px;font-size:13px}.hide-sm{display:none}}
+"""
+
+JS = """
+function sortTable(t){
+  var i=t.getAttribute('data-idx');
+  var body=t.tBodies[0], rows=[].slice.call(body.rows);
+  var asc=t.getAttribute('data-asc')!=='1';
+  rows.sort(function(a,b){
+    var av=a.cells[i].getAttribute('data-n'), bv=b.cells[i].getAttribute('data-n');
+    if(av!=null&&bv!=null){return asc?av-bv:bv-av;}
+    var x=a.cells[i].textContent,y=b.cells[i].textContent;
+    return asc?x.localeCompare(y,'zh-TW',{numeric:true}):y.localeCompare(x,'zh-TW',{numeric:true});
+  });
+  for(var j=0;j<rows.length;j++)body.appendChild(rows[j]);
+  t.setAttribute('data-asc',asc?'0':'1');
+}
+function toggleRest(btn){
+  var wrap=document.getElementById(btn.getAttribute('data-wrap'));
+  var open=wrap.classList.toggle('rest-open');
+  btn.textContent=open?btn.getAttribute('data-collapse'):btn.getAttribute('data-expand');
+}
+"""
+
+
+def render_head(title, stamp, extra_meta=""):
+    return f"""<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{title}</title><style>{CSS}</style></head><body><div class="wrap">
+<header><h1>{title}</h1><div class="meta">快照 {stamp_display(stamp)} {extra_meta}</div></header>"""
+
+
+def render_foot():
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return f"""<div class="footer">本看板由快照自動產生（{now}）。盤中資料到收盤前仍會變動；僅描述資金結構與盤面事實，不含買賣建議或目標價推測。</div>
+<script>{JS}</script></div></body></html>"""
+
+
+def _render_watch(d):
+    """該盯的變數：列出 2-3 個接下來值得追蹤的客觀盤面訊號（不帶方向）。"""
+    items = []
+    kind = d["kind"]
+    if kind == "rank":
+        if d["groups"]:
+            g0 = d["groups"][0]
+            items.append(f"資金主軸「{g0['G']}」的成交值比重（目前 {g0['Pct']:.0f}%）能否維持，還是轉向次大族群")
+        if d["contradictions"]:
+            c0 = d["contradictions"][0]
+            items.append(f"「{c0['Name']}」量排前卻收黑——下一輪看它是否翻紅（資金回流）或續跌（確認出貨）")
+        else:
+            items.append("前幾名資金是否出現「量增價滯」（成交值放大但漲幅收斂）的訊號")
+    elif kind == "breadth":
+        rally = [g for g in d["rows"] if "RALLY" in g["Tags"]]
+        sell = [g for g in d["rows"] if "SELLOFF" in g["Tags"]]
+        if rally:
+            items.append(f"「{rally[0]['G']}」齊漲的續航力——下一輪看齊漲檔數是否維持或退化成分歧")
+        if sell:
+            items.append(f"「{sell[0]['G']}」齊跌是否擴散到其他族群，還是止跌翻紅")
+        if not items:
+            items.append("目前沒有族群齊漲/齊跌——看哪些族群浮出「整齊方向」")
+        if d["signals"] and d["signals"][0]["items"]:
+            s0 = d["signals"][0]["items"][0]
+            items.append(f"漲停鎖死「{s0['Name']}」的委賣掛單是否一直掛 0（鎖死強度）")
+    elif kind == "notes":
+        if d["groups"]:
+            g0 = d["groups"][0]
+            items.append(f"資金主軸「{g0['G']}」的成交值增量方向（目前較前份 {g0['DV']:+.1f}億）")
+        if d["flipped_red"]:
+            items.append(f"翻黑股「{d['flipped_red'][0]['Name']}」下一輪是否續弱（確認轉弱）或翻回（假摔）")
+        else:
+            items.append("今日是否有權值股與中小型脫節（台積電不動但中小型激烈）")
+    h = '<div class="card"><h2>該盯的變數（下一輪快照出來後的追蹤重點）</h2><ul class="watch">'
+    for it in items[:3]:
+        h += f"<li>{it}</li>"
+    h += "</ul><div class='meta'>只列客觀可追蹤的訊號，不含看多看空方向。</div></div>"
+    return h
+
+
+def render_rank(d):
+    h = render_head(f"族群資金排行 — {stamp_display(d['stamp'])} 盤中", d["stamp"],
+                    f"· 全表 {d['total']} 檔 · 前 {d['top_n']} 名成交值合計 <b>{d['top_total']} 億</b>")
+    h += f"""
+<div class="verdict">{one_line_rank(d)}<small>一句話結論：把這張盤面最重要的一件事先講給你看。（關鍵字上色：<span class="key-red">紅色＝看多</span>、<span class="key-green">綠色＝看空</span>）</small></div>"""
+
+    # ② 整體結構診斷
+    h += '<div class="card"><h2>📊 這盤的資金結構診斷（整體涵義）</h2><div class="diag">'
+    for k, v in d["structure"]:
+        alert = " alert" if k in ("主軸訊號", "資金集中度") else ""
+        h += f'<div class="diag-item{alert}"><span class="k">{k}</span><div class="v">{v}</div></div>'
+    h += "</div></div>"
+
+    # 巨額矛盾警示卡
+    if d["contradictions"]:
+        h += '<div class="card"><h2>⚠ 頭號矛盾：量很大、股價卻收黑</h2>'
+        h += '<div class="meta" style="margin-bottom:8px">資金還停在這裡，但股價不認帳——通常是出貨重的量，不是承接重的量。</div>'
+        for r in d["contradictions"]:
+            h += f"""<div class="contra-card">
+  <div class="t"><span class="key-green">{r['Rk']}# {r['Name']}</span> <span class="pill down">{r['Grp']}</span></div>
+  <div class="w">{fmt_chg(r['Chg'])} · 成交值 {fmt(r['Val'])}億（全場第 {r['Rk']} 大）· 內外盤比 {fmt(r['IO'],0)} · 乖離 {fmt(r['Dev'],1)}</div>
+  <div class="why">這代表什麼：{r['Why']}</div></div>"""
+        h += "</div>"
+
+    # 族群資金表（橫條）
+    h += '<div class="card" id="grp-card"><h2>族群資金表（依成交值）· 點欄位名可排序</h2>'
+    h += '<div class="meta" style="margin-bottom:8px"><span class="tip" data-id="0">佔前50%</span>＝族群成交值 ÷ 前50名總值；<span class="tip" data-id="1">漲跌家數</span>＝紅綠各幾檔。</div>'
+    h += '<table id="grp"><thead><tr>'
+    headers = [("族群", "text"), ("成交值(億)", "num"), ("佔前50%", "num"), ("平均漲幅", "num"), ("漲跌", "text"), ("代表股", "text")]
+    for i, (name, cls) in enumerate(headers):
+        h += f'<th data-idx="{i}" class="{cls}" onclick="sortTable(this.closest(\'table\'))">{name}</th>'
+    h += "</tr></thead><tbody>"
+    maxval = d["groups"][0]["Val"] if d["groups"] else 1
+    for gi, gr in enumerate(d["groups"]):
+        rest = ' class="rest-row"' if gi >= 5 else ""
+        barc = "up" if gr["Avg"] >= 0 else "down"
+        members = " ".join(f'<b class="{chg_class(m["Chg"])}">{m["Name"]}</b>({fmt(m["Val"])}億,{fmt_chg(m["Chg"])})' for m in gr["Mem"][:4])
+        h += f"""<tr{rest}>
+  <td data-n="0"><b>{gr['G']}</b> <span class="pill {chg_class(gr['Avg'])}">{gr['N']}檔</span></td>
+  <td data-n="{gr['Val']}" class="num">{fmt(gr['Val'])}</td>
+  <td data-n="{gr['Pct']}" class="num">{fmt(gr['Pct'])}%</td>
+  <td data-n="{gr['Avg']}" class="num {chg_class(gr['Avg'])}">{fmt_chg(gr['Avg'])}</td>
+  <td data-n="{gr['Up']-gr['Dn']}" class="num">{gr['Up']}<span class="up">↑</span> {gr['Dn']}<span class="down">↓</span></td>
+  <td>{members}</td></tr>"""
+    h += "</tbody></table>"
+    if len(d["groups"]) > 5:
+        h += f'<button class="expand-btn" data-wrap="grp-card" data-expand="展開全部（共 {len(d["groups"])} 群）" data-collapse="收回 5 群" onclick="toggleRest(this)">展開全部（共 {len(d["groups"])} 群）</button>'
+    h += "</div>"  # end groups card
+
+    # ① 個股詮釋：成交值前列的股票逐檔解讀
+    h += '<div class="card" id="stk-card"><h2>🎯 逐檔解讀（成交值前 10 · 各檔量價合起來代表什麼）</h2>'
+    for si, r in enumerate(d["top"][:10]):
+        tagclass = chg_class(r["Chg"])
+        rest = " rest-inline" if si >= 5 else ""
+        h += f"""<div class="trend-item{rest}">
+  <b>{r['Rk']}#</b> <b class="key-{'red' if r['Chg']>0 else 'green' if r['Chg']<0 else 'yellow'}">{r['Name']}</b>
+  <span class="pill {tagclass}">{r['Grp']}</span>
+  <span class="num" style="float:right">{fmt_chg(r['Chg'])} · {fmt(r['Val'])}億</span>
+  <div class="stock-why">{r['Why']}</div>
+</div>"""
+    h += f'<button class="expand-btn" data-wrap="stk-card" data-expand="展開全部 10 檔" data-collapse="收回 5 檔" onclick="toggleRest(this)">展開全部 10 檔</button>'
+    h += "</div>"
+
+    # ③ 趨勢：與前一份快照比較
+    h += '<div class="card"><h2>📈 資金位移（與前一份快照比）：資金增減 ＋ 股價方向合看，判讀進貨／出貨</h2>'
+    if d["trend"]:
+        for it in d["trend"]:
+            arrow = "<span class='arrow key-red'>▲</span>" if "流入" in it["text"] else "<span class='arrow key-green'>▼</span>"
+            vtag = f'<span class="pill {it["vcls"]}">{it["verdict"]}</span>'
+            h += f'<div class="trend-item">{arrow}<b>{it["label"]}</b> {vtag} {it["text"]}</div>'
+    else:
+        h += f'<div class="trend-empty">尚無前一份快照可比較（目前僅掃描到 {d["history_count"]} 份歷史快照）。下一次盤中捕捉到新的同類快照後，此區會自動顯示這輪與前輪的資金位移。</div>'
+    h += "</div>"
+
+    # 未分類
+    h += '<div class="card"><h2>待補族群對照</h2>'
+    if d["unclassified"]:
+        h += '<div class="meta" style="margin-bottom:6px">以下個股未命中分類表，請補進 groups.ps1 後重跑。</div>'
+        h += ", ".join(f'<span class="unclassified">{r["Code"]} {r["Name"]}（{fmt(r["Val"])}億,{fmt_chg(r["Chg"])}）</span>' for r in d["unclassified"])
+    else:
+        h += "無——前 50 名全數命中分類表。"
+    h += "</div>"
+
+    # 該盯的變數
+    h += _render_watch(d)
+
+    h += render_foot()
+    return h
+
+
+# ============================================================
+#  作法二：齊漲分歧診斷 ─ 一句話結論 + HTML
+# ============================================================
+TAG_LABEL = {
+    "RALLY": "齊漲", "SELLOFF": "齊跌", "SPLIT": "分歧",
+    "SOLO": "獨走", "THIN": "樣本不足",
+}
+
+
+def one_line_breadth(d):
+    rows = d["rows"]
+    if not rows:
+        return "資料不足，尚無法下結論。"
+    parts = []
+    rally = [g for g in rows if "RALLY" in g["Tags"]]
+    sell = [g for g in rows if "SELLOFF" in g["Tags"]]
+    if sell and (not rally or sell[0]["Val"] >= rows[0]["Val"] * 0.8):
+        big = sell[0]
+        parts.append(f"最大資金族群「{kw('key-green', big['G'])}」({big['Val']:.0f}億)正在{kw('key-green', '退潮齊跌')}({big['Dn']}/{big['N']})")
+    elif rally and sell:
+        if rally[0]["Val"] > sell[0]["Val"]:
+            parts.append(f"資金主軸「{kw('key-red', rally[0]['G'])}」{kw('key-red', '齊漲')}，但「{kw('key-green', sell[0]['G'])}」在{kw('key-green', '退潮')}")
+        else:
+            parts.append(f"資金主軸「{kw('key-green', sell[0]['G'])}」{kw('key-green', '退潮')}，只有「{kw('key-red', rally[0]['G'])}」在{kw('key-red', '齊漲')}")
+    elif rally:
+        big = rally[0]
+        parts.append(f"資金主軸「{kw('key-red', big['G'])}」({big['Val']:.0f}億){kw('key-red', '齊漲')}({big['Up']}/{big['N']})")
+    else:
+        biggest = rows[0]
+        parts.append(f"資金主軸「{kw('key-yellow', biggest['G'])}」({biggest['Val']:.0f}億){kw('key-yellow', '沒有一致方向')}，資金在族內挑選")
+    return "今天：" + "；".join(parts) + "。"
+
+
+def render_breadth(d):
+    h = render_head(f"齊漲分歧診斷 — {stamp_display(d['stamp'])} 盤中", d["stamp"],
+                    f"· 分析範圍 成交值前 <b>{d['top_n']}</b> 名（第 {d['top_n']} 名 {fmt(d['cut']['Val']) if d['cut'] else '-'}億）· 全表 {d['total']} 檔")
+    h += f"""
+<div class="verdict">{one_line_breadth(d)}<small>一句話結論：先判斷「這張盤是大家一起向同一個方向，還是資金只在一檔身上」。（上色：紅=偏多、綠=偏空）</small></div>"""
+
+    # 漲跌家數
+    h += '<div class="card"><h2>📊 盤面廣度（前 {top_n} 名 vs 全表）</h2>'.replace("{top_n}", str(d["top_n"]))
+    h += f"""<div class="diag">
+  <div class="diag-item"><span class="k">前 {d['top_n']} 名</span><div class="v"><span class="up">{d['up_top']}</span>↑ / <span class="down">{d['dn_top']}</span>↓ / <span class="flat">{d['flat_top']}</span>–</div></div>
+  <div class="diag-item"><span class="k">全表</span><div class="v"><span class="up">{d['up_all']}</span>↑ / <span class="down">{d['dn_all']}</span>↓</div></div>
+  <div class="diag-item"><span class="k">未分類</span><div class="v">{len(d['unclassified'])} 檔在前 {d['top_n']} 名內</div></div>
+</div></div>"""
+
+    # 最反直覺
+    if d["counter"]:
+        h += '<div class="card" style="border-left:5px solid var(--up)"><h2>⚡ 最反直覺的一件事</h2>'
+        for c in d["counter"]:
+            h += f'<div class="contra-card"><div class="t">反直覺</div><div class="why">{c}</div></div>'
+        h += "</div>"
+
+    # 齊漲族群表
+    rally = [g for g in d["rows"] if "RALLY" in g["Tags"]]
+    rally.sort(key=lambda g: (g["Ratio"], g["Val"]), reverse=True)
+    h += '<div class="card"><h2>🔴 齊漲族群（上漲比 ≥ 0.75 且 ≥ 3 檔）</h2>'
+    if rally:
+        h += _grp_align_table(rally, up=True)
+    else:
+        h += '<div class="trend-empty">無——沒有任何族群達到齊漲門檻。</div>'
+    h += "</div>"
+
+    # 齊跌族群表
+    sell = [g for g in d["rows"] if "SELLOFF" in g["Tags"]]
+    sell.sort(key=lambda g: (g["Ratio"], g["Val"]), reverse=True)
+    h += '<div class="card"><h2>🟢 齊跌族群（下跌比 ≥ 0.75 且 ≥ 3 檔）</h2>'
+    if sell:
+        h += _grp_align_table(sell, up=False)
+    else:
+        h += '<div class="trend-empty">無——沒有任何族群達到齊跌門檻。</div>'
+    h += "</div>"
+
+    # 內部分歧
+    split = [g for g in d["rows"] if "SPLIT" in g["Tags"]]
+    split.sort(key=lambda g: g["Val"], reverse=True)
+    h += '<div class="card"><h2>⚖️ 內部分歧（同族群同時有 ≥+3% 與 ≤-3% 成員）</h2>'
+    if split:
+        h += '<div class="meta" style="margin-bottom:8px">資金在族內挑選、不是整組行情。成交值最大的分歧族群特別重要。</div>'
+        for g in split:
+            alert = " contra-card" if g is split[0] and g["Val"] >= (split[1]["Val"] if len(split) > 1 else 0) * 1.05 else ""
+            h += f"""<div class="trend-item{'_contra' if alert else ''}">
+  <b>{g['G']}</b> <span class="pill">{g['N']}檔</span> · 成交值 {g['Val']}億 · 高 <b class="up">{g['Hi']:+.1f}%</b> / 低 <b class="down">{g['Lo']:+.1f}%</b>
+  <div class="stock-why">{_grp_member_str(g)}</div></div>"""
+    else:
+        h += '<div class="trend-empty">無——資金主軸族群方向一致，內部無明顯分歧。</div>'
+    h += "</div>"
+
+    # 個別表現 SOLO
+    solo = [g for g in d["rows"] if "SOLO" in g["Tags"]]
+    solo.sort(key=lambda g: g["Val"], reverse=True)
+    h += '<div class="card"><h2>🎯 個別表現獨走（僅 1 檔 ≥+5%，其餘在 ±2%內）</h2>'
+    if solo:
+        for g in solo:
+            h += f"""<div class="trend-item"><b>{g['G']}</b> · {g['N']}檔 · 成交值 {g['Val']}億
+  <div class="stock-why">{_grp_member_str(g)}</div></div>"""
+    else:
+        h += '<div class="trend-empty">無——成交值前 200 名內沒有任何族群呈獨走型態。</div>'
+    h += "</div>"
+
+    # 個股訊號清單
+    h += '<div class="card"><h2>🚨 個股訊號</h2>'
+    for sg in d["signals"]:
+        h += f'<div class="trend-item" style="margin-top:10px"><b>{sg["title"]}</b> <span class="meta">（{sg["detail"]}）</span>'
+        if sg["items"]:
+            h += '<div style="margin-top:5px">' + " ".join(
+                f'<span class="pill {chg_class(x["Chg"])}">{x["Name"]}</span> {fmt_chg(x["Chg"])} · {fmt(x["Val"])}億'
+                for x in sg["items"][:6]) + "</div>"
+        else:
+            h += ' <span class="trend-empty">無</span>'
+        h += "</div>"
+    h += "</div>"
+
+    # 樣本不足
+    thin = [g for g in d["rows"] if "THIN" in g["Tags"]]
+    h += '<div class="card"><h2>樣本不足（&lt;3 檔，不判定整齊度）</h2>'
+    if thin:
+        h += ", ".join(f'<span class="key-yellow">{g["G"]}</span>(n={g["N"]})' for g in thin)
+    else:
+        h += "無。"
+    h += "</div>"
+
+    # 未分類
+    h += '<div class="card"><h2>待補族群對照</h2>'
+    if d["unclassified"]:
+        h += ', '.join(f'<span class="unclassified">{x["Code"]} {x["Name"]}（{fmt(x["Val"])}億,{fmt_chg(x["Chg"])}）</span>' for x in d["unclassified"])
+    else:
+        h += "無——前 200 名全數命中分類表。"
+    h += "</div>"
+
+    # 該盯的變數
+    h += _render_watch(d)
+
+    h += render_foot()
+    return h
+
+
+def _grp_align_table(groups, up=True):
+    """齊漲/齊跌共用的族群表格。"""
+    head = "族群" if up else "族群"
+    h = '<table id="align"><thead><tr><th data-idx="0">族群</th><th data-idx="1" class="num">整齊度</th><th data-idx="2" class="num">成交值(億)</th><th data-idx="3" class="num">平均漲幅</th><th data-idx="4">成員（漲幅）</th></tr></thead><tbody>'
+    for g in groups:
+        cls = "up" if up else "down"
+        h += f"""<tr>
+  <td><b>{g['G']}</b> <span class="pill {cls}">{g['N']}檔</span></td>
+  <td data-n="{g['Ratio']}" class="num">{g['Up' if up else 'Dn']}/{g['N']}</td>
+  <td data-n="{g['Val']}" class="num">{g['Val']}</td>
+  <td data-n="{g['Avg']}" class="num {chg_class(g['Avg'])}">{fmt_chg(g['Avg'])}</td>
+  <td>{_grp_member_str(g)}</td></tr>"""
+    h += "</tbody></table>"
+    return h
+
+
+def _grp_member_str(g):
+    return " ".join(
+        f'<b class="{chg_class(x["Chg"])}">{x["Name"]}</b>({fmt_chg(x["Chg"])})' for x in g["Mem"][:8])
+
+
+# ============================================================
+#  作法三：盤中觀察三段 ─ 一句話結論 + HTML
+# ============================================================
+def one_line_notes(d):
+    parts = []
+    if d["prev_stat"]:
+        dv = d["prev_stat"]["d_val"]
+        if dv >= 20:
+            parts.append(f"總成交值較上份{kw('key-red', '放大')} {dv:+.0f}億");
+        elif dv <= -20:
+            parts.append(f"總成交值較上份{kw('key-green', '收縮')} {dv:+.0f}億")
+    gmax = d["groups"][0] if d["groups"] else None
+    if gmax:
+        if gmax["DV"] > 5:
+            parts.append(f"資金主軸「{kw('key-red', gmax['G'])}」持續流入 {gmax['DV']:+.1f}億")
+        elif gmax["DV"] < -5:
+            parts.append(f"資金主軸「{kw('key-green', gmax['G'])}」流出 {gmax['DV']:+.1f}億")
+        if gmax["D"] >= gmax["U"] and (gmax["U"] + gmax["D"]) >= 3:
+            parts.append(f"但「{kw('key-green', gmax['G'])}」內部{kw('key-green', '走弱')}({gmax['U']}↑/{gmax['D']}↓)")
+        elif gmax["U"] > gmax["D"] * 2 and gmax["U"] >= 3:
+            parts.append(f"且「{kw('key-red', gmax['G'])}」內部同調走強({gmax['U']}↑)")
+    if not parts:
+        parts.append("盤面變動不大，資金主軸維持不變")
+    return "這一輪：" + "；".join(parts) + "。"
+
+
+def render_notes(d):
+    h = render_head(f"盤中觀察三段 — {stamp_display(d['stamp'])} 盤中", d["stamp"],
+                    f"· 全樣本 {d['total']} 檔" +
+                    (f" · 比較基準 {stamp_display(d.get('prev_stamp', ''))}" if d.get("prev_stamp") else " · 尚無前一份可比"))
+    h += f"""
+<div class="verdict">{one_line_notes(d)}<small>一句話結論：這一段時間（跟上一份快照比）盤面最重要的變化。</small></div>"""
+
+    # 指數 + 廣度
+    h += '<div class="card"><h2>📊 大盤與廣度</h2>'
+    h += '<div class="diag">'
+    for i in d["idx"]:
+        h += f'<div class="diag-item"><span class="k">{i["Name"]}</span><div class="v"><span class="{chg_class(i["Chg"])}">{fmt_chg(i["Chg"])}</span> · {i["Close"]} · 成交值 {fmt(i["Val"])}億</div></div>'
+    h += f'<div class="diag-item"><span class="k">漲跌家數</span><div class="v"><span class="up">{d["up_all"]}</span>↑ / <span class="down">{d["dn_all"]}</span>↓ / <span class="flat">{d["flat_all"]}</span>– · 總成交值 <b>{d["tot_val"]}億</b></div></div>'
+    if d["prev_stat"]:
+        p = d["prev_stat"]
+        h += f'<div class="diag-item"><span class="k">vs 前一輪</span><div class="v">總值 {p["d_val"]:+.1f}億 · 上漲家數 {p["d_up"]:+d}</div></div>'
+    h += "</div></div>"
+
+    # 族群成交值前 8 名（含增量）
+    h += '<div class="card"><h2>族群成交值（全樣本 · 前 8 名）</h2>'
+    h += '<table id="grpnotes"><thead><tr><th data-idx="0">族群</th><th data-idx="1" class="num">成交值(億)</th><th data-idx="2" class="num">佔比</th><th data-idx="3" class="num">漲跌</th><th data-idx="4" class="num">平均漲幅</th><th data-idx="5" class="num">vs前份</th></tr></thead><tbody>'
+    for g in d["groups"][:8]:
+        dvcls = chg_class(g["DV"]) if g["DV"] else "flat"
+        h += f"""<tr>
+  <td><b>{g['G']}</b> <span class="pill">{g['N']}檔</span></td>
+  <td data-n="{g['V']}" class="num">{g['V']}</td>
+  <td data-n="{g['Pct']}" class="num">{g['Pct']}%</td>
+  <td data-n="{g['U']-g['D']}" class="num">{g['U']}<span class="up">↑</span> {g['D']}<span class="down">↓</span></td>
+  <td data-n="{g['A']}" class="num {chg_class(g['A'])}">{fmt_chg(g['A'])}</td>
+  <td data-n="{g['DV']}" class="num {dvcls}">{g['DV']:+.1f}億</td></tr>"""
+    h += "</tbody></table></div>"
+
+    # ①②③ 三段：把「locks + flipped + big_movers」轉成三段文字
+    segs = _notes_segments(d)
+    h += '<div class="card"><h2>盤中觀察（三段）</h2>'
+    for i, (t, body) in enumerate(segs, 1):
+        h += f'<div class="trend-item" style="margin:10px 0"><b>[{i}] {t}</b><div style="margin-top:4px">{body}</div></div>'
+    h += '<div class="meta" style="margin-top:8px">三段依「最有訊息量的變化」自動挑選，數字都是與上一份快照比較的結果。</div>'
+    h += "</div>"
+
+    # 鎖死/換手/異常 清單
+    h += '<div class="card"><h2>🚨 關鍵清單</h2>'
+    for lk in d["locks"]:
+        h += f'<div class="trend-item" style="margin:8px 0"><b>{lk["title"]}</b>'
+        if lk["items"]:
+            shown = [];
+            for it in lk["items"][:8]:
+                r = it["r"]
+                s = f'<span class="pill {chg_class(r["Chg"])}">{r["Name"]}</span> {fmt_chg(r["Chg"])} · {fmt(r["Val"])}億' + (f' · 前份 {fmt_chg(it["prev_chg"])}' if "prev_chg" in it else "")
+                if "is_new" in it:
+                    s += ' <span class="key-yellow">（本輪新進）</span>'
+                shown.append(s)
+            h += '<div style="margin-top:5px">' + " ".join(shown) + "</div>"
+        else:
+            h += ' <span class="trend-empty">無</span>'
+        h += "</div>"
+    h += "</div>"
+
+    # 翻紅翻黑
+    h += '<div class="card"><h2>🔄 轉折（與前一輪比）</h2>'
+    h += '<div class="trend-item"><b>翻黑（前紅今綠）</b>'
+    h += (" ".join(f'<span class="pill down">{x["Name"]}</span>({fmt_chg(x["Chg"])})' for x in d["flipped_red"][:6])) if d["flipped_red"] else ' <span class="trend-empty">無</span>'
+    h += "</div><div class='trend-item'><b>翻紅（前綠今紅）</b>"
+    h += (" ".join(f'<span class="pill up">{x["Name"]}</span>({fmt_chg(x["Chg"])})' for x in d["flipped_green"][:6])) if d["flipped_green"] else ' <span class="trend-empty">無</span>'
+    h += "</div></div>"
+
+    # 大幅位移
+    h += '<div class="card"><h2>📈 大幅位移（|Δ漲幅| ≥ 2.5%）</h2>'
+    if d["big_movers"]:
+        h += "<div style='display:flex;flex-wrap:wrap;gap:8px'>"
+        for it in d["big_movers"][:10]:
+            cls = "up" if it["d"] > 0 else "down"
+            h += f'<span class="pill {cls}">{it["r"]["Name"]}</span> {fmt_chg(it["prev_chg"])}→{fmt_chg(it["r"]["Chg"])} ({it["d"]:+.2f}%)'
+        h += "</div>"
+    else:
+        h += '<span class="trend-empty">無</span>'
+    h += "</div>"
+
+    # 固定盯的個股
+    h += '<div class="card"><h2>每次固定盯的個股</h2>'
+    if d["key_codes"]:
+        h += "<div style='display:flex;flex-wrap:wrap;gap:8px'>"
+        for it in d["key_codes"]:
+            r = it["r"]
+            h += f'<span class="pill {chg_class(r["Chg"])}">{r["Name"]}</span> {fmt_chg(r["Chg"])} · {fmt(r["Val"])}億' + (f' · 前份 {fmt_chg(it["prev_chg"])}' if it["prev_chg"] is not None else "")
+        h += "</div>"
+    h += "</div>"
+
+    # 未分類
+    h += '<div class="card"><h2>待補族群對照</h2>'
+    if d["unclassified"]:
+        h += ', '.join(f'<span class="unclassified">{x["Code"]} {x["Name"]}</span>' for x in d["unclassified"])
+    else:
+        h += "無。"
+    h += "</div>"
+
+    h += render_foot()
+    return h
+
+
+def _notes_segments(d):
+    """把關鍵資料拼成三段自動文字（有訊息量的優先）。"""
+    segs = []
+    p = d["prev_stat"]
+    # 段1：資金主軸與廣度變化
+    gmax = d["groups"][0] if d["groups"] else None
+    s1 = []
+    if gmax:
+        s1.append(f"資金主軸落在「{gmax['G']}」（成交值 {gmax['V']}億，佔全體 {gmax['Pct']}%）")
+        if gmax["DV"] >= 5:
+            s1.append(f"本輪再流入 {gmax['DV']:+.1f}億")
+        elif gmax["DV"] <= -5:
+            s1.append(f"本輪流出 {gmax['DV']:+.1f}億")
+        if gmax["D"] >= gmax["U"] and (gmax["U"] + gmax["D"]) >= 3:
+            s1.append(f"但族內 {gmax['U']}↑/{gmax['D']}↓，主軸成員反而走弱")
+        elif gmax["U"] > gmax["D"] * 2 and gmax["U"] >= 3:
+            s1.append(f"族內 {gmax['U']}↑/{gmax['D']}↓ 同調走強")
+    if p:
+        s1.append(f"整體漲跌家數 {'增加' if p['d_up'] >= 0 else '減少'} {p['d_up']:+d} 家（現 {d['up_all']}↑/{d['dn_all']}↓）")
+    segs.append(("資金主軸", "；".join(s1) if s1 else "資金主軸與上輪相比變動不大。"))
+
+    # 段2：本輪的「新變化」
+    s2 = []
+    locked = [it for it in d["locks"][0]["items"] if it.get("is_new")][:4]
+    for lk in d["locks"]:
+        newones = [it for it in lk["items"] if it.get("is_new")]
+        if newones:
+            s2.append(lk["title"].replace("接近", "") + "新增：" + "、".join(x["r"]["Name"] for x in newones[:4]))
+    if not s2:
+        big = d["big_movers"][:3]
+        if big:
+            s2.append("大幅位移：" + "、".join(f'{x["r"]["Name"]}({x["d"]:+.1f}%)' for x in big))
+    if not s2:
+        fl = d["flipped_red"][:3]
+        if fl:
+            s2.append("明顯翻黑：" + "、".join(x["Name"] for x in fl))
+    if not s2:
+        s2.append("本輪沒有新的鎖死/翻轉，盤面變化有限")
+    segs.append(("本輪新變化", "；".join(s2)))
+
+    # 段3：異常訊號（換手/假強勢/重挫）
+    s3 = []
+    hot = d["locks"][4]["items"][:3]
+    if hot:
+        s3.append("高換手：" + "、".join(f'{x["r"]["Name"]}({fmt(x["r"]["Turn"],1)}%)' for x in hot))
+    fake = d["locks"][5]["items"][:3]
+    if fake:
+        s3.append("假強勢(開高走低)：" + "、".join(f'{x["r"]["Name"]}({fmt_chg(x["r"]["Chg"])})' for x in fake))
+    weak = d["locks"][6]["items"][:3]
+    if weak:
+        s3.append("重挫：" + "、".join(f'{x["r"]["Name"]}({fmt_chg(x["r"]["Chg"])})' for x in weak))
+    if not s3:
+        s3.append("換手、假強勢、重挫等異常訊號皆未達門檻，盤面相對平靜")
+    segs.append(("異常診斷", "；".join(s3)))
+    return segs
+
+
+# ============================================================
+#  XQ 盤中儀表板：把三種 kind 濃縮在「一個 HTML」＋歷史時間軸
+# ============================================================
+KIND_LABEL = {"rank": "資金排行", "breadth": "齊漲分歧", "notes": "盤中三段"}
+HIST_DAYS = 5  # 歷史內嵌保留最近 N 個交易日
+
+
+# ---------- 精簡 fragment（歷史輪次用，避免檔案爆炸） ----------
+def frag_rank(d):
+    h = [f'<div class="verdict">{one_line_rank(d)}</div>']
+    # 族群資金前 5（橫條）
+    if d["groups"]:
+        h.append('<div class="card"><h2>族群資金（前5）</h2><div style="margin-top:6px">')
+        mx = d["groups"][0]["Val"] or 1
+        for g in d["groups"][:5]:
+            w = min(100, g["Val"] / mx * 100)
+            barc = "up" if g["Avg"] >= 0 else "down"
+            h.append(f'''<div style="margin-bottom:6px">
+  <div style="display:flex;justify-content:space-between"><b>{g['G']}</b>
+  <span>{g['Val']}億 · <span class="{chg_class(g['Avg'])}">{fmt_chg(g['Avg'])}</span></span></div>
+  <div class="barwrap"><div class="bar {barc}" style="width:{w:.0f}%"></div></div></div>''')
+        h.append("</div></div>")
+    if d["trend"]:
+        h.append('<div class="card"><h2>📈 資金位移</h2>')
+        for it in d["trend"][:5]:
+            if "流入" in it["text"]:
+                h.append(f'<div class="trend-item"><span class="arrow key-red">▲</span><b>{it["label"]}</b> <span class="pill {it["vcls"]}">{it["verdict"]}</span> {it["text"]}</div>')
+            else:
+                h.append(f'<div class="trend-item"><span class="arrow key-green">▼</span><b>{it["label"]}</b> <span class="pill {it["vcls"]}">{it["verdict"]}</span> {it["text"]}</div>')
+        h.append("</div>")
+    return "".join(h)
+
+
+def frag_breadth(d):
+    h = [f'<div class="verdict">{one_line_breadth(d)}</div>']
+    h.append(f'''<div class="card"><h2>廣度</h2>
+  <div class="diag-item"><span class="k">前 {d['top_n']} 名</span><div class="v"><span class="up">{d['up_top']}</span>↑ / <span class="down">{d['dn_top']}</span>↓</div></div>
+  <div class="diag-item"><span class="k">全表</span><div class="v"><span class="up">{d['up_all']}</span>↑ / <span class="down">{d['dn_all']}</span>↓</div></div></div>''')
+    for title, tag, up in (("🔴 齊漲", "RALLY", True), ("🟢 齊跌", "SELLOFF", False)):
+        grps = [g for g in d["rows"] if tag in g["Tags"]]
+        grps.sort(key=lambda g: (g["Ratio"], g["Val"]), reverse=True)
+        h.append(f'<div class="card"><h2>{title}</h2>')
+        if grps:
+            for g in grps[:4]:
+                cls = "up" if up else "down"
+                h.append(f'<div class="trend-item"><b>{g["G"]}</b> <span class="pill {cls}">{g["Up" if up else "Dn"]}/{g["N"]}</span> · {g["Val"]}億 · {fmt_chg(g["Avg"])}</div>')
+        else:
+            h.append('<div class="trend-empty">無</div>')
+        h.append("</div>")
+    return "".join(h)
+
+
+def frag_notes(d):
+    h = [f'<div class="verdict">{one_line_notes(d)}</div>']
+    h.append('<div class="card"><h2>族群成交值（前8）</h2><table><thead><tr><th>族群</th><th class="num">成交值</th><th class="num">佔比</th><th class="num">漲跌</th><th class="num">avg</th><th class="num">vs前</th></tr></thead><tbody>')
+    for g in d["groups"][:8]:
+        h.append(f'''<tr><td><b>{g['G']}</b></td><td class="num">{g['V']}</td><td class="num">{g['Pct']}%</td>
+<td class="num">{g['U']}<span class="up">↑</span> {g['D']}<span class="down">↓</span></td>
+<td class="num {chg_class(g['A'])}">{fmt_chg(g['A'])}</td>
+<td class="num {chg_class(g['DV'])}">{g['DV']:+.1f}億</td></tr>''')
+    h.append("</tbody></table></div>")
+    if d["big_movers"]:
+        h.append('<div class="card"><h2>大幅位移</h2>')
+        for it in d["big_movers"][:5]:
+            cls = "up" if it["d"] > 0 else "down"
+            h.append(f'<div class="trend-item"><span class="{cls}">{fmt_chg(it["d"])}</span> {it["r"]["Name"]} · {fmt_chg(it["prev_chg"])} → {fmt_chg(it["r"]["Chg"])} · {it["r"]["Val"]}億</div>')
+        h.append("</div>")
+    return "".join(h)
+
+
+def build_fragment(kind, groups, path):
+    if kind == "rank":
+        return frag_rank(build_rank(groups, path))
+    if kind == "breadth":
+        return frag_breadth(build_breadth(groups, path))
+    if kind == "notes":
+        return frag_notes(build_notes(groups, path))
+    return ""
+
+
+def _body_only(full_html):
+    """完整 render 文件 → 只留 <body> 內容（dashboard 嵌歷史用，統一用 dashboard 的 CSS）。
+
+    會剝掉最外層 <div class="wrap">…</div>，避免 dashboard 的內容區內再套一層。
+    """
+    m = re.search(r"<body>(.*)</body>", full_html, re.S)
+    if not m:
+        return full_html
+    inner = m.group(1)
+    inner = re.sub(r"\s*<style>.*?</style>\s*", "", inner, flags=re.S)  # 丟掉文件自己的 <style>（CSS 在 dashboard 層有）
+    inner = re.sub(r"\s*<script>.*?</script>\s*", "", inner, flags=re.S)  # 丟掉排序等 JS（避免與 dashboard JS 衝突）
+    inner = inner.strip()
+    if inner.startswith("<div class=\"wrap\">"):
+        # 移除最外層 wrap 的開頭與結尾 div
+        inner = inner[len('<div class="wrap">'):].strip()
+        if inner.endswith("</div>"):
+            inner = inner[: -len("</div>")]
+    return inner.strip()
+
+
+def build_dashboard(groups):
+    """彙整最近 HIST_DAYS 個交易日的所有快照 → 最新完整 + 歷史精簡 JSON。
+
+    同一輪的快照（rank/breadth/notes 相差數秒）以「分鐘」為 round key 合併，
+    時間軸每 30 分鐘只出現一個點。
+    """
+    all_snaps = {k: list_snapshots(k) for k in ("rank", "breadth", "notes")}
+    all_minutes = sorted(set(s[:13] for m in all_snaps.values() for s in m))
+    if not all_minutes:
+        return None
+
+    # 保留最近 HIST_DAYS 個交易日（round key 前 8 位 = yyyymmdd）
+    days = sorted(set(k[:8] for k in all_minutes))
+    keep_days = set(days[-HIST_DAYS:])
+    minutes = [k for k in all_minutes if k[:8] in keep_days]
+
+    def pick(kind, minute):
+        """找『該分鐘』內最近的一份 kind 快照 path。"""
+        cand = [s for s in all_snaps[kind] if s.startswith(minute)]
+        if not cand:
+            return None
+        return all_snaps[kind][max(cand)]
+
+    # 最新一輪：三種 kind 的「完整」內容
+    latest_minute = minutes[-1]
+    latest = {}
+    for k in ("rank", "breadth", "notes"):
+        p = pick(k, latest_minute)
+        if not p:
+            continue
+        if k == "rank":
+            latest[k] = render_rank(build_rank(groups, p))
+        elif k == "breadth":
+            latest[k] = render_breadth(build_breadth(groups, p))
+        else:
+            latest[k] = render_notes(build_notes(groups, p))
+
+    # 歷史：每輪（分鐘）三種 kind 的精簡 fragment
+    hist = []
+    for minute in minutes:
+        entry = {"stamp": minute}
+        for k in ("rank", "breadth", "notes"):
+            p = pick(k, minute)
+            if p:
+                entry[k] = build_fragment(k, groups, p)
+        hist.append(entry)
+    hist.sort(key=lambda x: x["stamp"], reverse=True)  # 新的在前
+
+    # 最新一輪改用「完整」內容（等同單 kind 全文，只留 body 內文）
+    if hist and latest:
+        for k in ("rank", "breadth", "notes"):
+            if k in latest:
+                hist[0][k] = _body_only(latest[k])
+
+    return {"latest": latest, "hist": hist,
+            "total_rounds": len(hist) if hist else 0}
+
+
+DASH_HEAD = """<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>XQ 盤中儀表板 — {latest_stamp}</title><style>{css}
+.tabpage{{display:none}}
+.tabpage.active{{display:block}}
+</style></head><body><div class="wrap">
+<header><h1>📋 XQ 盤中儀表板</h1><div class="meta">每 30 分自動快照 · 目前顯示 <span id="cur-label">—</span> · 保留最近 {days} 個交易日歷史</div></header>
+<div class="histbar" id="histbar"></div>
+<div class="histnote">時間軸：點一個時間點，那一輪的三份資料（資金排行／齊漲分歧／盤中三段）會一起帶出，用下面的頁籤切換看哪一份；「最新」回到最新一輪。超過 {days} 個交易日的歷史仍在 snapshots\\ 的 CSV，可重產完整 HTML。</div>
+<div class="tabbar" id="tabbar">
+  <button class="tabbtn" data-kind="rank" onclick="setKind('rank')">資金排行</button>
+  <button class="tabbtn" data-kind="breadth" onclick="setKind('breadth')">齊漲分歧</button>
+  <button class="tabbtn" data-kind="notes" onclick="setKind('notes')">盤中三段</button>
+</div>
+<div id="content">
+  <div class="tabpage" id="page-rank"></div>
+  <div class="tabpage" id="page-breadth"></div>
+  <div class="tabpage" id="page-notes"></div>
+</div>
+<div class="footer">本看板每 30 分由快照自動更新。盤中資料到收盤前仍會變動；僅描述資金結構與盤面事實，不含買賣建議或目標價推測。</div>
+<script type="application/json" id="histdata">{hist_json}</script>
+<script>{js}</script>
+</div></body></html>"""
+
+DASH_JS = """
+var HIST = JSON.parse(document.getElementById('histdata').textContent);
+var curKind = 'rank';
+var KIND_LABEL = {rank:'資金排行', breadth:'齊漲分歧', notes:'盤中三段'};
+function label(stamp){ /* yyyymmdd_HHMM -> 09/08 10:55 */ return stamp.slice(4,6)+'/'+stamp.slice(6,8)+' '+stamp.slice(9,11)+':'+stamp.slice(11,13); }
+function emptyMsg(k){ return '<div class="card"><div class="trend-empty">這一輪沒有 '+KIND_LABEL[k]+' 快照。</div></div>'; }
+function render(){
+  var idx = parseInt(document.getElementById('histbar').getAttribute('data-cur') || '0', 10);
+  var f = HIST[idx] || {};
+  // 把這一輪的三份資料全部一次寫進各自的頁面（之後切頁籤只做顯示/隱藏）
+  ['rank','breadth','notes'].forEach(function(k){
+    document.getElementById('page-'+k).innerHTML = f[k] ? f[k] : emptyMsg(k);
+  });
+  showKind(curKind);
+  document.getElementById('cur-label').textContent = idx===0 ? ('最新：' + label(HIST[0].stamp)) : label(HIST[idx].stamp);
+  document.querySelectorAll('.dot').forEach(function(b){b.classList.toggle('active', parseInt(b.getAttribute('data-i'),10)===idx);});
+}
+function showKind(k){
+  curKind = k;
+  ['rank','breadth','notes'].forEach(function(x){
+    var p = document.getElementById('page-'+x);
+    p.classList.toggle('active', x===k);
+  });
+  document.querySelectorAll('.tabbtn').forEach(function(b){b.classList.toggle('active', b.getAttribute('data-kind')===k);});
+}
+function setKind(k){ showKind(k); }
+function setRound(i){ document.getElementById('histbar').setAttribute('data-cur', i); render(); }
+function toggleRest(btn){
+  var wrap=document.getElementById(btn.getAttribute('data-wrap'));
+  var open=wrap.classList.toggle('rest-open');
+  btn.textContent=open?btn.getAttribute('data-collapse'):btn.getAttribute('data-expand');
+}
+function sortTable(t){
+  var i=t.getAttribute('data-idx');
+  var body=t.tBodies[0], rows=[].slice.call(body.rows);
+  var asc=t.getAttribute('data-asc')!=='1';
+  rows.sort(function(a,b){
+    var av=a.cells[i].getAttribute('data-n'), bv=b.cells[i].getAttribute('data-n');
+    if(av!=null&&bv!=null){return asc?av-bv:bv-av;}
+    var x=a.cells[i].textContent,y=b.cells[i].textContent;
+    return asc?x.localeCompare(y,'zh-TW',{numeric:true}):y.localeCompare(x,'zh-TW',{numeric:true});
+  });
+  for(var j=0;j<rows.length;j++)body.appendChild(rows[j]);
+  t.setAttribute('data-asc',asc?'0':'1');
+}
+window.onload = function(){
+  var hb = document.getElementById('histbar');
+  hb.innerHTML = '<button class="dot active" data-i="0" onclick="setRound(0)">最新</button>';
+  for (var i=1; i<HIST.length; i++){
+    var b=document.createElement('button');
+    b.className='dot'; b.setAttribute('data-i',i); b.textContent=label(HIST[i].stamp);
+    b.onclick=(function(ii){return function(){setRound(ii);};})(i);
+    hb.appendChild(b);
+  }
+  render();
+};
+"""
+
+
+def render_dashboard(d):
+    if not d:
+        return ""
+    latest_stamp = ""
+    if d["hist"]:
+        k = d["hist"][0]["stamp"]  # yyyyMMdd_HHMM（13 位）
+        latest_stamp = datetime.strptime(k, "%Y%m%d_%H%M").strftime("%Y-%m-%d %H:%M")
+    return DASH_HEAD.format(
+        latest_stamp=latest_stamp, days=HIST_DAYS,
+        # 轉義 </script>：完整 HTML fragment 內含自己的 <script>，若不轉義，內嵌 JSON 會被瀏覽器截斷（JSON 內 "</" 轉 "<\\/" 是合法且安全）
+        hist_json=json.dumps(d["hist"], ensure_ascii=False).replace("</", "<\\/"),
+        css=CSS, js=DASH_JS,
+    )
+
+
+# ============================================================
+#  主程式
+# ============================================================
+def main():
+    ap = argparse.ArgumentParser(description="XQ 盤中 HTML 看板產生器")
+    ap.add_argument("--kind", choices=["rank", "breadth", "notes"], help="只產生某一種")
+    ap.add_argument("--all", action="store_true", help="一次產生三種單檔 + dashboard")
+    ap.add_argument("--dashboard", action="store_true", help="只產生 xq_dashboard.html（預設行為）")
+    ap.add_argument("--csv", help="指定某份快照檔（預設抓最新）")
+    ap.add_argument("--out", help="輸出 HTML 路徑（預設 routines\\outputs\\(kind)_(stamp).html）")
+    args = ap.parse_args()
+
+    groups = build_group_map()
+    print(f"分類表載入：{len(groups)} 檔", file=sys.stderr)
+
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    # dashboard 永遠產出（預設 / --dashboard / --all 都含）
+    if args.dashboard or not args.kind or args.all:
+        dd = build_dashboard(groups)
+        if dd:
+            html = render_dashboard(dd)
+            dpath = os.path.join(OUTPUT_DIR, "xq_dashboard.html")
+            with io.open(dpath, "w", encoding="utf-8") as f:
+                f.write(html)
+            print(f"[dashboard] 已產生 -> {dpath}（{dd['total_rounds']} 輪歷史）")
+        else:
+            print("[dashboard] snapshots\\ 沒有任何快照，先跳過", file=sys.stderr)
+        if args.dashboard or not args.kind:
+            return
+
+    kinds = ["rank", "breadth", "notes"] if args.all else ([args.kind] if args.kind else [])
+    for kind in kinds:
+        snaps = list_snapshots(kind)
+        if not snaps:
+            print(f"[{kind}] snapshots\\ 沒有 {kind}_*.csv，跳過", file=sys.stderr)
+            continue
+        latest_stamp, latest_path = snaps.popitem()
+        path = args.csv or latest_path
+        stamp = guess_stamp(path)
+        if kind == "rank":
+            data = build_rank(groups, path)
+            html = render_rank(data)
+        elif kind == "breadth":
+            data = build_breadth(groups, path)
+            html = render_breadth(data)
+        elif kind == "notes":
+            data = build_notes(groups, path)
+            html = render_notes(data)
+        else:
+            print(f"[{kind}] HTML 尚未實作此 kind，先跳過", file=sys.stderr)
+            continue
+        out = args.out or os.path.join(OUTPUT_DIR, f"{kind}_{stamp}.html")
+        with io.open(out, "w", encoding="utf-8") as f:
+            f.write(html)
+        print(f"[{kind}] 已產生 -> {out}")
+        if kind == "rank":
+            print(f"       一句話結論：{one_line_rank(data)}")
+        elif kind == "breadth":
+            print(f"       一句話結論：{one_line_breadth(data)}")
+        elif kind == "notes":
+            print(f"       一句話結論：{one_line_notes(data)}")
+
+
+if __name__ == "__main__":
+    main()
