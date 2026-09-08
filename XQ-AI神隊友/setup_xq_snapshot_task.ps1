@@ -15,13 +15,13 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $batPath = Join-Path $scriptDir 'xq_snapshot_loop.bat'
 if (-not (Test-Path $batPath)) { throw "找不到 $batPath" }
 
-# ---- 觸發：週一~週五 每天 09:25，每 15 分重複至 13:55 ----
+# ---- 觸發：週一~週五 每天 09:25，每 15 分重複至 13:35（收盤定格後） ----
 $trigger = New-ScheduledTaskTrigger -Weekly `
     -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday `
     -At 09:25
 $trigger.Repetition = (New-ScheduledTaskTrigger -Once -At 09:25 `
     -RepetitionInterval (New-TimeSpan -Minutes 15) `
-    -RepetitionDuration (New-TimeSpan -Minutes 280)).Repetition
+    -RepetitionDuration (New-TimeSpan -Minutes 250)).Repetition
 $trigger.Repetition.StopAtDurationEnd = $true
 
 # ---- 動作 ----
