@@ -35,15 +35,46 @@ $settings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
 
 # ---- 註冊（用最高權限以外的正常權限即可，不需要密碼）----
-Register-ScheduledTask -TaskName 'XQ_Snapshot_Loop' `
-    -Action $action `
-    -Trigger $trigger `
-    -Settings $settings `
-    -Description '盤中每 15 分抓 XQ 三種快照（rank/breadth/notes）到 routines\snapshots\' `
-    -Force
+$taskName = 'XQ_Snapshot_Loop'
+$altName = 'XQ_Snapshot_Loop2'
+$registered = $null
+
+# 舊任務可能是管理員建立的（一般權限覆寫會 Access denied）：先試刪除
+if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
+    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+}
+
+try {
+    Register-ScheduledTask -TaskName $taskName `
+        -Action $action `
+        -Trigger $trigger `
+        -Settings $settings `
+        -Description '盤中每 15 分抓 XQ 三種快照（rank/breadth/notes）到 routines\snapshots\' `
+        -Force
+    $registered = $taskName
+} catch {
+    Write-Warning "一般權限無法覆寫 $taskName（舊任務可能由系統管理員建立），改用備用名 $altName"
+    try {
+        Register-ScheduledTask -TaskName $altName `
+            -Action $action `
+            -Trigger $trigger `
+            -Settings $settings `
+            -Description '盤中每 15 分抓 XQ 三種快照（rank/breadth/notes）— 備用執行名' `
+            -Force
+        $registered = $altName
+    } catch {
+        throw "兩個任務名都註冊失敗。若連 $altName 都拒權，請回報錯誤訊息。"
+    }
+}
+
+# （備用名成功時）停用舊任務，避免雙跑
+if ($registered -eq $altName) {
+    Disable-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue | Out-Null
+    Write-Output "已停用舊任務 $taskName"
+}
 
 # ---- 驗證 ----
-$reg = Get-ScheduledTask -TaskName 'XQ_Snapshot_Loop'
+$reg = Get-ScheduledTask -TaskName $registered
 Write-Output "已建立任務：$($reg.TaskName)"
 Write-Output "狀態：$($reg.State)"
 $info = $reg | Get-ScheduledTaskInfo

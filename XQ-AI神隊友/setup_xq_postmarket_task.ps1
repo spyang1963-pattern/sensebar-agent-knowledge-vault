@@ -27,6 +27,9 @@ $settings = New-ScheduledTaskSettingsSet `
 $trigEvening = New-ScheduledTaskTrigger -Weekly `
     -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday -At 22:00
 $actEvening = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c `"$batPath`" evening"
+if (Get-ScheduledTask -TaskName 'XQ_Postmarket_Evening' -ErrorAction SilentlyContinue) {
+    Unregister-ScheduledTask -TaskName 'XQ_Postmarket_Evening' -Confirm:$false -ErrorAction SilentlyContinue
+}
 Register-ScheduledTask -TaskName 'XQ_Postmarket_Evening' `
     -Action $actEvening -Trigger $trigEvening -Settings $settings `
     -Description '盤後綜合分析：前一晚 22:00 初版' -Force
@@ -35,6 +38,9 @@ Register-ScheduledTask -TaskName 'XQ_Postmarket_Evening' `
 $trigMorning = New-ScheduledTaskTrigger -Weekly `
     -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday -At 08:35
 $actMorning = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c `"$batPath`" morning"
+if (Get-ScheduledTask -TaskName 'XQ_Postmarket_Morning' -ErrorAction SilentlyContinue) {
+    Unregister-ScheduledTask -TaskName 'XQ_Postmarket_Morning' -Confirm:$false -ErrorAction SilentlyContinue
+}
 Register-ScheduledTask -TaskName 'XQ_Postmarket_Morning' `
     -Action $actMorning -Trigger $trigMorning -Settings $settings `
     -Description '盤後綜合分析：開盤前 08:35 更新版' -Force
