@@ -17,3 +17,8 @@ raw/
 # financial news DB + logs
 financial_news/finance.db*
 financial_news/logs/
+
+# XQ 盤後綜合分析：輸入彙整與輸出報告（由排程產生）
+XQ-AI神隊友/routines/postmarket/input_*.md
+XQ-AI神隊友/routines/outputs/postmarket/
+XQ-AI神隊友/routines/outputs/*.html

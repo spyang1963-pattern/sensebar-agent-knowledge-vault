@@ -2,10 +2,10 @@
 #  setup_xq_snapshot_task.ps1 ─ 建立「每 15 分抓三種快照」的 Windows 工作排程
 #
 #  建立 XQ_Snapshot_Loop 任務：
-#    週一至週五 09:25 起，每 15 分鐘重複一次，直到 13:55。
+#    週一至週五 09:15 起，每 15 分鐘重複一次，直到 13:30。
 #    執行 xq_snapshot_loop.bat（依序抓 rank/breadth/notes）。
 #
-#  注意：snapshot.ps1 內建「盤中時段守門（09:25–13:55）＋ stale 去重」，
+#  注意：snapshot.ps1 內建「盤中時段守門（09:15–13:30）＋ stale 去重」，
 #        所以排程多跑幾次無妨，時段外自動 SKIP、資料沒變不重存。
 # ============================================================
 $ErrorActionPreference = 'Stop'
@@ -15,11 +15,11 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $batPath = Join-Path $scriptDir 'xq_snapshot_loop.bat'
 if (-not (Test-Path $batPath)) { throw "找不到 $batPath" }
 
-# ---- 觸發：週一~週五 每天 09:25，每 15 分重複至 13:40（收盤定格後；09:25+15×17） ----
+# ---- 觸發：週一~週五 每天 09:15，每 15 分重複至 13:30（收盤定格後；09:15+15×17） ----
 $trigger = New-ScheduledTaskTrigger -Weekly `
     -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday `
-    -At 09:25
-$trigger.Repetition = (New-ScheduledTaskTrigger -Once -At 09:25 `
+    -At 09:15
+$trigger.Repetition = (New-ScheduledTaskTrigger -Once -At 09:15 `
     -RepetitionInterval (New-TimeSpan -Minutes 15) `
     -RepetitionDuration (New-TimeSpan -Minutes 255)).Repetition
 $trigger.Repetition.StopAtDurationEnd = $true

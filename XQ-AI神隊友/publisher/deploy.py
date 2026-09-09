@@ -40,6 +40,10 @@ def deploy():
     shutil.copy2(SRC, os.path.join(PUB_DIR, "index.html"))
     now = datetime.now(TZ).strftime("%Y-%m-%d %H:%M")
     subprocess.run(["git", "add", "-A"], cwd=PUB_DIR, check=True)
+    # 先 pull（遠端可能已有其他提交），index.html 以本地最新為準：-X ours 自動解衝突
+    subprocess.run(
+        ["git", "pull", "--rebase", "-X", "ours", "origin", "master"],
+        cwd=PUB_DIR, check=False)
     subprocess.run(
         ["git", "commit", "-m", f"chore: update dashboard {now}", "--allow-empty"],
         cwd=PUB_DIR, check=True)

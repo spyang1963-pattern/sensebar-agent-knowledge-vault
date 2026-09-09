@@ -7,7 +7,7 @@
 #    -Kind   rank    → 作法一 族群資金排行 用（畫面印出成交值前 60 名）
 #            breadth → 作法二 齊漲分歧診斷 用（印出前 200 名）
 #            notes   → 作法三 盤中觀察三段 用（印出前 160 名）
-#    -Force  盤中時段以外也硬跑（測試用；正常只在 09:25–13:55 執行，其餘時間印 SKIP=1 就結束）
+#    -Force  盤中時段以外也硬跑（測試用；正常只在 09:15–13:30 執行，其餘時間印 SKIP=1 就結束）
 #    -Top N  覆寫畫面印出的筆數（CSV 不受影響）
 #    -KeepN N 只保留「成交值前 N 筆」存檔（預設 500；0 = 全部存）
 #
@@ -34,11 +34,11 @@ $ErrorActionPreference = 'Stop'
 $defaultTop = @{ rank = 60; breadth = 200; notes = 160 }
 if ($Top -le 0) { $Top = $defaultTop[$Kind] }
 
-# ---------- 盤中時段守門（09:25–13:40；改時段就改這兩個分鐘數） ----------
+# ---------- 盤中時段守門（09:15–13:30；改時段就改這兩個分鐘數） ----------
 $now  = Get-Date
 $mins = $now.Hour * 60 + $now.Minute
-if (-not $Force -and ($mins -lt 565 -or $mins -gt 820)) {
-    "### SKIP=1  現在 $($now.ToString('HH:mm')) 不在 09:25-13:40 盤中時段，本次不執行（要測試請加 -Force）"
+if (-not $Force -and ($mins -lt 555 -or $mins -gt 810)) {
+    "### SKIP=1  現在 $($now.ToString('HH:mm')) 不在 09:15-13:30 盤中時段，本次不執行（要測試請加 -Force）"
     exit 0
 }
 

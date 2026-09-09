@@ -38,6 +38,7 @@ SNAPSHOT_DIR = os.path.join(ROOT, "snapshots")
 OUTPUT_DIR = os.path.join(ROOT, "outputs")
 GROUPS_FILE = os.path.join(ROOT, "groups.ps1")
 GROUPS_EXTRA = os.path.join(ROOT, "groups_extra.ps1")
+POSTMARKET_OUT = os.path.join(ROOT, "outputs", "postmarket")
 
 # ---------- 參數（對齊 analyze_breadth.ps1 的判定門檻） ----------
 MIN_MEMBERS = 3
@@ -563,7 +564,7 @@ def load_previous(kind, path):
 
 
 def compare_rank(prev_rows, cur_top, cur_all):
-    """比較這輪與前輪的資金位移，回傳 list[dict]（只有有意義的變化才列）。
+    """比較這輪與前輪的資金位移，回傳 list[dict]（依「成交值增減幅度」由大到小，取前 20 檔）。
 
     verdict：把「資金(成交值)增減」與「股價方向(收紅/收黑)」合看，
     - 量增價漲 → 進貨（資金進場且股價跟漲，多方主導）
@@ -584,26 +585,29 @@ def compare_rank(prev_rows, cur_top, cur_all):
             return "惜售", "key-yellow"
         return "退潮", "key-green"
 
-    # 這輪成交量最大的前 5 檔，跟前輪相比是增是減
-    for r in cur_top[:5]:
+    # 以「成交值增減幅度」為主角：對前 50 名逐檔與前輪比，幅度大的優先解析
+    for r in cur_top:
         p = prev_map.get(r["Code"])
         if not p:
             continue
         dv = r["Val"] - p["Val"]
         dchg = r["Chg"] - p["Chg"]
-        if abs(dv) >= 2 or abs(dchg) >= 1.5:
-            v, cls = verdict(dv, r["Chg"])
-            price_dir = "股價收紅" if r["Chg"] >= 0 else "股價收黑"
-            out.append({
-                "type": "money",
-                "label": r["Name"],
-                "verdict": v, "vcls": cls,
-                "text": f"成交值 {fmt(p['Val'])}({fmt_chg(p['Chg'])}) → {fmt(r['Val'])}億({fmt_chg(r['Chg'])})，" +
-                        ("資金流入" if dv > 0 else "資金流出") + f" {fmt(abs(dv))}億、{price_dir}" +
-                        (f"，漲幅轉強 {fmt_chg(dchg)}" if dchg > 0 else f"，漲幅轉弱 {fmt_chg(dchg)}")
-            })
+        if abs(dv) < 2:
+            continue  # 成交值變動不到 2 億的跳過（避免雜訊）
+        v, cls = verdict(dv, r["Chg"])
+        arrow = "▲" if dv > 0 else "▼"
+        price_dir = "股價收紅" if r["Chg"] >= 0 else "股價收黑"
+        out.append({
+            "type": "money",
+            "label": r["Name"], "Code": r["Code"],
+            "verdict": v, "vcls": cls, "dv": dv,
+            "text": f"成交值 {fmt(p['Val'])}({fmt_chg(p['Chg'])}) → {fmt(r['Val'])}億({fmt_chg(r['Chg'])})，" +
+                    ("資金流入" if dv > 0 else "資金流出") + f" {fmt(abs(dv))}億、{price_dir}" +
+                    (f"，漲幅轉強 {fmt_chg(dchg)}" if dchg > 0 else f"，漲幅轉弱 {fmt_chg(dchg)}")
+        })
 
-    return out
+    out.sort(key=lambda x: abs(x["dv"]), reverse=True)
+    return out[:20]
 
 
 def stamp_display(stamp):
@@ -700,6 +704,9 @@ tr:hover td{background:#1c2438}
 .rest-inline{display:none}
 .expand-btn{background:#243156;border:1px solid #3a4a7a;color:#cfe0ff;border-radius:20px;padding:4px 16px;font-size:12.5px;font-weight:600;cursor:pointer;margin-top:8px}
 .expand-btn:hover{background:#31406a}
+.copybtn{background:#1d2840;border:1px solid #2f3d63;color:#bcd2ff;border-radius:14px;padding:3px 12px;font-size:11.5px;font-weight:600;cursor:pointer;margin-left:10px;vertical-align:middle}
+.copybtn:hover{background:#31406a}
+.copybtn.copied{background:#2e9e5b;color:#fff;border-color:#3cbf77}
 .rest-open .rest-row{display:table-row}
 .rest-open .rest-inline{display:block}
 .unclassified{color:var(--warn)}
@@ -713,22 +720,51 @@ tr:hover td{background:#1c2438}
 .dot{background:#1d2840;border:1px solid #2f3d63;color:#bcd2ff;border-radius:14px;padding:4px 10px;font-size:11.5px;cursor:pointer;min-width:52px;text-align:center}
 .dot.active{background:#4a3a1e;border-color:var(--warn);color:#ffe0a0;font-weight:700}
 .histnote{color:var(--sub);font-size:12px;margin:8px 0 4px}
+.postmarket h2{font-size:16px;margin:18px 0 8px;color:var(--txt);border-bottom:1px solid var(--line);padding-bottom:4px}
+.postmarket h3{font-size:14px;margin:14px 0 6px;color:var(--warn)}
+.postmarket p{margin:6px 0}
+.postmarket ul,.postmarket ol{margin:6px 0;padding-left:20px}
+.postmarket li{margin:3px 0}
+.postmarket strong{color:var(--txt)}
+.postmarket em{color:var(--sub)}
+.postmarket blockquote{border-left:3px solid var(--line);margin:8px 0;padding:2px 12px;color:var(--sub)}
+.postmarket code{background:#1b2438;border:1px solid #2c3858;border-radius:4px;padding:1px 5px;font-size:12px}
+.postmarket table{margin:8px 0}
 @media(max-width:640px){.wrap{padding:10px;font-size:13px}.hide-sm{display:none}}
 """
 
 JS = """
-function sortTable(t){
-  var i=t.getAttribute('data-idx');
+function sortTable(th){
+  var t=th.closest('table');
+  var i=+th.getAttribute('data-idx');
   var body=t.tBodies[0], rows=[].slice.call(body.rows);
   var asc=t.getAttribute('data-asc')!=='1';
   rows.sort(function(a,b){
     var av=a.cells[i].getAttribute('data-n'), bv=b.cells[i].getAttribute('data-n');
-    if(av!=null&&bv!=null){return asc?av-bv:bv-av;}
+    if(av!=null&&bv!=null){return asc?(+av)-(+bv):(+bv)-(+av);}
     var x=a.cells[i].textContent,y=b.cells[i].textContent;
     return asc?x.localeCompare(y,'zh-TW',{numeric:true}):y.localeCompare(x,'zh-TW',{numeric:true});
   });
   for(var j=0;j<rows.length;j++)body.appendChild(rows[j]);
+  // 重新套用縮表規則：前 5 顯示、其餘收合（排序後仍成立）
+  for(var j=0;j<rows.length;j++)rows[j].classList.toggle('rest-row', j>=5);
+  var cardId=t.getAttribute('data-card');
+  if(cardId){var cb=document.querySelector('.expand-btn[data-wrap="'+cardId+'"]');if(cb){cb.textContent=cb.getAttribute('data-expand');}}
   t.setAttribute('data-asc',asc?'0':'1');
+}
+function copyStocks(btn){
+  var card=btn.closest('.card');
+  var seen={}, out=[];
+  var els=card.querySelectorAll('[data-code]');
+  for(var i=0;i<els.length;i++){
+    var c=(els[i].getAttribute('data-code')||'').trim();
+    if(c&&!seen[c]){seen[c]=1;out.push(c+' '+els[i].getAttribute('data-name'));}
+  }
+  if(!out.length){return;}
+  var text=out.join(',');
+  function done(){btn.classList.add('copied');btn.textContent='已複製 '+out.length+' 檔';setTimeout(function(){btn.classList.remove('copied');btn.textContent='📋';},1600);}
+  function fb(){var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);done();}
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,fb);}else{fb();}
 }
 function toggleRest(btn){
   var wrap=document.getElementById(btn.getAttribute('data-wrap'));
@@ -816,19 +852,20 @@ def render_rank(d):
   <div class="why">這代表什麼：{r['Why']}</div></div>"""
         h += "</div>"
 
-    # 族群資金表（橫條）
-    h += '<div class="card" id="grp-card"><h2>族群資金表（依成交值）· 點欄位名可排序</h2>'
-    h += '<div class="meta" style="margin-bottom:8px"><span class="tip" data-id="0">佔前50%</span>＝族群成交值 ÷ 前50名總值；<span class="tip" data-id="1">漲跌家數</span>＝紅綠各幾檔。</div>'
-    h += '<table id="grp"><thead><tr>'
+    # 族群資金表（橫條）—— 預設依平均漲幅由高到低，點欄位名可排序
+    grp_disp = sorted(d["groups"], key=lambda x: x["Avg"], reverse=True)
+    h += '<div class="card" id="grp-card"><h2>族群資金表 · 點欄位名可排序 <button class="copybtn" onclick="copyStocks(this)" title="複製本表全部股號與股名">📋</button></h2>'
+    h += '<div class="meta" style="margin-bottom:8px"><span class="tip" data-id="0">佔前50%</span>＝族群成交值 ÷ 前50名總值；<span class="tip" data-id="1">漲跌家數</span>＝紅綠各幾檔。預設依平均漲幅由高到低。</div>'
+    h += '<table id="grp" data-card="grp-card"><thead><tr>'
     headers = [("族群", "text"), ("成交值(億)", "num"), ("佔前50%", "num"), ("平均漲幅", "num"), ("漲跌", "text"), ("代表股", "text")]
     for i, (name, cls) in enumerate(headers):
-        h += f'<th data-idx="{i}" class="{cls}" onclick="sortTable(this.closest(\'table\'))">{name}</th>'
+        h += f'<th data-idx="{i}" class="{cls}" onclick="sortTable(this)">{name}</th>'
     h += "</tr></thead><tbody>"
     maxval = d["groups"][0]["Val"] if d["groups"] else 1
-    for gi, gr in enumerate(d["groups"]):
+    for gi, gr in enumerate(grp_disp):
         rest = ' class="rest-row"' if gi >= 5 else ""
         barc = "up" if gr["Avg"] >= 0 else "down"
-        members = " ".join(f'<b class="{chg_class(m["Chg"])}">{m["Name"]}</b>({fmt(m["Val"])}億,{fmt_chg(m["Chg"])})' for m in gr["Mem"][:4])
+        members = " ".join(f'<b class="{chg_class(m["Chg"])}" data-code="{m["Code"]}" data-name="{m["Name"]}">{m["Name"]}</b>({fmt(m["Val"])}億,{fmt_chg(m["Chg"])})' for m in gr["Mem"][:4])
         h += f"""<tr{rest}>
   <td data-n="0"><b>{gr['G']}</b> <span class="pill {chg_class(gr['Avg'])}">{gr['N']}檔</span></td>
   <td data-n="{gr['Val']}" class="num">{fmt(gr['Val'])}</td>
@@ -841,27 +878,30 @@ def render_rank(d):
         h += f'<button class="expand-btn" data-wrap="grp-card" data-expand="展開全部（共 {len(d["groups"])} 群）" data-collapse="收回 5 群" onclick="toggleRest(this)">展開全部（共 {len(d["groups"])} 群）</button>'
     h += "</div>"  # end groups card
 
-    # ① 個股詮釋：成交值前列的股票逐檔解讀
-    h += '<div class="card" id="stk-card"><h2>🎯 逐檔解讀（成交值前 10 · 各檔量價合起來代表什麼）</h2>'
-    for si, r in enumerate(d["top"][:10]):
+    # ① 個股詮釋：依「各股漲跌幅」前 30 檔逐檔解讀（縮表顯示 5 檔）
+    stk_sel = sorted(d["top"], key=lambda r: abs(r["Chg"]), reverse=True)[:30]
+    h += '<div class="card" id="stk-card"><h2>🎯 逐檔解讀（漲跌幅前 30 · 各檔量價合起來代表什麼） <button class="copybtn" onclick="copyStocks(this)" title="複製本表全部股號與股名">📋</button></h2>'
+    for si, r in enumerate(stk_sel):
         tagclass = chg_class(r["Chg"])
         rest = " rest-inline" if si >= 5 else ""
         h += f"""<div class="trend-item{rest}">
-  <b>{r['Rk']}#</b> <b class="key-{'red' if r['Chg']>0 else 'green' if r['Chg']<0 else 'yellow'}">{r['Name']}</b>
+  <b>{r['Rk']}#</b> <b class="key-{'red' if r['Chg']>0 else 'green' if r['Chg']<0 else 'yellow'}" data-code="{r['Code']}" data-name="{r['Name']}">{r['Name']}</b>
   <span class="pill {tagclass}">{r['Grp']}</span>
   <span class="num" style="float:right">{fmt_chg(r['Chg'])} · {fmt(r['Val'])}億</span>
   <div class="stock-why">{r['Why']}</div>
 </div>"""
-    h += f'<button class="expand-btn" data-wrap="stk-card" data-expand="展開全部 10 檔" data-collapse="收回 5 檔" onclick="toggleRest(this)">展開全部 10 檔</button>'
+    h += f'<button class="expand-btn" data-wrap="stk-card" data-expand="展開全部 30 檔" data-collapse="收回 5 檔" onclick="toggleRest(this)">展開全部 30 檔</button>'
     h += "</div>"
 
-    # ③ 趨勢：與前一份快照比較
-    h += '<div class="card"><h2>📈 資金位移（與前一份快照比）：資金增減 ＋ 股價方向合看，判讀進貨／出貨</h2>'
+    # ③ 趨勢：與前一份快照比較（依成交值增減幅度前 20，縮表顯示 5 檔）
+    h += '<div class="card" id="trend-card"><h2>📈 資金位移（與前一份快照比 · 成交值增減幅度前 20）：資金增減 ＋ 股價方向合看，判讀進貨／出貨 <button class="copybtn" onclick="copyStocks(this)" title="複製本表全部股號與股名">📋</button></h2>'
     if d["trend"]:
-        for it in d["trend"]:
-            arrow = "<span class='arrow key-red'>▲</span>" if "流入" in it["text"] else "<span class='arrow key-green'>▼</span>"
+        for ti, it in enumerate(d["trend"]):
+            arrow = "<span class='arrow key-red'>▲</span>" if it["dv"] > 0 else "<span class='arrow key-green'>▼</span>"
             vtag = f'<span class="pill {it["vcls"]}">{it["verdict"]}</span>'
-            h += f'<div class="trend-item">{arrow}<b>{it["label"]}</b> {vtag} {it["text"]}</div>'
+            rest = ' class="rest-inline"' if ti >= 5 else ""
+            h += f'<div class="trend-item{rest}">{arrow}<b data-code="{it["Code"]}" data-name="{it["label"]}">{it["label"]}</b> {vtag} {it["text"]}</div>'
+        h += f'<button class="expand-btn" data-wrap="trend-card" data-expand="展開全部 {len(d["trend"])} 檔" data-collapse="收回 5 檔" onclick="toggleRest(this)">展開全部 {len(d["trend"])} 檔</button>'
     else:
         h += f'<div class="trend-empty">尚無前一份快照可比較（目前僅掃描到 {d["history_count"]} 份歷史快照）。下一次盤中捕捉到新的同類快照後，此區會自動顯示這輪與前輪的資金位移。</div>'
     h += "</div>"
@@ -936,30 +976,30 @@ def render_breadth(d):
             h += f'<div class="contra-card"><div class="t">反直覺</div><div class="why">{c}</div></div>'
         h += "</div>"
 
-    # 齊漲族群表
+    # 齊漲族群表（平均漲幅由高到低）
     rally = [g for g in d["rows"] if "RALLY" in g["Tags"]]
-    rally.sort(key=lambda g: (g["Ratio"], g["Val"]), reverse=True)
-    h += '<div class="card"><h2>🔴 齊漲族群（上漲比 ≥ 0.75 且 ≥ 3 檔）</h2>'
+    rally.sort(key=lambda g: g["Avg"], reverse=True)
+    h += '<div class="card" id="rally-card"><h2>🔴 齊漲族群（上漲比 ≥ 0.75 且 ≥ 3 檔）<button class="copybtn" onclick="copyStocks(this)" title="複製本表全部股號與股名">📋</button></h2>'
     if rally:
-        h += _grp_align_table(rally, up=True)
+        h += _grp_align_table(rally, up=True, card_id="rally-card")
     else:
         h += '<div class="trend-empty">無——沒有任何族群達到齊漲門檻。</div>'
     h += "</div>"
 
-    # 齊跌族群表
+    # 齊跌族群表（平均漲幅由高到低）
     sell = [g for g in d["rows"] if "SELLOFF" in g["Tags"]]
-    sell.sort(key=lambda g: (g["Ratio"], g["Val"]), reverse=True)
-    h += '<div class="card"><h2>🟢 齊跌族群（下跌比 ≥ 0.75 且 ≥ 3 檔）</h2>'
+    sell.sort(key=lambda g: g["Avg"], reverse=True)
+    h += '<div class="card" id="sell-card"><h2>🟢 齊跌族群（下跌比 ≥ 0.75 且 ≥ 3 檔）<button class="copybtn" onclick="copyStocks(this)" title="複製本表全部股號與股名">📋</button></h2>'
     if sell:
-        h += _grp_align_table(sell, up=False)
+        h += _grp_align_table(sell, up=False, card_id="sell-card")
     else:
         h += '<div class="trend-empty">無——沒有任何族群達到齊跌門檻。</div>'
     h += "</div>"
 
-    # 內部分歧
+    # 內部分歧（平均漲幅由高到低）
     split = [g for g in d["rows"] if "SPLIT" in g["Tags"]]
-    split.sort(key=lambda g: g["Val"], reverse=True)
-    h += '<div class="card"><h2>⚖️ 內部分歧（同族群同時有 ≥+3% 與 ≤-3% 成員）</h2>'
+    split.sort(key=lambda g: g["Avg"], reverse=True)
+    h += '<div class="card"><h2>⚖️ 內部分歧（同族群同時有 ≥+3% 與 ≤-3% 成員）<button class="copybtn" onclick="copyStocks(this)" title="複製本表全部股號與股名">📋</button></h2>'
     if split:
         h += '<div class="meta" style="margin-bottom:8px">資金在族內挑選、不是整組行情。成交值最大的分歧族群特別重要。</div>'
         for g in split:
@@ -973,8 +1013,8 @@ def render_breadth(d):
 
     # 個別表現 SOLO
     solo = [g for g in d["rows"] if "SOLO" in g["Tags"]]
-    solo.sort(key=lambda g: g["Val"], reverse=True)
-    h += '<div class="card"><h2>🎯 個別表現獨走（僅 1 檔 ≥+5%，其餘在 ±2%內）</h2>'
+    solo.sort(key=lambda g: g["Avg"], reverse=True)
+    h += '<div class="card"><h2>🎯 個別表現獨走（僅 1 檔 ≥+5%，其餘在 ±2%內）<button class="copybtn" onclick="copyStocks(this)" title="複製本表全部股號與股名">📋</button></h2>'
     if solo:
         for g in solo:
             h += f"""<div class="trend-item"><b>{g['G']}</b> · {g['N']}檔 · 成交值 {g['Val']}億
@@ -984,12 +1024,12 @@ def render_breadth(d):
     h += "</div>"
 
     # 個股訊號清單
-    h += '<div class="card"><h2>🚨 個股訊號</h2>'
+    h += '<div class="card"><h2>🚨 個股訊號 <button class="copybtn" onclick="copyStocks(this)" title="複製本表全部股號與股名">📋</button></h2>'
     for sg in d["signals"]:
         h += f'<div class="trend-item" style="margin-top:10px"><b>{sg["title"]}</b> <span class="meta">（{sg["detail"]}）</span>'
         if sg["items"]:
             h += '<div style="margin-top:5px">' + " ".join(
-                f'<span class="pill {chg_class(x["Chg"])}">{x["Name"]}</span> {fmt_chg(x["Chg"])} · {fmt(x["Val"])}億'
+                f'<span class="pill {chg_class(x["Chg"])}" data-code="{x["Code"]}" data-name="{x["Name"]}">{x["Name"]}</span> {fmt_chg(x["Chg"])} · {fmt(x["Val"])}億'
                 for x in sg["items"][:6]) + "</div>"
         else:
             h += ' <span class="trend-empty">無</span>'
@@ -1020,25 +1060,27 @@ def render_breadth(d):
     return h
 
 
-def _grp_align_table(groups, up=True):
+def _grp_align_table(groups, up=True, card_id="grp-card"):
     """齊漲/齊跌共用的族群表格。"""
-    head = "族群" if up else "族群"
-    h = '<table id="align"><thead><tr><th data-idx="0">族群</th><th data-idx="1" class="num">整齊度</th><th data-idx="2" class="num">成交值(億)</th><th data-idx="3" class="num">平均漲幅</th><th data-idx="4">成員（漲幅）</th></tr></thead><tbody>'
-    for g in groups:
+    h = f'<table id="align" data-card="{card_id}"><thead><tr><th data-idx="0" onclick="sortTable(this)">族群</th><th data-idx="1" class="num" onclick="sortTable(this)">整齊度</th><th data-idx="2" class="num" onclick="sortTable(this)">成交值(億)</th><th data-idx="3" class="num" onclick="sortTable(this)">平均漲幅</th><th data-idx="4" onclick="sortTable(this)">成員（漲幅）</th></tr></thead><tbody>'
+    for gi, g in enumerate(groups):
         cls = "up" if up else "down"
-        h += f"""<tr>
+        rest = ' class="rest-row"' if gi >= 5 else ""
+        h += f"""<tr{rest}>
   <td><b>{g['G']}</b> <span class="pill {cls}">{g['N']}檔</span></td>
   <td data-n="{g['Ratio']}" class="num">{g['Up' if up else 'Dn']}/{g['N']}</td>
   <td data-n="{g['Val']}" class="num">{g['Val']}</td>
   <td data-n="{g['Avg']}" class="num {chg_class(g['Avg'])}">{fmt_chg(g['Avg'])}</td>
   <td>{_grp_member_str(g)}</td></tr>"""
     h += "</tbody></table>"
+    if len(groups) > 5:
+        h += f'<button class="expand-btn" data-wrap="{card_id}" data-expand="展開全部（共 {len(groups)} 群）" data-collapse="收回 5 群" onclick="toggleRest(this)">展開全部（共 {len(groups)} 群）</button>'
     return h
 
 
 def _grp_member_str(g):
     return " ".join(
-        f'<b class="{chg_class(x["Chg"])}">{x["Name"]}</b>({fmt_chg(x["Chg"])})' for x in g["Mem"][:8])
+        f'<b class="{chg_class(x["Chg"])}" data-code="{x["Code"]}" data-name="{x["Name"]}">{x["Name"]}</b>({fmt_chg(x["Chg"])})' for x in g["Mem"][:8])
 
 
 # ============================================================
@@ -1085,19 +1127,24 @@ def render_notes(d):
         h += f'<div class="diag-item"><span class="k">vs 前一輪</span><div class="v">總值 {p["d_val"]:+.1f}億 · 上漲家數 {p["d_up"]:+d}</div></div>'
     h += "</div></div>"
 
-    # 族群成交值前 8 名（含增量）
-    h += '<div class="card"><h2>族群成交值（全樣本 · 前 8 名）</h2>'
-    h += '<table id="grpnotes"><thead><tr><th data-idx="0">族群</th><th data-idx="1" class="num">成交值(億)</th><th data-idx="2" class="num">佔比</th><th data-idx="3" class="num">漲跌</th><th data-idx="4" class="num">平均漲幅</th><th data-idx="5" class="num">vs前份</th></tr></thead><tbody>'
-    for g in d["groups"][:8]:
+    # 族群成交值前 8 名（含增量）—— 依平均漲幅由高到低
+    h += '<div class="card" id="grpnotes-card"><h2>族群成交值（全樣本 · 依平均漲幅排序）<button class="copybtn" onclick="copyStocks(this)" title="複製本表全部股號與股名">📋</button></h2>'
+    h += '<table id="grpnotes" data-card="grpnotes-card"><thead><tr><th data-idx="0" onclick="sortTable(this)">族群</th><th data-idx="1" class="num" onclick="sortTable(this)">成交值(億)</th><th data-idx="2" class="num" onclick="sortTable(this)">佔比</th><th data-idx="3" class="num" onclick="sortTable(this)">漲跌</th><th data-idx="4" class="num" onclick="sortTable(this)">平均漲幅</th><th data-idx="5" class="num" onclick="sortTable(this)">vs前份</th></tr></thead><tbody>'
+    for gi, g in enumerate(sorted(d["groups"], key=lambda x: x["A"], reverse=True)[:8]):
         dvcls = chg_class(g["DV"]) if g["DV"] else "flat"
-        h += f"""<tr>
+        rest = ' class="rest-row"' if gi >= 5 else ""
+        h += f"""<tr{rest}>
   <td><b>{g['G']}</b> <span class="pill">{g['N']}檔</span></td>
   <td data-n="{g['V']}" class="num">{g['V']}</td>
   <td data-n="{g['Pct']}" class="num">{g['Pct']}%</td>
   <td data-n="{g['U']-g['D']}" class="num">{g['U']}<span class="up">↑</span> {g['D']}<span class="down">↓</span></td>
   <td data-n="{g['A']}" class="num {chg_class(g['A'])}">{fmt_chg(g['A'])}</td>
   <td data-n="{g['DV']}" class="num {dvcls}">{g['DV']:+.1f}億</td></tr>"""
-    h += "</tbody></table></div>"
+    h += "</tbody></table>"
+    grpnotes_all = sorted(d["groups"], key=lambda x: x["A"], reverse=True)
+    if len(grpnotes_all) > 5:
+        h += ' <button class="expand-btn" data-wrap="grpnotes-card" data-expand="展開全部（共 {} 群）" data-collapse="收回 5 群" onclick="toggleRest(this)">展開全部（共 {} 群）</button>'.format(len(grpnotes_all), len(grpnotes_all))
+    h += "</div>"
 
     # ①②③ 三段：把「locks + flipped + big_movers」轉成三段文字
     segs = _notes_segments(d)
@@ -1108,14 +1155,14 @@ def render_notes(d):
     h += "</div>"
 
     # 鎖死/換手/異常 清單
-    h += '<div class="card"><h2>🚨 關鍵清單</h2>'
+    h += '<div class="card" id="lock-card"><h2>🚨 關鍵清單 <button class="copybtn" onclick="copyStocks(this)" title="複製本表全部股號與股名">📋</button></h2>'
     for lk in d["locks"]:
         h += f'<div class="trend-item" style="margin:8px 0"><b>{lk["title"]}</b>'
         if lk["items"]:
             shown = [];
             for it in lk["items"][:8]:
                 r = it["r"]
-                s = f'<span class="pill {chg_class(r["Chg"])}">{r["Name"]}</span> {fmt_chg(r["Chg"])} · {fmt(r["Val"])}億' + (f' · 前份 {fmt_chg(it["prev_chg"])}' if "prev_chg" in it else "")
+                s = f'<span class="pill {chg_class(r["Chg"])}" data-code="{r["Code"]}" data-name="{r["Name"]}">{r["Name"]}</span> {fmt_chg(r["Chg"])} · {fmt(r["Val"])}億' + (f' · 前份 {fmt_chg(it["prev_chg"])}' if "prev_chg" in it else "")
                 if "is_new" in it:
                     s += ' <span class="key-yellow">（本輪新進）</span>'
                 shown.append(s)
@@ -1126,32 +1173,32 @@ def render_notes(d):
     h += "</div>"
 
     # 翻紅翻黑
-    h += '<div class="card"><h2>🔄 轉折（與前一輪比）</h2>'
+    h += '<div class="card" id="flip-card"><h2>🔄 轉折（與前一輪比） <button class="copybtn" onclick="copyStocks(this)" title="複製本表全部股號與股名">📋</button></h2>'
     h += '<div class="trend-item"><b>翻黑（前紅今綠）</b>'
-    h += (" ".join(f'<span class="pill down">{x["Name"]}</span>({fmt_chg(x["Chg"])})' for x in d["flipped_red"][:6])) if d["flipped_red"] else ' <span class="trend-empty">無</span>'
+    h += (" ".join(f'<span class="pill down" data-code="{x["Code"]}" data-name="{x["Name"]}">{x["Name"]}</span>({fmt_chg(x["Chg"])})' for x in d["flipped_red"][:6])) if d["flipped_red"] else ' <span class="trend-empty">無</span>'
     h += "</div><div class='trend-item'><b>翻紅（前綠今紅）</b>"
-    h += (" ".join(f'<span class="pill up">{x["Name"]}</span>({fmt_chg(x["Chg"])})' for x in d["flipped_green"][:6])) if d["flipped_green"] else ' <span class="trend-empty">無</span>'
+    h += (" ".join(f'<span class="pill up" data-code="{x["Code"]}" data-name="{x["Name"]}">{x["Name"]}</span>({fmt_chg(x["Chg"])})' for x in d["flipped_green"][:6])) if d["flipped_green"] else ' <span class="trend-empty">無</span>'
     h += "</div></div>"
 
     # 大幅位移
-    h += '<div class="card"><h2>📈 大幅位移（|Δ漲幅| ≥ 2.5%）</h2>'
+    h += '<div class="card" id="mover-card"><h2>📈 大幅位移（|Δ漲幅| ≥ 2.5%） <button class="copybtn" onclick="copyStocks(this)" title="複製本表全部股號與股名">📋</button></h2>'
     if d["big_movers"]:
         h += "<div style='display:flex;flex-wrap:wrap;gap:8px'>"
         for it in d["big_movers"][:10]:
             cls = "up" if it["d"] > 0 else "down"
-            h += f'<span class="pill {cls}">{it["r"]["Name"]}</span> {fmt_chg(it["prev_chg"])}→{fmt_chg(it["r"]["Chg"])} ({it["d"]:+.2f}%)'
+            h += f'<span class="pill {cls}" data-code="{it["r"]["Code"]}" data-name="{it["r"]["Name"]}">{it["r"]["Name"]}</span> {fmt_chg(it["prev_chg"])}→{fmt_chg(it["r"]["Chg"])} ({it["d"]:+.2f}%)'
         h += "</div>"
     else:
         h += '<span class="trend-empty">無</span>'
     h += "</div>"
 
     # 固定盯的個股
-    h += '<div class="card"><h2>每次固定盯的個股</h2>'
+    h += '<div class="card" id="key-card"><h2>每次固定盯的個股 <button class="copybtn" onclick="copyStocks(this)" title="複製本表全部股號與股名">📋</button></h2>'
     if d["key_codes"]:
         h += "<div style='display:flex;flex-wrap:wrap;gap:8px'>"
         for it in d["key_codes"]:
             r = it["r"]
-            h += f'<span class="pill {chg_class(r["Chg"])}">{r["Name"]}</span> {fmt_chg(r["Chg"])} · {fmt(r["Val"])}億' + (f' · 前份 {fmt_chg(it["prev_chg"])}' if it["prev_chg"] is not None else "")
+            h += f'<span class="pill {chg_class(r["Chg"])}" data-code="{r["Code"]}" data-name="{r["Name"]}">{r["Name"]}</span> {fmt_chg(r["Chg"])} · {fmt(r["Val"])}億' + (f' · 前份 {fmt_chg(it["prev_chg"])}' if it["prev_chg"] is not None else "")
         h += "</div>"
     h += "</div>"
 
@@ -1234,11 +1281,11 @@ HIST_DAYS = 5  # 歷史內嵌保留最近 N 個交易日
 # ---------- 精簡 fragment（歷史輪次用，避免檔案爆炸） ----------
 def frag_rank(d):
     h = [f'<div class="verdict">{one_line_rank(d)}</div>']
-    # 族群資金前 5（橫條）
+    # 族群資金前 10（橫條）
     if d["groups"]:
-        h.append('<div class="card"><h2>族群資金（前5）</h2><div style="margin-top:6px">')
+        h.append('<div class="card"><h2>族群資金（前10）</h2><div style="margin-top:6px">')
         mx = d["groups"][0]["Val"] or 1
-        for g in d["groups"][:5]:
+        for g in d["groups"][:10]:
             w = min(100, g["Val"] / mx * 100)
             barc = "up" if g["Avg"] >= 0 else "down"
             h.append(f'''<div style="margin-bottom:6px">
@@ -1247,9 +1294,9 @@ def frag_rank(d):
   <div class="barwrap"><div class="bar {barc}" style="width:{w:.0f}%"></div></div></div>''')
         h.append("</div></div>")
     if d["trend"]:
-        h.append('<div class="card"><h2>📈 資金位移</h2>')
-        for it in d["trend"][:5]:
-            if "流入" in it["text"]:
+        h.append('<div class="card"><h2>📈 資金位移（前10）</h2>')
+        for it in d["trend"][:10]:
+            if it["dv"] > 0:
                 h.append(f'<div class="trend-item"><span class="arrow key-red">▲</span><b>{it["label"]}</b> <span class="pill {it["vcls"]}">{it["verdict"]}</span> {it["text"]}</div>')
             else:
                 h.append(f'<div class="trend-item"><span class="arrow key-green">▼</span><b>{it["label"]}</b> <span class="pill {it["vcls"]}">{it["verdict"]}</span> {it["text"]}</div>')
@@ -1325,7 +1372,7 @@ def _body_only(full_html):
 
 
 def build_dashboard(groups):
-    """彙整最近 HIST_DAYS 個交易日的所有快照 → 最新完整 + 歷史精簡 JSON。
+    """彙整最近 HIST_DAYS 個交易日的所有快照 → 當日+昨日完整報告，更早日精簡 fragment。
 
     同一輪的快照（rank/breadth/notes 相差數秒）以「分鐘」為 round key 合併，
     時間軸每 30 分鐘只出現一個點。
@@ -1338,6 +1385,7 @@ def build_dashboard(groups):
     # 保留最近 HIST_DAYS 個交易日（round key 前 8 位 = yyyymmdd）
     days = sorted(set(k[:8] for k in all_minutes))
     keep_days = set(days[-HIST_DAYS:])
+    full_days = set(days[-2:])   # 當日＋昨日：完整報告
     minutes = [k for k in all_minutes if k[:8] in keep_days]
 
     def pick(kind, minute):
@@ -1361,22 +1409,27 @@ def build_dashboard(groups):
         else:
             latest[k] = render_notes(build_notes(groups, p))
 
-    # 歷史：每輪（分鐘）三種 kind 的精簡 fragment
+    # 歷史：當日+昨日每一輪（分鐘）三種 kind 都放「完整」，更早日放精簡 fragment
     hist = []
     for minute in minutes:
         entry = {"stamp": minute}
+        is_full = minute[:8] in full_days
         for k in ("rank", "breadth", "notes"):
             p = pick(k, minute)
-            if p:
+            if not p:
+                continue
+            if is_full:
+                if k == "rank":
+                    full_html = render_rank(build_rank(groups, p))
+                elif k == "breadth":
+                    full_html = render_breadth(build_breadth(groups, p))
+                else:
+                    full_html = render_notes(build_notes(groups, p))
+                entry[k] = _body_only(full_html)
+            else:
                 entry[k] = build_fragment(k, groups, p)
         hist.append(entry)
     hist.sort(key=lambda x: x["stamp"], reverse=True)  # 新的在前
-
-    # 最新一輪改用「完整」內容（等同單 kind 全文，只留 body 內文）
-    if hist and latest:
-        for k in ("rank", "breadth", "notes"):
-            if k in latest:
-                hist[0][k] = _body_only(latest[k])
 
     return {"latest": latest, "hist": hist,
             "total_rounds": len(hist) if hist else 0}
@@ -1389,18 +1442,20 @@ DASH_HEAD = """<!DOCTYPE html>
 .tabpage{{display:none}}
 .tabpage.active{{display:block}}
 </style></head><body><div class="wrap">
-<header><h1>📋 XQ 盤中儀表板</h1><div class="meta">每 30 分自動快照 · 目前顯示 <span id="cur-label">—</span> · 保留最近 {days} 個交易日歷史</div></header>
+<header><h1>📋 XQ 盤中儀表板</h1><div class="meta">每 15 分自動快照 · 目前顯示 <span id="cur-label">—</span> · 當日+昨日每一輪完整報告，更早輪次精簡版（保留最近 {days} 個交易日）</div></header>
 <div class="histbar" id="histbar"></div>
-<div class="histnote">時間軸：點一個時間點，那一輪的三份資料（資金排行／齊漲分歧／盤中三段）會一起帶出，用下面的頁籤切換看哪一份；「最新」回到最新一輪。超過 {days} 個交易日的歷史仍在 snapshots\\ 的 CSV，可重產完整 HTML。</div>
+<div class="histnote">時間軸：點一個時間點，那一輪的三份資料（資金排行／齊漲分歧／盤中三段）會一起帶出，用下面的頁籤切換看哪一份；「最新」回到最新一輪。當日與昨日為完整報告，更早交易日只有精簡版（一句話結論＋族群資金前10＋資金位移前10）。超過 {days} 個交易日的歷史仍在 snapshots\\ 的 CSV，可重產完整 HTML。</div>
 <div class="tabbar" id="tabbar">
   <button class="tabbtn" data-kind="rank" onclick="setKind('rank')">資金排行</button>
   <button class="tabbtn" data-kind="breadth" onclick="setKind('breadth')">齊漲分歧</button>
   <button class="tabbtn" data-kind="notes" onclick="setKind('notes')">盤中三段</button>
+  <button class="tabbtn" data-kind="postmarket" onclick="setKind('postmarket')">盤後綜合分析</button>
 </div>
 <div id="content">
   <div class="tabpage" id="page-rank"></div>
   <div class="tabpage" id="page-breadth"></div>
   <div class="tabpage" id="page-notes"></div>
+  <div class="tabpage" id="page-postmarket">{postmarket}</div>
 </div>
 <div class="footer">本看板每 30 分由快照自動更新。盤中資料到收盤前仍會變動；僅描述資金結構與盤面事實，不含買賣建議或目標價推測。</div>
 <script type="application/json" id="histdata">{hist_json}</script>
@@ -1426,7 +1481,7 @@ function render(){
 }
 function showKind(k){
   curKind = k;
-  ['rank','breadth','notes'].forEach(function(x){
+  ['rank','breadth','notes','postmarket'].forEach(function(x){
     var p = document.getElementById('page-'+x);
     p.classList.toggle('active', x===k);
   });
@@ -1439,18 +1494,36 @@ function toggleRest(btn){
   var open=wrap.classList.toggle('rest-open');
   btn.textContent=open?btn.getAttribute('data-collapse'):btn.getAttribute('data-expand');
 }
-function sortTable(t){
-  var i=t.getAttribute('data-idx');
+function sortTable(th){
+  var t=th.closest('table');
+  var i=+th.getAttribute('data-idx');
   var body=t.tBodies[0], rows=[].slice.call(body.rows);
   var asc=t.getAttribute('data-asc')!=='1';
   rows.sort(function(a,b){
     var av=a.cells[i].getAttribute('data-n'), bv=b.cells[i].getAttribute('data-n');
-    if(av!=null&&bv!=null){return asc?av-bv:bv-av;}
+    if(av!=null&&bv!=null){return asc?(+av)-(+bv):(+bv)-(+av);}
     var x=a.cells[i].textContent,y=b.cells[i].textContent;
     return asc?x.localeCompare(y,'zh-TW',{numeric:true}):y.localeCompare(x,'zh-TW',{numeric:true});
   });
   for(var j=0;j<rows.length;j++)body.appendChild(rows[j]);
+  for(var j=0;j<rows.length;j++)rows[j].classList.toggle('rest-row', j>=5);
+  var cardId=t.getAttribute('data-card');
+  if(cardId){var cb=document.querySelector('.expand-btn[data-wrap="'+cardId+'"]');if(cb){cb.textContent=cb.getAttribute('data-expand');}}
   t.setAttribute('data-asc',asc?'0':'1');
+}
+function copyStocks(btn){
+  var card=btn.closest('.card');
+  var seen={}, out=[];
+  var els=card.querySelectorAll('[data-code]');
+  for(var i=0;i<els.length;i++){
+    var c=(els[i].getAttribute('data-code')||'').trim();
+    if(c&&!seen[c]){seen[c]=1;out.push(c+' '+els[i].getAttribute('data-name'));}
+  }
+  if(!out.length){return;}
+  var text=out.join(',');
+  function done(){btn.classList.add('copied');btn.textContent='已複製 '+out.length+' 檔';setTimeout(function(){btn.classList.remove('copied');btn.textContent='📋';},1600);}
+  function fb(){var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);done();}
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,fb);}else{fb();}
 }
 window.onload = function(){
   var hb = document.getElementById('histbar');
@@ -1478,7 +1551,53 @@ def render_dashboard(d):
         # 轉義 </script>：完整 HTML fragment 內含自己的 <script>，若不轉義，內嵌 JSON 會被瀏覽器截斷（JSON 內 "</" 轉 "<\\/" 是合法且安全）
         hist_json=json.dumps(d["hist"], ensure_ascii=False).replace("</", "<\\/"),
         css=CSS, js=DASH_JS,
+        postmarket=render_postmarket_tab(),
     )
+
+
+# ============================================================
+#  盤後綜合分析（第四頁籤）：routines\outputs\postmarket\*.md
+# ============================================================
+def render_postmarket_tab():
+    """把最新的 postmarket md 轉成 HTML，塞進 dashboard 第四頁籤。
+
+    顯示「當天最新」的一份；若有多份（evening/morning），morning 更新版優先。
+    沒報告時顯示引導訊息。
+    """
+    try:
+        from markdown import markdown
+    except ImportError:
+        return '<div class="card"><div class="trend-empty">需要 pip install markdown 才能顯示盤後綜合分析。</div></div>'
+    if not os.path.isdir(POSTMARKET_OUT):
+        return '<div class="card"><div class="trend-empty">尚無盤後綜合分析（routines/outputs/postmarket/ 不存在）。</div></div>'
+    # 軍校排序：檔名 postmarket_YYYYMMDD_slot.md，同一日 morning 優先、跨日取最新日期
+    files = [f for f in os.listdir(POSTMARKET_OUT) if f.startswith("postmarket_") and f.endswith(".md")]
+    if not files:
+        return '<div class="card"><div class="trend-empty">尚無盤後綜合分析報告。排程會在前一晚 22:00（初版）與開盤前 08:35（更新版）自動產生。</div></div>'
+    def sort_key(fn):
+        m = re.match(r"postmarket_(\d{8})_(\w+)\.md", fn)
+        if not m:
+            return "0"
+        slot = {"morning": "2", "evening": "1"}.get(m.group(2), "0")
+        return m.group(1) + slot
+    latest = sorted(files, key=sort_key)[-1]
+    m = re.match(r"postmarket_(\d{8})_(morning|evening)\.md", latest)
+    if m:
+        slot_disp = {"morning": "開盤前更新版", "evening": "前一晚初版"}[m.group(2)]
+    else:
+        slot_disp = "?"
+    path = os.path.join(POSTMARKET_OUT, latest)
+    try:
+        with io.open(path, "r", encoding="utf-8") as f:
+            text = f.read()
+    except IOError:
+        return '<div class="card"><div class="trend-empty">讀取盤後綜合分析失敗。</div></div>'
+    html = markdown(text, extensions=["extra", "sane_lists"])
+    # 表格加 class、避免 markdown 產生的 bare 樣式太醜；順帶確保 PDF 外行照舊
+    file_date = latest[11:15] + "-" + latest[15:17] + "-" + latest[17:19]
+    return f"""<div style="margin-bottom:8px;color:var(--sub);font-size:12.5px">盤後綜合分析 · {file_date} {slot_disp} · <code>{latest}</code></div>
+<div class="postmarket">{html}</div>
+<div class="meta" style="margin-top:12px">內容由 Gemini 依當日 XQ 快照＋融資券＋三大法人＋千張大戶＋美股＋行事曆＋金融報告生成，僅供解讀盤面與機構可能路徑，不構成買賣建議。</div>"""
 
 
 # ============================================================
