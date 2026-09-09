@@ -294,14 +294,28 @@ def _report_summary():
         out.append(f"### 每日金融報告（{os.path.basename(f)}）")
         with io.open(f, "r", encoding="utf-8", errors="replace") as fh:
             out.append(fh.read()[:6000])
+    else:
+        out.append("（此環境無每日報告 .md — 每日/深度報告由 PC3 的 financial_news 排程生成，本機只有手動/舊檔）")
     # 深度報告（最近兩份 .md）
     deep_dir = os.path.join(KB_FIN, "深度報告")
     deep_files = sorted(glob.glob(os.path.join(deep_dir, "*.md"))) if os.path.isdir(deep_dir) else []
-    for f in deep_files[-2:]:
-        out.append(f"\n### 深度分析報告（{os.path.basename(f)}）")
-        with io.open(f, "r", encoding="utf-8", errors="replace") as fh:
-            out.append(fh.read()[:5000])
-    return "\n\n".join(out) if out else "（無報告 md）"
+    if deep_files:
+        for f in deep_files[-2:]:
+            out.append(f"\n### 深度分析報告（{os.path.basename(f)}）")
+            with io.open(f, "r", encoding="utf-8", errors="replace") as fh:
+                out.append(fh.read()[:5000])
+    else:
+        out.append("\n（此環境無深度分析報告 .md — 同上，唯有 PC3 才有）")
+    # 提醒：檔名日期才是報告時效基準，舊報告僅作長期背景，不可當當天事件
+    date_re = re.compile(r"(\d{4}-\d{2}-\d{2})")
+    dates = []
+    for f in (daily_files[-1:] + deep_files[-2:]):
+        m = date_re.search(os.path.basename(f))
+        if m:
+            dates.append(m.group(1))
+    if dates:
+        out.append(f"\n> 報告時效：以上報告檔名日期為 {sorted(set(dates))}，若遠早於今日，僅供長期背景參考，不可視為當日最新事件。")
+    return "\n\n".join(out)
 
 
 # ============================================================
