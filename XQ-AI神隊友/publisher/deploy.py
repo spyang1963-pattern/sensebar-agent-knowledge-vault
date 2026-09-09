@@ -37,13 +37,16 @@ def deploy():
         raise SystemExit(f"[deploy] source not found: {SRC}")
     ensure_checkout()
 
+    # 先同步到遠端最新（index.html 只放「整份 snapshot」，直接以遠端為基底，天生無衝突）
+    subprocess.run(["git", "fetch", "origin"], cwd=PUB_DIR, check=True)
+    subprocess.run(["git", "reset", "--hard", "origin/master"], cwd=PUB_DIR,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(["git", "clean", "-fd"], cwd=PUB_DIR,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
     shutil.copy2(SRC, os.path.join(PUB_DIR, "index.html"))
     now = datetime.now(TZ).strftime("%Y-%m-%d %H:%M")
     subprocess.run(["git", "add", "-A"], cwd=PUB_DIR, check=True)
-    # 先 pull（遠端可能已有其他提交），index.html 以本地最新為準：-X ours 自動解衝突
-    subprocess.run(
-        ["git", "pull", "--rebase", "-X", "ours", "origin", "master"],
-        cwd=PUB_DIR, check=False)
     subprocess.run(
         ["git", "commit", "-m", f"chore: update dashboard {now}", "--allow-empty"],
         cwd=PUB_DIR, check=True)
