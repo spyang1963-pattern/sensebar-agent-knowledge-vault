@@ -42,12 +42,22 @@ Write-Output "== [2/4] 重註冊 XQ_Snapshot_Loop（09:15–13:30 每 15 分）=
 Write-Output "== [3/4] 註冊 XQ_Postmarket_Evening / Morning =="
 & (Join-Path $scriptDir 'setup_xq_postmarket_task.ps1')
 
-# ---- 4. 啟用被停用的快照任務 ----
-Write-Output "== [4/4] 確保 XQ_Snapshot_Loop 為啟用 =="
-$t = Get-ScheduledTask -TaskName 'XQ_Snapshot_Loop' -ErrorAction SilentlyContinue
-if ($t) {
-    Enable-ScheduledTask -TaskName 'XQ_Snapshot_Loop' | Out-Null
-    Write-Output "XQ_Snapshot_Loop -> $($t.State)"
+# ---- 4. 確保快照任務為啟用（主要名或備用名任一即可）----
+Write-Output "== [4/4] 確保快照任務為啟用 =="
+$snapNames = @('XQ_Snapshot_Loop', 'XQ_Snapshot_Loop2')
+$snapTask = $null
+foreach ($n in $snapNames) {
+    $cand = Get-ScheduledTask -TaskName $n -ErrorAction SilentlyContinue
+    if ($cand) {
+        if ($cand.State -eq 'Ready') { $snapTask = $cand; break }
+        try { Enable-ScheduledTask -TaskName $n -ErrorAction Stop | Out-Null; $snapTask = $cand } catch { }
+    }
+}
+if ($snapTask) {
+    Write-Output "快照任務 $($snapTask.TaskName) -> $($snapTask.State)（已就緒，無需管理員）"
+} else {
+    Write-Output '找不到可啟用的快照任務。若舊 XQ_Snapshot_Loop 是管理員持有且已停用，'
+    Write-Output '請以管理員身份手動：Enable-ScheduledTask -TaskName XQ_Snapshot_Loop'
 }
 $post = Get-ScheduledTask -TaskName 'XQ_Postmarket_Evening','XQ_Postmarket_Morning' -ErrorAction SilentlyContinue
 foreach ($pt in $post) { Write-Output "$($pt.TaskName) -> $($pt.State)" }
@@ -55,4 +65,4 @@ foreach ($pt in $post) { Write-Output "$($pt.TaskName) -> $($pt.State)" }
 Write-Output ""
 Write-Output "== 完成。建議下次開盤前確認： =="
 Write-Output "  1. XQ + Excel（含權限表）已開，用一般權限 PS 待命"
-Write-Output "  2. Get-ScheduledTask XQ_Snapshot_Loop,XQ_Postmarket_Evening,XQ_Postmarket_Morning 全為 Ready"
+Write-Output "  2. Get-ScheduledTask XQ_Snapshot_Loop2,XQ_Postmarket_Evening,XQ_Postmarket_Morning 全為 Ready"
