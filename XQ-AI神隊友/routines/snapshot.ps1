@@ -34,11 +34,11 @@ $ErrorActionPreference = 'Stop'
 $defaultTop = @{ rank = 60; breadth = 200; notes = 160 }
 if ($Top -le 0) { $Top = $defaultTop[$Kind] }
 
-# ---------- 盤中時段守門（09:25–13:35；改時段就改這兩個分鐘數） ----------
+# ---------- 盤中時段守門（09:25–13:40；改時段就改這兩個分鐘數） ----------
 $now  = Get-Date
 $mins = $now.Hour * 60 + $now.Minute
-if (-not $Force -and ($mins -lt 565 -or $mins -gt 815)) {
-    "### SKIP=1  現在 $($now.ToString('HH:mm')) 不在 09:25-13:35 盤中時段，本次不執行（要測試請加 -Force）"
+if (-not $Force -and ($mins -lt 565 -or $mins -gt 820)) {
+    "### SKIP=1  現在 $($now.ToString('HH:mm')) 不在 09:25-13:40 盤中時段，本次不執行（要測試請加 -Force）"
     exit 0
 }
 
