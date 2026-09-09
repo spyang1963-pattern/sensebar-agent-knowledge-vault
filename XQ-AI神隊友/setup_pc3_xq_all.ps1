@@ -1,18 +1,21 @@
 ﻿# ============================================================
 #  setup_pc3_xq_all.ps1 ─ PC3 一次性把 XQ 三件事全部設好
 #
-#  需用「系統管理員」PowerShell 執行：
+#  用「一般權限」PowerShell 執行（不要用管理員身份）：
 #    1. 同步最新程式碼（git pull 大倉）
 #    2. 重註冊 snapshot 任務（時段 09:15–13:30、每 15 分）
 #    3. 註冊盤後綜合分析任務（22:00 初版 + 08:35 更新版）
 #    4. 啟用被停用的 XQ_Snapshot_Loop
 #
-#  用法（在 PC3 上、管理員 PowerShell）：
+#  用法（在 PC3 上、一般權限 PowerShell）：
 #    cd /d "D:\sensebar-agent-knowledge-vault"
 #    powershell -ExecutionPolicy Bypass -File "XQ-AI神隊友\setup_pc3_xq_all.ps1"
 #
-#  備註：snapshot 守門（snapshot.ps1:40）= 09:15–13:30；
-#        PC3 需開 XQ + Excel（含權限表）才能抓到快照，否則會 SKIP/stale。
+#  備註：
+#   - Register-ScheduledTask 一般權限即可（RunLevel=Limited），
+#     用的是目前使用者登入的 Interactive session，不需管理員。
+#   - snapshot 守門（snapshot.ps1:40）= 09:15–13:30；
+#     PC3 需開 XQ + Excel（含權限表）才能抓到快照，否則會 SKIP/stale。
 # ============================================================
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
