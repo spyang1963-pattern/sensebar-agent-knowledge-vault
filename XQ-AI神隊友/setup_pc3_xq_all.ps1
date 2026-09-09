@@ -1,4 +1,4 @@
-# ============================================================
+﻿# ============================================================
 #  setup_pc3_xq_all.ps1 ─ PC3 一次性把 XQ 三件事全部設好
 #
 #  需用「系統管理員」PowerShell 執行：
@@ -17,7 +17,8 @@
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-$root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$root = Split-Path -Parent $scriptDir
 Set-Location $root
 Write-Output "== 工作目錄：$root =="
 
@@ -32,11 +33,11 @@ if (Test-Path (Join-Path $root '.git')) {
 
 # ---- 2. 重註冊 snapshot 任務 ----
 Write-Output "== [2/4] 重註冊 XQ_Snapshot_Loop（09:15–13:30 每 15 分）=="
-& (Join-Path $root 'XQ-AI神隊友\setup_xq_snapshot_task.ps1')
+& (Join-Path $scriptDir 'setup_xq_snapshot_task.ps1')
 
 # ---- 3. 註冊盤後綜合分析任務 ----
 Write-Output "== [3/4] 註冊 XQ_Postmarket_Evening / Morning =="
-& (Join-Path $root 'XQ-AI神隊友\setup_xq_postmarket_task.ps1')
+& (Join-Path $scriptDir 'setup_xq_postmarket_task.ps1')
 
 # ---- 4. 啟用被停用的快照任務 ----
 Write-Output "== [4/4] 確保 XQ_Snapshot_Loop 為啟用 =="
