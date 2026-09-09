@@ -67,10 +67,17 @@ try {
     }
 }
 
-# （備用名成功時）停用舊任務，避免雙跑
+# （備用名成功時）嘗試停用舊任務，避免雙跑；無權限就保留原狀
 if ($registered -eq $altName) {
-    Disable-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue | Out-Null
-    Write-Output "已停用舊任務 $taskName"
+    $old = @(Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue)
+    if ($old.Count -gt 0) {
+        try {
+            Disable-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction Stop | Out-Null
+            Write-Output "已停用舊任務 $taskName"
+        } catch {
+            Write-Warning "無法停用舊任務 $taskName（管理員持有）→ 兩支快照任務可能同時觸發，但 snapshot.ps1 有 stale 去重，僅多跑一次、無害。建議之後由管理員停用：Disable-ScheduledTask -TaskName $taskName"
+        }
+    }
 }
 
 # ---- 驗證 ----

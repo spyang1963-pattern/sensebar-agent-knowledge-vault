@@ -42,9 +42,9 @@ Write-Output "== [2/4] 重註冊 XQ_Snapshot_Loop（09:15–13:30 每 15 分）=
 Write-Output "== [3/4] 註冊 XQ_Postmarket_Evening / Morning =="
 & (Join-Path $scriptDir 'setup_xq_postmarket_task.ps1')
 
-# ---- 4. 確保快照任務為啟用（主要名或備用名任一即可）----
+# ---- 4. 確保快照任務為啟用（備用名 Loop2 優先，其次舊名）----
 Write-Output "== [4/4] 確保快照任務為啟用 =="
-$snapNames = @('XQ_Snapshot_Loop', 'XQ_Snapshot_Loop2')
+$snapNames = @('XQ_Snapshot_Loop2', 'XQ_Snapshot_Loop')
 $snapTask = $null
 foreach ($n in $snapNames) {
     $cand = Get-ScheduledTask -TaskName $n -ErrorAction SilentlyContinue
