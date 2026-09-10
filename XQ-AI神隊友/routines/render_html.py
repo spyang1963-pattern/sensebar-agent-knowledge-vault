@@ -26,6 +26,7 @@
 # ============================================================
 import argparse
 import io
+import html
 import json
 import os
 import re
@@ -720,16 +721,17 @@ tr:hover td{background:#1c2438}
 .dot{background:#1d2840;border:1px solid #2f3d63;color:#bcd2ff;border-radius:14px;padding:4px 10px;font-size:11.5px;cursor:pointer;min-width:52px;text-align:center}
 .dot.active{background:#4a3a1e;border-color:var(--warn);color:#ffe0a0;font-weight:700}
 .histnote{color:var(--sub);font-size:12px;margin:8px 0 4px}
-.postmarket h2{font-size:16px;margin:18px 0 8px;color:var(--txt);border-bottom:1px solid var(--line);padding-bottom:4px}
-.postmarket h3{font-size:14px;margin:14px 0 6px;color:var(--warn)}
-.postmarket p{margin:6px 0}
-.postmarket ul,.postmarket ol{margin:6px 0;padding-left:20px}
-.postmarket li{margin:3px 0}
-.postmarket strong{color:var(--txt)}
-.postmarket em{color:var(--sub)}
 .postmarket blockquote{border-left:3px solid var(--line);margin:8px 0;padding:2px 12px;color:var(--sub)}
 .postmarket code{background:#1b2438;border:1px solid #2c3858;border-radius:4px;padding:1px 5px;font-size:12px}
 .postmarket table{margin:8px 0}
+.pm-stock{background:#1b2438;border:1px solid #2c3858;border-left:4px solid #3a4a7a;border-radius:8px;padding:9px 12px;margin:7px 0}
+.pm-stock.up{border-left-color:var(--up)}
+.pm-stock.down{border-left-color:var(--down)}
+.pm-stock .pm-name{font-size:14.5px;font-weight:700;margin-bottom:4px}
+.pm-stock .pm-detail{margin:2px 0;font-size:12.5px}
+.pm-stock .pm-detail .pm-k{border-radius:4px;padding:0 5px;font-size:11.5px;font-weight:700;background:#243156;color:#bcd2ff;margin-right:6px}
+.pm-copyhint{color:var(--sub);font-size:11.5px;margin:2px 0 8px}
+.pm-str{color:var(--sub);font-weight:400;font-size:12.5px;margin-left:8px}
 @media(max-width:640px){.wrap{padding:10px;font-size:13px}.hide-sm{display:none}}
 """
 
@@ -758,10 +760,10 @@ function copyStocks(btn){
   var els=card.querySelectorAll('[data-code]');
   for(var i=0;i<els.length;i++){
     var c=(els[i].getAttribute('data-code')||'').trim();
-    if(c&&!seen[c]){seen[c]=1;out.push(c+' '+els[i].getAttribute('data-name'));}
+    if(c&&!seen[c]){seen[c]=1;out.push(c+'\t'+els[i].getAttribute('data-name'));}
   }
   if(!out.length){return;}
-  var text=out.join(',');
+  var text=out.join('\n');
   function done(){btn.classList.add('copied');btn.textContent='已複製 '+out.length+' 檔';setTimeout(function(){btn.classList.remove('copied');btn.textContent='📋';},1600);}
   function fb(){var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);done();}
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,fb);}else{fb();}
@@ -1517,10 +1519,10 @@ function copyStocks(btn){
   var els=card.querySelectorAll('[data-code]');
   for(var i=0;i<els.length;i++){
     var c=(els[i].getAttribute('data-code')||'').trim();
-    if(c&&!seen[c]){seen[c]=1;out.push(c+' '+els[i].getAttribute('data-name'));}
+    if(c&&!seen[c]){seen[c]=1;out.push(c+'\t'+els[i].getAttribute('data-name'));}
   }
   if(!out.length){return;}
-  var text=out.join(',');
+  var text=out.join('\n');
   function done(){btn.classList.add('copied');btn.textContent='已複製 '+out.length+' 檔';setTimeout(function(){btn.classList.remove('copied');btn.textContent='📋';},1600);}
   function fb(){var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);done();}
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,fb);}else{fb();}
@@ -1558,16 +1560,175 @@ def render_dashboard(d):
 # ============================================================
 #  盤後綜合分析（第四頁籤）：routines\outputs\postmarket\*.md
 # ============================================================
+
+# 多方/空方關鍵字（跟前面三頁籤一致的紅多綠空配色）
+_PM_BULLISH = ["偏多", "買超", "流入", "增持", "作帳", "強勢", "漲停", "齊漲",
+               "轉強", "走強", "點火", "拉抬", "回補", "低接", "看好", "利多",
+               "淨買", "連買", "加碼", "守穩", "強彈", "防禦"]
+_PM_BEARISH = ["偏空", "賣超", "流出", "調節", "出貨", "轉弱", "走弱", "重挫",
+               "大跌", "跌破", "齊跌", "退潮", "下修", "保守", "利空", "淨賣",
+               "連賣", "減碼", "賣壓", "承壓", "觀望", "恐慌"]
+
+_PM_STOCK_RE = re.compile(r"^\s*(?:[-*]|\d+[.、])\s*(\d{4,5})\s+([^\s｜|，,。]+)(?:\s*[｜|]\s*方向[：:]\s*(偏多|偏空|中性)\s*[｜|]\s*強度[：:]\s*([強中弱]))?")
+
+_PM_KW_COLOR = {}
+
+
+def _pm_build_kw():
+    if _PM_KW_COLOR:
+        return
+    for w in _PM_BULLISH:
+        _PM_KW_COLOR[w] = "key-red"
+    for w in _PM_BEARISH:
+        _PM_KW_COLOR[w] = "key-green"
+
+
+def _pm_esc(t):
+    return html.escape(t, quote=False)
+
+
+def _pm_highlight(text):
+    """把多方/空方關鍵字染成 key-red/key-green（白字改彩色），一次取代避免巢狀。"""
+    if not text:
+        return text
+    _pm_build_kw()
+    pat = "|".join(sorted(_PM_KW_COLOR.keys(), key=len, reverse=True))
+    return re.sub(pat, lambda m: f'<span class="{_PM_KW_COLOR[m.group(0)]}">{m.group(0)}</span>', text)
+
+
+def _pm_hl_line(line):
+    """行內容關鍵字上色（先 escape → 粗體/斜體 → 染關鍵字）。"""
+    s = _pm_esc(line)
+    s = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", s)              # **粗體**
+    s = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"<i>\1</i>", s)  # *斜體*
+    return _pm_highlight(s)
+
+
+def _pm_forecast_section(body):
+    """「明日個股預測榜」：每檔做成卡片＋股名依方向上色，卡上附一鍵複製。"""
+    parts = ['<div class="card" id="pm-forecast"><div style="display:flex;align-items:center;justify-content:space-between">'
+             '<h2 style="margin:0">明日個股預測榜</h2>'
+             '<button class="copybtn" onclick="copyStocks(this)" title="複製全部股號+股名到 Excel（兩欄）">📋 一鍵複製</button></div>']
+    cur = None
+    for ln in body:
+        s = ln.strip()
+        if not s or s == "---":
+            continue
+        m = _PM_STOCK_RE.match(s)
+        if m and m.group(2):
+            if cur is not None:
+                parts.append(cur)
+            code, name = m.group(1), m.group(2)
+            dirc = m.group(3) or ""
+            strat = m.group(4) or ""
+            cls = {"偏多": "up", "偏空": "down"}.get(dirc, "")
+            ncls = {"偏多": "key-red", "偏空": "key-green"}.get(dirc, "")
+            pill = ""
+            if dirc:
+                pill = f'<span class="pill {cls}">{dirc}</span>' if cls else f'<span class="pill">{dirc}</span>'
+            strat_html = f'<span class="pm-str">強度：{_pm_esc(strat)}</span>' if strat else ""
+            name_html = f'<b class="{ncls}" data-code="{code}" data-name="{name}">{code} {name}</b>' if ncls else \
+                        f'<b data-code="{code}" data-name="{name}">{code} {name}</b>'
+            cur = f'<div class="pm-stock {cls}"><div class="pm-name">{name_html}{pill}{strat_html}</div>'
+        elif s.startswith("-") and cur is not None:
+            raw = s[1:].strip()
+            mm = re.match(r"^([^：]+)：\s*(.*)$", raw, re.S)
+            if mm:
+                lab = mm.group(1).strip()
+                rest = _pm_hl_line(mm.group(2).strip())
+                cur += f'<div class="pm-detail"><span class="pm-k">{_pm_esc(lab)}</span>：{rest}</div>'
+            else:
+                cur += f'<div class="pm-detail">{_pm_hl_line(raw)}</div>'
+        else:
+            parts.append(f'<p>{_pm_hl_line(s)}</p>')
+    if cur is not None:
+        parts.append(cur)
+    parts.append("</div>")
+    return "".join(parts)
+
+
+def _pm_generic_section(title, body):
+    """非預測榜章節：簡潔排版，bullets/編號轉 ul，關鍵字照樣上色。"""
+    parts = [f'<div class="card"><h2>{_pm_esc(title)}</h2>']
+    ul_open = False
+    para = []
+
+    def flush_ul():
+        nonlocal ul_open
+        if ul_open:
+            parts.append("</ul>")
+            ul_open = False
+
+    def flush_para():
+        if para:
+            parts.append("<p>" + _pm_hl_line(" ".join(para)) + "</p>")
+            del para[:]
+
+    for ln in body:
+        s = ln.strip()
+        if not s or s == "---":
+            flush_ul()
+            flush_para()
+            continue
+        if s.startswith("- "):
+            flush_para()
+            if not ul_open:
+                parts.append("<ul>")
+                ul_open = True
+            parts.append("<li>" + _pm_hl_line(s[2:]) + "</li>")
+        elif re.match(r"^\d+[.、]\s*", s):
+            flush_para()
+            mm2 = re.match(r"^(\d+[.、])\s*(.*)$", s, re.S)
+            num = mm2.group(1) if mm2 else ""
+            rest = mm2.group(2) if mm2 else s
+            if not ul_open:
+                parts.append("<ul>")
+                ul_open = True
+            parts.append("<li><b>" + _pm_esc(num) + "</b> " + _pm_hl_line(rest) + "</li>")
+        else:
+            flush_ul()
+            if s.startswith("> "):
+                parts.append("<p class='pm-quote'>" + _pm_hl_line(s[2:]) + "</p>")
+            else:
+                para.append(s)
+    flush_ul()
+    flush_para()
+    parts.append("</div>")
+    return "".join(parts)
+
+
+def _pm_render_md(text):
+    """把 postmarket md 轉成跟儀表板配色一致（紅多綠空）的 HTML。"""
+    lines = [ln.rstrip() for ln in text.splitlines()]
+    sections = []
+    cur_title = None
+    cur_body = []
+    for ln in lines:
+        st = ln.strip()
+        if st.startswith("## "):
+            if cur_title is not None:
+                sections.append((cur_title, cur_body))
+            cur_title = st[3:].strip()
+            cur_body = []
+        elif cur_title is not None:
+            cur_body.append(ln)
+    if cur_title is not None:
+        sections.append((cur_title, cur_body))
+    out = []
+    for title, body in sections:
+        if title == "明日個股預測榜":
+            out.append(_pm_forecast_section(body))
+        else:
+            out.append(_pm_generic_section(title, body))
+    return "".join(out)
+
+
 def render_postmarket_tab():
     """把最新的 postmarket md 轉成 HTML，塞進 dashboard 第四頁籤。
 
     顯示「當天最新」的一份；若有多份（evening/morning），morning 更新版優先。
     沒報告時顯示引導訊息。
     """
-    try:
-        from markdown import markdown
-    except ImportError:
-        return '<div class="card"><div class="trend-empty">需要 pip install markdown 才能顯示盤後綜合分析。</div></div>'
     if not os.path.isdir(POSTMARKET_OUT):
         return '<div class="card"><div class="trend-empty">尚無盤後綜合分析（routines/outputs/postmarket/ 不存在）。</div></div>'
     # 軍校排序：檔名 postmarket_YYYYMMDD_slot.md，同一日 morning 優先、跨日取最新日期
@@ -1592,12 +1753,11 @@ def render_postmarket_tab():
             text = f.read()
     except IOError:
         return '<div class="card"><div class="trend-empty">讀取盤後綜合分析失敗。</div></div>'
-    html = markdown(text, extensions=["extra", "sane_lists"])
-    # 表格加 class、避免 markdown 產生的 bare 樣式太醜；順帶確保 PDF 外行照舊
+    sec_html = _pm_render_md(text)
     file_date = latest[11:15] + "-" + latest[15:17] + "-" + latest[17:19]
     return f"""<div style="margin-bottom:8px;color:var(--sub);font-size:12.5px">盤後綜合分析 · {file_date} {slot_disp} · <code>{latest}</code></div>
-<div class="postmarket">{html}</div>
-<div class="meta" style="margin-top:12px">內容由 Gemini 依當日 XQ 快照＋融資券＋三大法人＋千張大戶＋美股＋行事曆＋金融報告生成，僅供解讀盤面與機構可能路徑，不構成買賣建議。</div>"""
+<div class="postmarket">{sec_html}</div>
+<div class="meta" style="margin-top:12px">配色：<span class="key-red">紅＝多方/看多</span>、<span class="key-green">綠＝空方/看空</span>。內容由 Gemini 依當日 XQ 快照＋融資券＋三大法人＋千張大戶＋美股＋行事曆＋金融報告生成，僅供解讀盤面與機構可能路徑，不構成買賣建議。</div>"""
 
 
 # ============================================================
