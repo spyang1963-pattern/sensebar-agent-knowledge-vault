@@ -742,7 +742,8 @@ tr:hover td{background:#1c2438}
 .postmarket .pm-stk.down{color:var(--down)}
 .pm-num{color:#ffab40;font-weight:500}
 .postmarket .pm-sub{display:inline-block;border-radius:4px;padding:0 6px;font-size:12px;font-weight:700;background:#243156;color:#bcd2ff;margin-right:6px}
-.postmarket .pm-sub.pm-mg{background:#4a1a5a;color:#ff8ae0}
+.pm-mg{display:inline-block;border-radius:4px;padding:0 6px;font-size:13px;font-weight:700;background:#4d1c2b;color:#e7748a;margin-right:6px}
+.postmarket .pm-sub.pm-mg{background:#4d1c2b;color:#e7748a}
 .postmarket .card li{margin:4px 0}
 @media(max-width:640px){.wrap{padding:10px;font-size:13px}.hide-sm{display:none}}
 """
@@ -923,14 +924,15 @@ def render_rank(d):
     h += "</div>"
 
     # ③ 趨勢：與前一份快照比較（依成交值增減幅度前 20，縮表顯示 5 檔）
-    h += '<div class="card" id="trend-card"><h2>📈 資金位移（與前一份快照比 · 成交值增減幅度前 20）：資金增減 ＋ 股價方向合看，判讀進貨／出貨 <button class="copybtn" onclick="copyStocks(this)" title="複製本表全部股號與股名">📋</button></h2>'
+    n_trend = len(d["trend"]) if d["trend"] else 0
+    h += f'<div class="card" id="trend-card"><h2>📈 資金位移（與前一份快照比 · 成交值增減，達標 {n_trend} 檔）：資金增減 ＋ 股價方向合看，判讀進貨／出貨 <button class="copybtn" onclick="copyStocks(this)" title="複製本表全部股號與股名">📋</button></h2>'
     if d["trend"]:
         for ti, it in enumerate(d["trend"]):
             arrow = "<span class='arrow key-red'>▲</span>" if it["dv"] > 0 else "<span class='arrow key-green'>▼</span>"
             vtag = f'<span class="pill {it["vcls"]}">{it["verdict"]}</span>'
-            rest = ' class="rest-inline"' if ti >= 5 else ""
+            rest = " rest-inline" if ti >= 5 else ""
             h += f'<div class="trend-item{rest}">{arrow}<b data-code="{it["Code"]}" data-name="{it["label"]}">{it["label"]}</b> {vtag} {it["text"]}</div>'
-        h += f'<button class="expand-btn" data-wrap="trend-card" data-expand="展開全部 {len(d["trend"])} 檔" data-collapse="收回 5 檔" onclick="toggleRest(this)">展開全部 {len(d["trend"])} 檔</button>'
+        h += f'<button class="expand-btn" data-wrap="trend-card" data-expand="展開全部 {n_trend} 檔" data-collapse="收回 5 檔" onclick="toggleRest(this)">展開全部 {n_trend} 檔</button>'
     else:
         h += f'<div class="trend-empty">尚無前一份快照可比較（目前僅掃描到 {d["history_count"]} 份歷史快照）。下一次盤中捕捉到新的同類快照後，此區會自動顯示這輪與前輪的資金位移。</div>'
     h += "</div>"
@@ -1838,7 +1840,7 @@ def _pm_generic_section(title, body):
                 ul_open = True
             m3 = re.match(r"^\*\*(.+?)\*\*\s*$", rest, re.S)
             if m3:
-                parts.append("<li><b>" + _pm_esc(num) + "</b> <span class='pm-sub'>" +
+                parts.append("<li><b>" + _pm_esc(num) + "</b> <span class='pm-mg'>" +
                              _pm_esc(m3.group(1)) + "</span></li>")
             else:
                 parts.append("<li><b>" + _pm_esc(num) + "</b> " + _pm_hl_line(rest) + "</li>")
