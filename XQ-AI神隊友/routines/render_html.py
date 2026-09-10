@@ -732,6 +732,9 @@ tr:hover td{background:#1c2438}
 .pm-stock .pm-detail .pm-k{border-radius:4px;padding:0 5px;font-size:11.5px;font-weight:700;background:#243156;color:#bcd2ff;margin-right:6px}
 .pm-copyhint{color:var(--sub);font-size:11.5px;margin:2px 0 8px}
 .pm-str{color:var(--sub);font-weight:400;font-size:12.5px;margin-left:8px}
+.postmarket .card h2{color:var(--warn);border-left:4px solid var(--warn);padding-left:8px;text-transform:none;letter-spacing:0}
+.pm-stk{color:var(--warn);font-weight:600;border-bottom:1px dotted #66532a}
+.postmarket .card li{margin:4px 0}
 @media(max-width:640px){.wrap{padding:10px;font-size:13px}.hide-sm{display:none}}
 """
 
@@ -762,9 +765,24 @@ function copyStocks(btn){
     var c=(els[i].getAttribute('data-code')||'').trim();
     if(c&&!seen[c]){seen[c]=1;out.push(c+'\\t'+els[i].getAttribute('data-name'));}
   }
-  if(!out.length){return;}
-  var text=out.join('\\n');
-  function done(){btn.classList.add('copied');btn.textContent='已複製 '+out.length+' 檔';setTimeout(function(){btn.classList.remove('copied');btn.textContent='📋';},1600);}
+  var rows=[];
+  if(out.length){
+    rows=[out.join('\\n')];
+  }else{
+    var tbl=card.querySelector('table');
+    if(tbl){
+      for(var r=0;r<tbl.rows.length;r++){
+        var cellTxt=[];
+        for(var cc=0;cc<tbl.rows[r].cells.length;cc++){
+          cellTxt.push(tbl.rows[r].cells[cc].innerText.replace(/\\s+/g,' ').trim());
+        }
+        rows.push(cellTxt.join('\\t'));
+      }
+    }
+  }
+  if(!rows.length){return;}
+  var text=rows.join('\\n');
+  function done(){btn.classList.add('copied');btn.textContent='已複製 '+rows.length+' 項';setTimeout(function(){btn.classList.remove('copied');btn.textContent='📋';},1600);}
   function fb(){var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);done();}
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,fb);}else{fb();}
 }
@@ -1129,10 +1147,10 @@ def render_notes(d):
         h += f'<div class="diag-item"><span class="k">vs 前一輪</span><div class="v">總值 {p["d_val"]:+.1f}億 · 上漲家數 {p["d_up"]:+d}</div></div>'
     h += "</div></div>"
 
-    # 族群成交值前 8 名（含增量）—— 依平均漲幅由高到低
+    grpnotes_all = sorted(d["groups"], key=lambda x: x["A"], reverse=True)
     h += '<div class="card" id="grpnotes-card"><h2>族群成交值（全樣本 · 依平均漲幅排序）<button class="copybtn" onclick="copyStocks(this)" title="複製本表全部股號與股名">📋</button></h2>'
     h += '<table id="grpnotes" data-card="grpnotes-card"><thead><tr><th data-idx="0" onclick="sortTable(this)">族群</th><th data-idx="1" class="num" onclick="sortTable(this)">成交值(億)</th><th data-idx="2" class="num" onclick="sortTable(this)">佔比</th><th data-idx="3" class="num" onclick="sortTable(this)">漲跌</th><th data-idx="4" class="num" onclick="sortTable(this)">平均漲幅</th><th data-idx="5" class="num" onclick="sortTable(this)">vs前份</th></tr></thead><tbody>'
-    for gi, g in enumerate(sorted(d["groups"], key=lambda x: x["A"], reverse=True)[:8]):
+    for gi, g in enumerate(grpnotes_all):
         dvcls = chg_class(g["DV"]) if g["DV"] else "flat"
         rest = ' class="rest-row"' if gi >= 5 else ""
         h += f"""<tr{rest}>
@@ -1143,7 +1161,6 @@ def render_notes(d):
   <td data-n="{g['A']}" class="num {chg_class(g['A'])}">{fmt_chg(g['A'])}</td>
   <td data-n="{g['DV']}" class="num {dvcls}">{g['DV']:+.1f}億</td></tr>"""
     h += "</tbody></table>"
-    grpnotes_all = sorted(d["groups"], key=lambda x: x["A"], reverse=True)
     if len(grpnotes_all) > 5:
         h += ' <button class="expand-btn" data-wrap="grpnotes-card" data-expand="展開全部（共 {} 群）" data-collapse="收回 5 群" onclick="toggleRest(this)">展開全部（共 {} 群）</button>'.format(len(grpnotes_all), len(grpnotes_all))
     h += "</div>"
@@ -1521,9 +1538,24 @@ function copyStocks(btn){
     var c=(els[i].getAttribute('data-code')||'').trim();
     if(c&&!seen[c]){seen[c]=1;out.push(c+'\\t'+els[i].getAttribute('data-name'));}
   }
-  if(!out.length){return;}
-  var text=out.join('\\n');
-  function done(){btn.classList.add('copied');btn.textContent='已複製 '+out.length+' 檔';setTimeout(function(){btn.classList.remove('copied');btn.textContent='📋';},1600);}
+  var rows=[];
+  if(out.length){
+    rows=[out.join('\\n')];
+  }else{
+    var tbl=card.querySelector('table');
+    if(tbl){
+      for(var r=0;r<tbl.rows.length;r++){
+        var cellTxt=[];
+        for(var cc=0;cc<tbl.rows[r].cells.length;cc++){
+          cellTxt.push(tbl.rows[r].cells[cc].innerText.replace(/\\s+/g,' ').trim());
+        }
+        rows.push(cellTxt.join('\\t'));
+      }
+    }
+  }
+  if(!rows.length){return;}
+  var text=rows.join('\\n');
+  function done(){btn.classList.add('copied');btn.textContent='已複製 '+rows.length+' 項';setTimeout(function(){btn.classList.remove('copied');btn.textContent='📋';},1600);}
   function fb(){var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);done();}
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,fb);}else{fb();}
 }
@@ -1569,9 +1601,25 @@ _PM_BEARISH = ["偏空", "賣超", "流出", "調節", "出貨", "轉弱", "走�
                "大跌", "跌破", "齊跌", "退潮", "下修", "保守", "利空", "淨賣",
                "連賣", "減碼", "賣壓", "承壓", "觀望", "恐慌"]
 
-_PM_STOCK_RE = re.compile(r"^\s*(?:[-*]|\d+[.、])\s*(\d{4,5})\s+([^\s｜|，,。]+)(?:\s*[｜|]\s*方向[：:]\s*(偏多|偏空|中性)\s*[｜|]\s*強度[：:]\s*([強中弱]))?")
+_PM_STOCK_RE = re.compile(r"^\s*(?:[-*]|\d+[.、])?\s*(\d{4,5})\s+([^\s｜|，,。]+)")
+_PM_DIR_RE = re.compile(r"方向[：:]\s*([^｜|，,。]*)")
+_PM_STR_RE = re.compile(r"強度[：:]\s*([強中弱])")
 
 _PM_KW_COLOR = {}
+_PM_CUR_STOCKS = {}          # name -> code（本次報告預測榜的股票；內文股名標示用）
+
+
+def _pm_dir_label(d):
+    """把「方向」欄的字串（可能像「中含偏多」）簡化成 偏多/偏空/中性 + 配色。"""
+    if not d:
+        return "", "", ""
+    if "偏多" in d:
+        return "偏多", "up", "key-red"
+    if "偏空" in d:
+        return "偏空", "down", "key-green"
+    if "中性" in d:
+        return "中性", "", ""
+    return d.strip(), "", ""
 
 
 def _pm_build_kw():
@@ -1597,15 +1645,45 @@ def _pm_highlight(text):
 
 
 def _pm_hl_line(line):
-    """行內容關鍵字上色（先 escape → 粗體/斜體 → 染關鍵字）。"""
+    """行內容關鍵字上色（先 escape → 粗體/斜體 → 染關鍵字 → 內文股名標示）。"""
     s = _pm_esc(line)
     s = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", s)              # **粗體**
     s = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"<i>\1</i>", s)  # *斜體*
-    return _pm_highlight(s)
+    s = _pm_highlight(s)
+    return _pm_hl_stocks(s)
+
+
+def _pm_hl_stocks(text):
+    """把已轉好 HTML 的文字中出現的股名標成金色（.pm-stk），不影響既有 <b>/<span>。
+
+    只針對「預測榜收集到的股票名」：
+      - 一般股名：前後不緊鄰拉丁字母或數字即可（中文前後相鄰正常，例如「台積電與欣興」）。
+      - 若某股名是「另一個更長股名的前綴」（如 台塑 vs 台塑化），該股名改用嚴格邊界
+        （兩側都不能是中文），避免把「台塑化」切出一個錯誤的「台塑」。
+    注意：不能對 <b data-code> 內的股名再加一層（copyStocks 依賴 data-code 唯一性）。
+    """
+    if not text or not _PM_CUR_STOCKS:
+        return text
+    names = sorted(_PM_CUR_STOCKS, key=len, reverse=True)
+    prefixes = {a for a in names if any(b != a and b.startswith(a) for b in names)}
+    for name in names:
+        esc = html.escape(name)
+        if name in prefixes:
+            pat = re.compile(r"(?<![\u4e00-\u9fffA-Za-z0-9])" + re.escape(esc) + r"(?![\u4e00-\u9fffA-Za-z0-9])")
+        else:
+            pat = re.compile(r"(?<![A-Za-z0-9])" + re.escape(esc) + r"(?![A-Za-z0-9])")
+        text2 = pat.sub(f'<span class="pm-stk" data-code="{_PM_CUR_STOCKS[name]}" data-name="{esc}">{esc}</span>', text)
+        if text2 != text:
+            text = text2
+    return text
 
 
 def _pm_forecast_section(body):
-    """「明日個股預測榜」：每檔做成卡片＋股名依方向上色，卡上附一鍵複製。"""
+    """「明日個股預測榜」：每檔做成卡片＋股名依方向上色，卡上附一鍵複製。
+
+    Gemini 輸出格式不穩（行首常見整行 **粗體**、方向可能是「中含偏多」這類複合詞），
+    解析時先剝掉粗體標記再抓 代碼＋股名，方向/強度用獨立的搜尋 regex 容錯。
+    """
     parts = ['<div class="card" id="pm-forecast"><div style="display:flex;align-items:center;justify-content:space-between">'
              '<h2 style="margin:0">明日個股預測榜</h2>'
              '<button class="copybtn" onclick="copyStocks(this)" title="複製全部股號+股名到 Excel（兩欄）">📋 一鍵複製</button></div>']
@@ -1614,27 +1692,26 @@ def _pm_forecast_section(body):
         s = ln.strip()
         if not s or s == "---":
             continue
-        m = _PM_STOCK_RE.match(s)
+        flat = s.replace("**", "").strip()          # 剝掉粗體，像是 1. **2330 台積電｜方向：…**
+        m = _PM_STOCK_RE.match(flat)
         if m and m.group(2):
             if cur is not None:
                 parts.append(cur)
             code, name = m.group(1), m.group(2)
-            dirc = m.group(3) or ""
-            strat = m.group(4) or ""
-            cls = {"偏多": "up", "偏空": "down"}.get(dirc, "")
-            ncls = {"偏多": "key-red", "偏空": "key-green"}.get(dirc, "")
-            pill = ""
-            if dirc:
-                pill = f'<span class="pill {cls}">{dirc}</span>' if cls else f'<span class="pill">{dirc}</span>'
+            dm = _PM_DIR_RE.search(flat)
+            sm = _PM_STR_RE.search(flat)
+            dlabel, cls, ncls = _pm_dir_label(dm.group(1).strip() if dm else "")
+            strat = sm.group(1) if sm else ""
+            pill = f'<span class="pill {cls}">{dlabel}</span>' if cls else ""
             strat_html = f'<span class="pm-str">強度：{_pm_esc(strat)}</span>' if strat else ""
             name_html = f'<b class="{ncls}" data-code="{code}" data-name="{name}">{code} {name}</b>' if ncls else \
                         f'<b data-code="{code}" data-name="{name}">{code} {name}</b>'
             cur = f'<div class="pm-stock {cls}"><div class="pm-name">{name_html}{pill}{strat_html}</div>'
-        elif s.startswith("-") and cur is not None:
-            raw = s[1:].strip()
+        elif (s.startswith("-") or s.startswith("·")) and cur is not None:
+            raw = s.lstrip("-· ").strip()
             mm = re.match(r"^([^：]+)：\s*(.*)$", raw, re.S)
             if mm:
-                lab = mm.group(1).strip()
+                lab = mm.group(1).strip().replace("**", "")
                 rest = _pm_hl_line(mm.group(2).strip())
                 cur += f'<div class="pm-detail"><span class="pm-k">{_pm_esc(lab)}</span>：{rest}</div>'
             else:
@@ -1714,6 +1791,18 @@ def _pm_render_md(text):
             cur_body.append(ln)
     if cur_title is not None:
         sections.append((cur_title, cur_body))
+
+    # 先掃預測榜收集股名（供內文其他段落把股名標成金色/可複製）
+    _PM_CUR_STOCKS.clear()
+    for title, body in sections:
+        if title != "明日個股預測榜":
+            continue
+        for ln in body:
+            flat = ln.strip().replace("**", "")
+            mm = _PM_STOCK_RE.match(flat)
+            if mm and mm.group(2) and not re.match(r"\d", mm.group(2)):
+                _PM_CUR_STOCKS[mm.group(2)] = mm.group(1)
+
     out = []
     for title, body in sections:
         if title == "明日個股預測榜":
