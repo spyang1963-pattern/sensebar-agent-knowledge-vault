@@ -3,7 +3,7 @@
 #
 #  建立兩個任務：
 #    XQ_Postmarket_Evening  週一至週五 22:00  前一晚初版（含當日法人/融資券/晚報）
-#    XQ_Postmarket_Morning  週一至週五 08:35  開盤前更新版（含隔夜美股/早報/當日行事曆）
+#    XQ_Postmarket_Morning  週一至週五 06:30  開盤前更新版（隔夜美股收盤已定案 + 06:00 晨報可參考）
 #
 #  共同流程：xq_postmarket_loop.bat <slot>
 #    prep（五路資料彙整）→ report（Gemini 明日預測）→ 重建 dashboard（第四頁籤）→ deploy push
@@ -34,16 +34,16 @@ Register-ScheduledTask -TaskName 'XQ_Postmarket_Evening' `
     -Action $actEvening -Trigger $trigEvening -Settings $settings `
     -Description '盤後綜合分析：前一晚 22:00 初版' -Force
 
-# ---- 開盤前更新版 08:35 ----
+# ---- 開盤前更新版 06:30 ----
 $trigMorning = New-ScheduledTaskTrigger -Weekly `
-    -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday -At 08:35
+    -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday -At 06:30
 $actMorning = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c `"$batPath`" morning"
 if (Get-ScheduledTask -TaskName 'XQ_Postmarket_Morning' -ErrorAction SilentlyContinue) {
     Unregister-ScheduledTask -TaskName 'XQ_Postmarket_Morning' -Confirm:$false -ErrorAction SilentlyContinue
 }
 Register-ScheduledTask -TaskName 'XQ_Postmarket_Morning' `
     -Action $actMorning -Trigger $trigMorning -Settings $settings `
-    -Description '盤後綜合分析：開盤前 08:35 更新版' -Force
+    -Description '盤後綜合分析：開盤前 06:30 更新版' -Force
 
 # ---- 驗證 ----
 foreach ($name in 'XQ_Postmarket_Evening', 'XQ_Postmarket_Morning') {

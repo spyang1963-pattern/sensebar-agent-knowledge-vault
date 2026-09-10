@@ -12,7 +12,7 @@ postmarket_prep.py — 盤後綜合分析「資料彙整」
 
 用法：
   python postmarket_prep.py --slot evening      # 前一晚 22:00 初版
-  python postmarket_prep.py --slot morning      # 開盤前 08:35 更新版
+  python postmarket_prep.py --slot morning      # 開盤前 06:30 更新版
   python postmarket_prep.py --slot morning --no-fetch  # 不重新抓美股（快取）
 
 輸出：routines/postmarket/input_{YYYYMMDD}_{slot}.md
@@ -330,7 +330,7 @@ def main():
     os.makedirs(POSTMARKET_DIR, exist_ok=True)
     today = date.today()
     stamp = today.strftime("%Y%m%d")
-    slot_label = "前一晚初版（22:00）" if args.slot == "evening" else "開盤前更新版（08:35）"
+    slot_label = "前一晚初版（22:00）" if args.slot == "evening" else "開盤前更新版（06:30）"
 
     parts = []
     parts.append(f"# 盤後綜合分析 input — {today.isoformat()}（{slot_label}）\n")

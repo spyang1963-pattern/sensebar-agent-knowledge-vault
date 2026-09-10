@@ -1,7 +1,7 @@
 @echo off
 REM ============================================================
 REM  xq_postmarket_loop.bat - run postmarket analysis and publish
-REM  (called by Windows Task Scheduler at 22:00 / 08:35)
+REM  (called by Windows Task Scheduler at 22:00 / 06:30)
 REM
 REM  Usage: xq_postmarket_loop.bat <evening|morning>
 REM

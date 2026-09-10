@@ -1734,7 +1734,7 @@ def render_postmarket_tab():
     # 軍校排序：檔名 postmarket_YYYYMMDD_slot.md，同一日 morning 優先、跨日取最新日期
     files = [f for f in os.listdir(POSTMARKET_OUT) if f.startswith("postmarket_") and f.endswith(".md")]
     if not files:
-        return '<div class="card"><div class="trend-empty">尚無盤後綜合分析報告。排程會在前一晚 22:00（初版）與開盤前 08:35（更新版）自動產生。</div></div>'
+        return '<div class="card"><div class="trend-empty">尚無盤後綜合分析報告。排程會在前一晚 22:00（初版）與開盤前 06:30（更新版）自動產生。</div></div>'
     def sort_key(fn):
         m = re.match(r"postmarket_(\d{8})_(\w+)\.md", fn)
         if not m:

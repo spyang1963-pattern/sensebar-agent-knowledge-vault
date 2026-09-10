@@ -4,7 +4,7 @@
 #  用「一般權限」PowerShell 執行（不要用管理員身份）：
 #    1. 同步最新程式碼（git pull 大倉）
 #    2. 重註冊 snapshot 任務（時段 09:15–13:30、每 15 分）
-#    3. 註冊盤後綜合分析任務（22:00 初版 + 08:35 更新版）
+#    3. 註冊盤後綜合分析任務（22:00 初版 + 06:30 更新版）
 #    4. 啟用被停用的 XQ_Snapshot_Loop
 #
 #  用法（在 PC3 上、一般權限 PowerShell）：
@@ -39,7 +39,7 @@ Write-Output "== [2/4] 重註冊 XQ_Snapshot_Loop（09:15–13:30 每 15 分）=
 & (Join-Path $scriptDir 'setup_xq_snapshot_task.ps1')
 
 # ---- 3. 註冊盤後綜合分析任務 ----
-Write-Output "== [3/4] 註冊 XQ_Postmarket_Evening / Morning =="
+Write-Output "== [3/4] 註冊 XQ_Postmarket_Evening / Morning（22:00 初版 + 06:30 更新版）=="
 & (Join-Path $scriptDir 'setup_xq_postmarket_task.ps1')
 
 # ---- 4. 確保快照任務為啟用（備用名 Loop2 優先，其次舊名）----

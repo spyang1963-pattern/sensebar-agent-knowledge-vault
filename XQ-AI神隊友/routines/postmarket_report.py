@@ -6,7 +6,7 @@ postmarket_report.py — 盤後綜合分析「明日預測」產生
 
 用法：
   python postmarket_report.py --slot evening   # 前一晚 22:00 初版
-  python postmarket_report.py --slot morning   # 開盤前 08:35 更新版
+  python postmarket_report.py --slot morning   # 開盤前 06:30 更新版
   python postmarket_report.py --slot evening --apply-cht  # word 檔也輸出 .docx（選用）
 
 輸出：routines/outputs/postmarket/postmarket_{YYYYMMDD}_{slot}.md
