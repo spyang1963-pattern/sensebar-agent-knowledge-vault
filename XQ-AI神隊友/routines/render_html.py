@@ -737,6 +737,7 @@ tr:hover td{background:#1c2438}
 .pm-str{color:var(--sub);font-weight:400;font-size:12.5px;margin-left:8px}
 .pm-stk{color:#7fa8dd;font-weight:600}
 .pm-num{color:#d8d2c0;font-weight:500}
+.postmarket .pm-sub{display:inline-block;border-radius:4px;padding:0 6px;font-size:12px;font-weight:700;background:#243156;color:#bcd2ff;margin-right:6px}
 .postmarket .card li{margin:4px 0}
 @media(max-width:640px){.wrap{padding:10px;font-size:13px}.hide-sm{display:none}}
 """
@@ -1661,6 +1662,8 @@ def _pm_hl_line(line):
     不做大範圍關鍵字紅綠上色（避免畫面一片紅綠），只標量化重點與股名。
     """
     s = _pm_esc(line)
+    s = re.sub(r"^\*\*(.+?)\*\*\s*[：:]\s*", r'<span class="pm-sub">\1</span>：', s)
+    s = re.sub(r"^\*(.+?)\*\s*[：:]\s*", r'<span class="pm-sub">\1</span>：', s)
     s = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", s)              # **粗體**
     s = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"<i>\1</i>", s)  # *斜體*
     s = _pm_hl_numbers(s)
@@ -1777,7 +1780,12 @@ def _pm_generic_section(title, body):
             if not ul_open:
                 parts.append("<ul>")
                 ul_open = True
-            parts.append("<li><b>" + _pm_esc(num) + "</b> " + _pm_hl_line(rest) + "</li>")
+            m3 = re.match(r"^\*\*(.+?)\*\*\s*$", rest, re.S)
+            if m3:
+                parts.append("<li><b>" + _pm_esc(num) + "</b> <span class='pm-sub'>" +
+                             _pm_esc(m3.group(1)) + "</span></li>")
+            else:
+                parts.append("<li><b>" + _pm_esc(num) + "</b> " + _pm_hl_line(rest) + "</li>")
         else:
             flush_ul()
             if s.startswith("> "):
