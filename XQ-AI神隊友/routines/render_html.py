@@ -680,7 +680,8 @@ tr:hover td{background:#1c2438}
 .barwrap{background:#202a44;border-radius:4px;height:14px;width:100%;overflow:hidden}
 .bar{height:100%;border-radius:4px}
 .pill{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11.5px;font-weight:600;margin-left:6px}
-.pill.up{background:rgba(214,69,65,.18)}.pill.down{background:rgba(46,158,91,.18)}
+.pill.up{color:var(--up);background:rgba(214,69,65,.12)}
+.pill.down{color:var(--down);background:rgba(46,158,91,.12)}
 .contra-card{background:#2a1a1d;border:1px solid #5a2530;border-left:5px solid var(--up);border-radius:10px;padding:12px 14px;margin:10px 0}
 .contra-card .t{font-weight:700;font-size:15px}
 .contra-card .w{color:#ff9f9a;font-size:12.5px;margin-top:3px}
@@ -727,13 +728,13 @@ tr:hover td{background:#1c2438}
 .pm-stock{padding:2px 0 10px;margin:10px 0 12px;border-bottom:1px solid var(--line)}
 .pm-stock:last-of-type{border-bottom:none}
 .pm-stock .pm-name{font-size:14.5px;font-weight:700;margin-bottom:4px;color:var(--txt)}
-.pm-stock .pm-name b{color:#8fb4ff}
+.pm-stock .pm-name b{color:var(--txt)}
 .pm-stock .pm-detail{margin:2px 0;font-size:12.5px;color:var(--txt)}
 .pm-stock .pm-detail .pm-k{border-radius:4px;padding:0 5px;font-size:11.5px;font-weight:700;background:#243156;color:#bcd2ff;margin-right:6px}
 .pm-copyhint{color:var(--sub);font-size:11.5px;margin:2px 0 8px}
 .pm-str{color:var(--sub);font-weight:400;font-size:12.5px;margin-left:8px}
-.pm-stk{color:#8fb4ff;font-weight:600}
-.pm-num{color:#c9bd8a;font-weight:500}
+.pm-stk{color:#7fa8dd;font-weight:600}
+.pm-num{color:#d8d2c0;font-weight:500}
 .postmarket .card li{margin:4px 0}
 @media(max-width:640px){.wrap{padding:10px;font-size:13px}.hide-sm{display:none}}
 """
@@ -1715,7 +1716,10 @@ def _pm_forecast_section(body):
             strat = sm.group(1) if sm else ""
             pill = f'<span class="pill {cls}">{dlabel}</span>' if cls else ""
             strat_html = f'<span class="pm-str">強度：{_pm_esc(strat)}</span>' if strat else ""
-            name_html = f'<b data-code="{code}" data-name="{name}">{code} {name}</b>'
+            if ncls:
+                name_html = f'<b class="{ncls}" data-code="{code}" data-name="{name}">{code} {name}</b>'
+            else:
+                name_html = f'<b data-code="{code}" data-name="{name}">{code} {name}</b>'
             cur = f'<div class="pm-stock {cls}"><div class="pm-name">{name_html}{pill}{strat_html}</div>'
         elif (s.startswith("-") or s.startswith("·")) and cur is not None:
             raw = s.lstrip("-· ").strip()
