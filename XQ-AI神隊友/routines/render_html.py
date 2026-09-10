@@ -732,8 +732,7 @@ tr:hover td{background:#1c2438}
 .pm-stock .pm-detail .pm-k{border-radius:4px;padding:0 5px;font-size:11.5px;font-weight:700;background:#243156;color:#bcd2ff;margin-right:6px}
 .pm-copyhint{color:var(--sub);font-size:11.5px;margin:2px 0 8px}
 .pm-str{color:var(--sub);font-weight:400;font-size:12.5px;margin-left:8px}
-.postmarket .card h2{color:var(--warn);border-left:4px solid var(--warn);padding-left:8px;text-transform:none;letter-spacing:0}
-.pm-stk{color:var(--warn);font-weight:600;border-bottom:1px dotted #66532a}
+.pm-stk{background:rgba(255,209,102,.15);font-weight:600;border-radius:3px;padding:0 2px;color:inherit}
 .postmarket .card li{margin:4px 0}
 @media(max-width:640px){.wrap{padding:10px;font-size:13px}.hide-sm{display:none}}
 """
