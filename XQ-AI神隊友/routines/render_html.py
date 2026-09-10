@@ -727,13 +727,13 @@ tr:hover td{background:#1c2438}
 .pm-stock{padding:2px 0 10px;margin:10px 0 12px;border-bottom:1px solid var(--line)}
 .pm-stock:last-of-type{border-bottom:none}
 .pm-stock .pm-name{font-size:14.5px;font-weight:700;margin-bottom:4px;color:var(--txt)}
-.pm-stock .pm-name b{color:var(--txt)}
+.pm-stock .pm-name b{color:#8fb4ff}
 .pm-stock .pm-detail{margin:2px 0;font-size:12.5px;color:var(--txt)}
 .pm-stock .pm-detail .pm-k{border-radius:4px;padding:0 5px;font-size:11.5px;font-weight:700;background:#243156;color:#bcd2ff;margin-right:6px}
 .pm-copyhint{color:var(--sub);font-size:11.5px;margin:2px 0 8px}
 .pm-str{color:var(--sub);font-weight:400;font-size:12.5px;margin-left:8px}
-.pm-stk{background:rgba(255,209,102,.15);font-weight:600;border-radius:3px;padding:0 2px;color:inherit}
-.pm-num{color:var(--warn);font-weight:600}
+.pm-stk{color:#8fb4ff;font-weight:600}
+.pm-num{color:#c9bd8a;font-weight:500}
 .postmarket .card li{margin:4px 0}
 @media(max-width:640px){.wrap{padding:10px;font-size:13px}.hide-sm{display:none}}
 """
@@ -1856,7 +1856,7 @@ def render_postmarket_tab():
     file_date = latest[11:15] + "-" + latest[15:17] + "-" + latest[17:19]
     return f"""<div style="margin-bottom:8px;color:var(--sub);font-size:12.5px">盤後綜合分析 · {file_date} {slot_disp} · <code>{latest}</code></div>
 <div class="postmarket">{sec_html}</div>
-<div class="meta" style="margin-top:12px">配色：<span class="key-red">紅＝多方/看多</span>、<span class="key-green">綠＝空方/看空</span>。內容由 Gemini 依當日 XQ 快照＋融資券＋三大法人＋千張大戶＋美股＋行事曆＋金融報告生成，僅供解讀盤面與機構可能路徑，不構成買賣建議。</div>"""
+<div class="meta" style="margin-top:12px">數字/漲幅/價位＝淡黃色標示；股名＝藍色；方向<strong>偏多/偏空</strong>用紅/綠標籤。內容由 Gemini 依當日 XQ 快照＋融資券＋三大法人＋千張大戶＋美股＋行事曆＋金融報告生成，僅供解讀盤面與機構可能路徑，不構成買賣建議。</div>"""
 
 
 # ============================================================
