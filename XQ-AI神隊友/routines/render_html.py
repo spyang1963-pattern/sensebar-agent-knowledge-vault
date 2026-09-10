@@ -1708,7 +1708,7 @@ def _pm_forecast_section(body):
         m = _PM_STOCK_RE.match(flat)
         if m and m.group(2):
             if cur is not None:
-                parts.append(cur)
+                parts.append(cur + "</div>")
             code, name = m.group(1), m.group(2)
             dm = _PM_DIR_RE.search(flat)
             sm = _PM_STR_RE.search(flat)
@@ -1733,7 +1733,7 @@ def _pm_forecast_section(body):
         else:
             parts.append(f'<p>{_pm_hl_line(s)}</p>')
     if cur is not None:
-        parts.append(cur)
+        parts.append(cur + "</div>")
     parts.append("</div>")
     return "".join(parts)
 
