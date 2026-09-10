@@ -724,15 +724,16 @@ tr:hover td{background:#1c2438}
 .postmarket blockquote{border-left:3px solid var(--line);margin:8px 0;padding:2px 12px;color:var(--sub)}
 .postmarket code{background:#1b2438;border:1px solid #2c3858;border-radius:4px;padding:1px 5px;font-size:12px}
 .postmarket table{margin:8px 0}
-.pm-stock{background:#1b2438;border:1px solid #2c3858;border-left:4px solid #3a4a7a;border-radius:8px;padding:9px 12px;margin:7px 0}
-.pm-stock.up{border-left-color:var(--up)}
-.pm-stock.down{border-left-color:var(--down)}
-.pm-stock .pm-name{font-size:14.5px;font-weight:700;margin-bottom:4px}
-.pm-stock .pm-detail{margin:2px 0;font-size:12.5px}
+.pm-stock{padding:2px 0 10px;margin:10px 0 12px;border-bottom:1px solid var(--line)}
+.pm-stock:last-of-type{border-bottom:none}
+.pm-stock .pm-name{font-size:14.5px;font-weight:700;margin-bottom:4px;color:var(--txt)}
+.pm-stock .pm-name b{color:var(--txt)}
+.pm-stock .pm-detail{margin:2px 0;font-size:12.5px;color:var(--txt)}
 .pm-stock .pm-detail .pm-k{border-radius:4px;padding:0 5px;font-size:11.5px;font-weight:700;background:#243156;color:#bcd2ff;margin-right:6px}
 .pm-copyhint{color:var(--sub);font-size:11.5px;margin:2px 0 8px}
 .pm-str{color:var(--sub);font-weight:400;font-size:12.5px;margin-left:8px}
 .pm-stk{background:rgba(255,209,102,.15);font-weight:600;border-radius:3px;padding:0 2px;color:inherit}
+.pm-num{color:var(--warn);font-weight:600}
 .postmarket .card li{margin:4px 0}
 @media(max-width:640px){.wrap{padding:10px;font-size:13px}.hide-sm{display:none}}
 """
@@ -1643,12 +1644,23 @@ def _pm_highlight(text):
     return re.sub(pat, lambda m: f'<span class="{_PM_KW_COLOR[m.group(0)]}">{m.group(0)}</span>', text)
 
 
+_PM_NUM_RE = re.compile(r"[+\-]?\d[\d,]*(?:\.\d+)?\s*(?:%|％|億|萬|TWD|元)")
+
+def _pm_hl_numbers(text):
+    """把「量化重點」（金額、漲幅%、價位 TWD）標成金色，其餘維持原色。"""
+    if not text:
+        return text
+    return _PM_NUM_RE.sub(lambda m: f'<span class="pm-num">{m.group(0)}</span>', text)
+
+
 def _pm_hl_line(line):
-    """行內容關鍵字上色（先 escape → 粗體/斜體 → 染關鍵字 → 內文股名標示）。"""
+    """行內容重點上色（先 escape → 粗體/斜體 → 標數字重點 → 內文股名標示）。
+    不做大範圍關鍵字紅綠上色（避免畫面一片紅綠），只標量化重點與股名。
+    """
     s = _pm_esc(line)
     s = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", s)              # **粗體**
     s = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"<i>\1</i>", s)  # *斜體*
-    s = _pm_highlight(s)
+    s = _pm_hl_numbers(s)
     return _pm_hl_stocks(s)
 
 
@@ -1703,8 +1715,7 @@ def _pm_forecast_section(body):
             strat = sm.group(1) if sm else ""
             pill = f'<span class="pill {cls}">{dlabel}</span>' if cls else ""
             strat_html = f'<span class="pm-str">強度：{_pm_esc(strat)}</span>' if strat else ""
-            name_html = f'<b class="{ncls}" data-code="{code}" data-name="{name}">{code} {name}</b>' if ncls else \
-                        f'<b data-code="{code}" data-name="{name}">{code} {name}</b>'
+            name_html = f'<b data-code="{code}" data-name="{name}">{code} {name}</b>'
             cur = f'<div class="pm-stock {cls}"><div class="pm-name">{name_html}{pill}{strat_html}</div>'
         elif (s.startswith("-") or s.startswith("·")) and cur is not None:
             raw = s.lstrip("-· ").strip()
