@@ -1902,22 +1902,20 @@ def _pm_render_md(text):
 def render_postmarket_tab():
     """把最新的 postmarket md 轉成 HTML，塞進 dashboard 第四頁籤。
 
-    顯示「當天最新」的一份；若有多份（evening/morning），morning 更新版優先。
+    同一日有多份（evening/morning）時，依「檔案修改時間」取最新（開盤前更新版
+    比前一晚初版晚寫入，自然優先；手動重跑產出時也以最新產出為準）。
     沒報告時顯示引導訊息。
     """
     if not os.path.isdir(POSTMARKET_OUT):
         return '<div class="card"><div class="trend-empty">尚無盤後綜合分析（routines/outputs/postmarket/ 不存在）。</div></div>'
-    # 軍校排序：檔名 postmarket_YYYYMMDD_slot.md，同一日 morning 優先、跨日取最新日期
+    # 全部候選後依修改時間取最新（檔名排序不保證「最新」：morning/evening 同日都有時，
+    # 一律 morning 優先會蓋過手動重跑的 evening，故改用 mtime）。
     files = [f for f in os.listdir(POSTMARKET_OUT) if f.startswith("postmarket_") and f.endswith(".md")]
     if not files:
         return '<div class="card"><div class="trend-empty">尚無盤後綜合分析報告。排程會在前一晚 22:00（初版）與開盤前 06:30（更新版）自動產生。</div></div>'
-    def sort_key(fn):
-        m = re.match(r"postmarket_(\d{8})_(\w+)\.md", fn)
-        if not m:
-            return "0"
-        slot = {"morning": "2", "evening": "1"}.get(m.group(2), "0")
-        return m.group(1) + slot
-    latest = sorted(files, key=sort_key)[-1]
+    def mtime(fn):
+        return os.path.getmtime(os.path.join(POSTMARKET_OUT, fn))
+    latest = max(files, key=mtime)
     m = re.match(r"postmarket_(\d{8})_(morning|evening)\.md", latest)
     if m:
         slot_disp = {"morning": "開盤前更新版", "evening": "前一晚初版"}[m.group(2)]
