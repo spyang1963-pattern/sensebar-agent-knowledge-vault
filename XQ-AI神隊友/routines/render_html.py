@@ -1410,14 +1410,17 @@ def build_dashboard(groups):
     if not all_minutes:
         return None
 
-    # 每 15 分鐘只保留一個時間點（同一窗只保留最晚一份）：防止多支快照任務
-    # 同跑造成 5/10 分交錯（例如 09:15 任務 與 09:10 任務同存 → 資料 15,10,15,10）。
-    seen15 = {}
-    for k in all_minutes:
-        hh, mm = int(k[9:11]), int(k[11:13])
-        win = k[:8] + "_" + f"{hh:02d}" + f"{(mm // 15) * 15:02d}"
-        seen15[win] = k                                    # 同窗保留最晚一份
-    all_minutes = sorted(seen15.values())
+    # 每 15 分鐘只保留一個時間點：從最新往回掃，下一個點比上一個保留點早 ≥15 分才保留。
+    # 防止多支快照任務同跑造成 5/10 分交錯（例如 09:15 任務與 09:10 任務同存 → 資料 15,10,15,10）。
+    def _gap_min(a, b):
+        a = datetime.strptime(a, "%Y%m%d_%H%M")
+        b = datetime.strptime(b, "%Y%m%d_%H%M")
+        return int((a - b).total_seconds() // 60)
+    kept = []
+    for k in reversed(all_minutes):          # 最新的先
+        if not kept or _gap_min(kept[-1], k) >= 15:
+            kept.append(k)
+    all_minutes = list(reversed(kept))
 
     # 保留最近 HIST_DAYS 個交易日（round key 前 8 位 = yyyymmdd）
     days = sorted(set(k[:8] for k in all_minutes))
