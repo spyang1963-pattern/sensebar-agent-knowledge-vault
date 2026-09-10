@@ -721,6 +721,8 @@ tr:hover td{background:#1c2438}
 .histbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:10px 0}
 .dot{background:#1d2840;border:1px solid #2f3d63;color:#bcd2ff;border-radius:14px;padding:4px 10px;font-size:11.5px;cursor:pointer;min-width:52px;text-align:center}
 .dot.active{background:#4a3a1e;border-color:var(--warn);color:#ffe0a0;font-weight:700}
+.dot.today{outline:2px solid #ff6b6b}
+.dot.yest{outline:2px solid #9ad0e0}
 .histnote{color:var(--sub);font-size:12px;margin:8px 0 4px}
 .postmarket blockquote{border-left:3px solid var(--line);margin:8px 0;padding:2px 12px;color:var(--sub)}
 .postmarket code{background:#1b2438;border:1px solid #2c3858;border-radius:4px;padding:1px 5px;font-size:12px}
@@ -736,8 +738,11 @@ tr:hover td{background:#1c2438}
 .pm-copyhint{color:var(--sub);font-size:11.5px;margin:2px 0 8px}
 .pm-str{color:var(--sub);font-weight:400;font-size:12.5px;margin-left:8px}
 .pm-stk{color:#7fa8dd;font-weight:600}
-.pm-num{color:#d8d2c0;font-weight:500}
+.postmarket .pm-stk.up{color:var(--up)}
+.postmarket .pm-stk.down{color:var(--down)}
+.pm-num{color:#ffab40;font-weight:500}
 .postmarket .pm-sub{display:inline-block;border-radius:4px;padding:0 6px;font-size:12px;font-weight:700;background:#243156;color:#bcd2ff;margin-right:6px}
+.postmarket .pm-sub.pm-mg{background:#4a1a5a;color:#ff8ae0}
 .postmarket .card li{margin:4px 0}
 @media(max-width:640px){.wrap{padding:10px;font-size:13px}.hide-sm{display:none}}
 """
@@ -1405,6 +1410,15 @@ def build_dashboard(groups):
     if not all_minutes:
         return None
 
+    # 每 15 分鐘只保留一個時間點（同一窗只保留最晚一份）：防止多支快照任務
+    # 同跑造成 5/10 分交錯（例如 09:15 任務 與 09:10 任務同存 → 資料 15,10,15,10）。
+    seen15 = {}
+    for k in all_minutes:
+        hh, mm = int(k[9:11]), int(k[11:13])
+        win = k[:8] + "_" + f"{hh:02d}" + f"{(mm // 15) * 15:02d}"
+        seen15[win] = k                                    # 同窗保留最晚一份
+    all_minutes = sorted(seen15.values())
+
     # 保留最近 HIST_DAYS 個交易日（round key 前 8 位 = yyyymmdd）
     days = sorted(set(k[:8] for k in all_minutes))
     keep_days = set(days[-HIST_DAYS:])
@@ -1565,10 +1579,22 @@ function copyStocks(btn){
 }
 window.onload = function(){
   var hb = document.getElementById('histbar');
-  hb.innerHTML = '<button class="dot active" data-i="0" onclick="setRound(0)">最新</button>';
+  // 依 stamp (yyyyMMdd_HHMM) 判斷當日/次日：最新日期=當日(紅框)，下一個不同日期=次日(淡青)
+  var todayD = HIST.length ? HIST[0].stamp.slice(0,8) : '';
+  var yestD = '';
+  for (var t=1; t<HIST.length; t++){
+    if (HIST[t].stamp.slice(0,8) !== todayD){ yestD = HIST[t].stamp.slice(0,8); break; }
+  }
+  function dayCls(stamp){
+    var d = stamp.slice(0,8);
+    if (d === todayD) return ' today';
+    if (d === yestD) return ' yest';
+    return '';
+  }
+  hb.innerHTML = '<button class="dot active' + (HIST.length ? dayCls(HIST[0].stamp) : '') + '" data-i="0" onclick="setRound(0)">最新</button>';
   for (var i=1; i<HIST.length; i++){
     var b=document.createElement('button');
-    b.className='dot'; b.setAttribute('data-i',i); b.textContent=label(HIST[i].stamp);
+    b.className='dot' + dayCls(HIST[i].stamp); b.setAttribute('data-i',i); b.textContent=label(HIST[i].stamp);
     b.onclick=(function(ii){return function(){setRound(ii);};})(i);
     hb.appendChild(b);
   }
@@ -1611,6 +1637,8 @@ _PM_STR_RE = re.compile(r"強度[：:]\s*([強中弱])")
 
 _PM_KW_COLOR = {}
 _PM_CUR_STOCKS = {}          # name -> code（本次報告預測榜的股票；內文股名標示用）
+_PM_CUR_DIR = {}             # name -> key-red/key-green/""（內文股名依方向紅綠）
+_PM_SUB_MAGENTA = {"大家怎麼想", "數據怎麼說", "我的判斷與理由"}
 
 
 def _pm_dir_label(d):
@@ -1651,10 +1679,19 @@ def _pm_highlight(text):
 _PM_NUM_RE = re.compile(r"[+\-]?\d[\d,]*(?:\.\d+)?\s*(?:%|％|億|萬|TWD|元)")
 
 def _pm_hl_numbers(text):
-    """把「量化重點」（金額、漲幅%、價位 TWD）標成金色，其餘維持原色。"""
+    """把「量化重點」標色：純數據（金額/漲幅%/價位 TWD）→ 橘黃；帶 +/- 的漲跌幅 → 紅/綠。"""
     if not text:
         return text
-    return _PM_NUM_RE.sub(lambda m: f'<span class="pm-num">{m.group(0)}</span>', text)
+    pat = re.compile(
+        r"(?P<delta>[+\-]\d[\d,]*(?:\.\d+)?\s*(?:%|％|點))"
+        r"|(?P<num>[+\-]?\d[\d,]*(?:\.\d+)?\s*(?:%|％|億|萬|TWD|元))")
+    def repl(m):
+        d = m.group("delta")
+        if d is not None:
+            cls = "up" if d.strip().startswith("+") else "down"
+            return f'<span class="{cls}">{d}</span>'
+        return f'<span class="pm-num">{m.group("num")}</span>'
+    return pat.sub(repl, text)
 
 
 def _pm_hl_line(line):
@@ -1662,12 +1699,18 @@ def _pm_hl_line(line):
     不做大範圍關鍵字紅綠上色（避免畫面一片紅綠），只標量化重點與股名。
     """
     s = _pm_esc(line)
-    s = re.sub(r"^\*\*(.+?)\*\*\s*[：:]\s*", r'<span class="pm-sub">\1</span>：', s)
-    s = re.sub(r"^\*(.+?)\*\s*[：:]\s*", r'<span class="pm-sub">\1</span>：', s)
+    s = re.sub(r"^\*\*(.+?)\*\*\s*[：:]\s*", lambda m: _pm_sub_span(m.group(1)), s)
+    s = re.sub(r"^\*(.+?)\*\s*[：:]\s*", lambda m: _pm_sub_span(m.group(1)), s)
     s = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", s)              # **粗體**
     s = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"<i>\1</i>", s)  # *斜體*
     s = _pm_hl_numbers(s)
     return _pm_hl_stocks(s)
+
+
+def _pm_sub_span(label):
+    """次標籤：價值點的三個次標（大家怎麼想/數據怎麼說/我的判斷與理由）用洋紅，其餘維持藍底。"""
+    cls = "pm-sub pm-mg" if label in _PM_SUB_MAGENTA else "pm-sub"
+    return f'<span class="{cls}">{label}</span>：'
 
 
 def _pm_hl_stocks(text):
@@ -1689,10 +1732,20 @@ def _pm_hl_stocks(text):
             pat = re.compile(r"(?<![\u4e00-\u9fffA-Za-z0-9])" + re.escape(esc) + r"(?![\u4e00-\u9fffA-Za-z0-9])")
         else:
             pat = re.compile(r"(?<![A-Za-z0-9])" + re.escape(esc) + r"(?![A-Za-z0-9])")
-        text2 = pat.sub(f'<span class="pm-stk" data-code="{_PM_CUR_STOCKS[name]}" data-name="{esc}">{esc}</span>', text)
+        text2 = pat.sub(lambda m, name=name, esc=esc: f'<span class="{_pm_stk_cls(name)}" data-code="{_PM_CUR_STOCKS[name]}" data-name="{esc}">{esc}</span>', text)
         if text2 != text:
             text = text2
     return text
+
+
+def _pm_stk_cls(name):
+    """內文股名 class：預測榜有方向的股票依方向紅/綠，其餘維持藍底（無方向）。"""
+    d = _PM_CUR_DIR.get(name, "")
+    if d == "key-red":
+        return "pm-stk up"
+    if d == "key-green":
+        return "pm-stk down"
+    return "pm-stk"
 
 
 def _pm_forecast_section(body):
@@ -1816,8 +1869,9 @@ def _pm_render_md(text):
     if cur_title is not None:
         sections.append((cur_title, cur_body))
 
-    # 先掃預測榜收集股名（供內文其他段落把股名標成金色/可複製）
+    # 先掃預測榜收集股名與方向（供內文其他段落把股名標成對應顏色/可複製）
     _PM_CUR_STOCKS.clear()
+    _PM_CUR_DIR.clear()
     for title, body in sections:
         if title != "明日個股預測榜":
             continue
@@ -1825,7 +1879,11 @@ def _pm_render_md(text):
             flat = ln.strip().replace("**", "")
             mm = _PM_STOCK_RE.match(flat)
             if mm and mm.group(2) and not re.match(r"\d", mm.group(2)):
-                _PM_CUR_STOCKS[mm.group(2)] = mm.group(1)
+                name = mm.group(2)
+                _PM_CUR_STOCKS[name] = mm.group(1)
+                dm = _PM_DIR_RE.search(flat)
+                dlabel, cls, ncls = _pm_dir_label(dm.group(1).strip() if dm else "")
+                _PM_CUR_DIR[name] = ncls
 
     out = []
     for title, body in sections:
