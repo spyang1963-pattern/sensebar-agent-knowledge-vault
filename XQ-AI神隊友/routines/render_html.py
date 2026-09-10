@@ -760,10 +760,10 @@ function copyStocks(btn){
   var els=card.querySelectorAll('[data-code]');
   for(var i=0;i<els.length;i++){
     var c=(els[i].getAttribute('data-code')||'').trim();
-    if(c&&!seen[c]){seen[c]=1;out.push(c+'\t'+els[i].getAttribute('data-name'));}
+    if(c&&!seen[c]){seen[c]=1;out.push(c+'\\t'+els[i].getAttribute('data-name'));}
   }
   if(!out.length){return;}
-  var text=out.join('\n');
+  var text=out.join('\\n');
   function done(){btn.classList.add('copied');btn.textContent='已複製 '+out.length+' 檔';setTimeout(function(){btn.classList.remove('copied');btn.textContent='📋';},1600);}
   function fb(){var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);done();}
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,fb);}else{fb();}
@@ -1519,10 +1519,10 @@ function copyStocks(btn){
   var els=card.querySelectorAll('[data-code]');
   for(var i=0;i<els.length;i++){
     var c=(els[i].getAttribute('data-code')||'').trim();
-    if(c&&!seen[c]){seen[c]=1;out.push(c+'\t'+els[i].getAttribute('data-name'));}
+    if(c&&!seen[c]){seen[c]=1;out.push(c+'\\t'+els[i].getAttribute('data-name'));}
   }
   if(!out.length){return;}
-  var text=out.join('\n');
+  var text=out.join('\\n');
   function done(){btn.classList.add('copied');btn.textContent='已複製 '+out.length+' 檔';setTimeout(function(){btn.classList.remove('copied');btn.textContent='📋';},1600);}
   function fb(){var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);done();}
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,fb);}else{fb();}
