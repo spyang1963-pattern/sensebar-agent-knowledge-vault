@@ -729,6 +729,8 @@ tr:hover td{background:#1c2438}
 .pm-stock:last-of-type{border-bottom:none}
 .pm-stock .pm-name{font-size:14.5px;font-weight:700;margin-bottom:4px;color:var(--txt)}
 .pm-stock .pm-name b{color:var(--txt)}
+.pm-stock .pm-name b.key-red{color:var(--up)}
+.pm-stock .pm-name b.key-green{color:var(--down)}
 .pm-stock .pm-detail{margin:2px 0;font-size:12.5px;color:var(--txt)}
 .pm-stock .pm-detail .pm-k{border-radius:4px;padding:0 5px;font-size:11.5px;font-weight:700;background:#243156;color:#bcd2ff;margin-right:6px}
 .pm-copyhint{color:var(--sub);font-size:11.5px;margin:2px 0 8px}
