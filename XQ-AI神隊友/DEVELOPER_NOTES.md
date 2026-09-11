@@ -95,11 +95,18 @@
 
 ## 五、排程（Windows Task Scheduler）
 
-- 任務名：**XQ_Snapshot_Loop**
-- 時段：週一~五 **09:25 起，每 15 分一次，持續到 14:05**（4h40m，2026-09-08 由 30 分改 15 分）
+- 任務名：**XQ_Snapshot_Loop**（系統管理員握有的舊任務，StartBoundary=09:25，待管理員停用）
+  與 **XQ_Snapshot_Loop2**（一般權限建立，**09:15 起**，目前的主力任務）
+- 時段：週一~五 **09:15 起，每 15 分一次，持續到 13:30**（Plan：09:15 第 1 份 → 09:30/09:45/…/13:30）
 - 動作：`cmd /c xq_snapshot_loop.bat`（→ 依序跑三種 snapshot.ps1，以 -STA 掛 Excel）
-- 為什麼能多跑不爆：`snapshot.ps1` 內建**盤中時段守門**（09:25–13:55，時段外回 SKIP）＋
-  **stale 去重**（資料沒變不重存），所以就算排程準時整天跑也安全。
+- 為什麼能多跑不爆：`snapshot.ps1` 內建**盤中時段守門**（09:15–13:30，時段外回 SKIP）＋
+  **stale 去重**（資料沒變不重存），所以就算兩支排程交錯觸發，也只多跑一次、無害。
+
+**⚠️ 09:25 殘留教訓（2026-09-11 紀錄）**：
+- `setup_xq_snapshot_task.ps1` 從頭就寫 `-At 09:15`，但 PC3 實際任務是 **09:25**（09/08「改 15 分」重註冊時，實際 StartBoundary 被設成 09:25，與文件不符，文件一路沿用錯誤）。
+- 09/10 停用舊 Loop2 時只停任務、沒把主力任務起跑改回 09:15 → 09/11 第一輪變成 09:25。
+- **教訓：停用雙排程後，務必確認主力任務的 StartBoundary 是文件寫的時刻；文件與實際不符時更新文件，不要沿用舊紀錄。**
+- 現況：舊 `XQ_Snapshot_Loop`（管理員所有，09:25）無法由一般權限停用 → 用 `setup_xq_snapshot_task.ps1` 建了 `XQ_Snapshot_Loop2`（09:15）。兩支並跑靠 stale 去重無害；**勿刪新任務**。管理員停用舊的後，主力就是 Loop2。
 
 **⚠️ 排程要生效的前提（很重要）**：
 1. **Excel 開著**，裡面有 XQ 用 DDE 貼過來的報價表（快照靠 COM 讀它）。
@@ -107,8 +114,8 @@
 3. 三者缺任一 → 該輪會 SKIP / stale，資料不累積，③趨勢就沒料。
 
 ### 想改排程
-重跑 `setup_xq_snapshot_task.ps1` 即可（-Force 覆蓋）。
-想改頻率/時段，改該檔裡的 `-At 09:25`、`-RepetitionInterval`、`-RepetitionDuration`。
+重跑 `setup_xq_snapshot_task.ps1` 即可（-Force 覆蓋，一般權限建立的是 `XQ_Snapshot_Loop2`）。
+想改頻率/時段，改該檔裡的 `-At 09:15`、`-RepetitionInterval`、`-RepetitionDuration`。
 
 ⚠️ **頻率調密（30→15）的代價**：同日輪數約加倍（約 27 輪/天），dashboard 內嵌歷史 JSON 明顯變大。
    若嫌大：調小 `HIST_DAYS`、或「歷史輪只存精簡 fragment」的現有設計已是省空間方案。
