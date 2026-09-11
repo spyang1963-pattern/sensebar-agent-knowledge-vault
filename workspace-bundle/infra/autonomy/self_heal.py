@@ -153,6 +153,41 @@ def main():
     for m in common.list_missions():
         msgs += _guard_one(m, now, do_trigger=not args.dry)
 
+    # Data freshness check: the finance db is the single source of truth for
+    # "did collect actually add events". A broken collector must surface as an
+    # alert, not as silently re-rendered stale reports (2026-09-11 incident).
+    try:
+        import sqlite3
+        vroot = os.path.abspath(os.path.join(AUTONOMY, "..", "..", ".."))
+        db_path = os.path.join(vroot, "financial_news", "finance.db")
+        if os.path.exists(db_path):
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
+            row = conn.execute(
+                "SELECT MAX(fetched_at) FROM events WHERE is_noise=0 AND is_duplicate=0"
+            ).fetchone()
+            conn.close()
+            newest = (row[0] if row else None)
+            if newest:
+                t = common.datetime.fromisoformat(newest)
+                if t.tzinfo is None:
+                    t = t.replace(tzinfo=common.timezone.utc)
+                age_h = (common.datetime.now(common.timezone.utc) - t).total_seconds() / 3600.0
+                cutoff_tw = t.astimezone(common.TW).strftime("%m-%d %H:%M")
+                key = "finance_data_freshness"
+                stk = common.read_status(key)
+                if age_h >= 6:
+                    if not stk.get("last_alert") or common.is_old(stk.get("last_alert"), 6):
+                        msgs.append(
+                            f"🛑 資料停滯 {age_h:.0f}h（最新事件 {cutoff_tw}）：collect 疑中斷"
+                        )
+                        common.write_status(key, {"last_alert": common.now_iso()})
+                else:
+                    if stk.get("last_alert"):
+                        msgs.append(f"✅ 資料新鮮度已恢復（最新事件 {cutoff_tw}）")
+                        common.write_status(key, {"last_alert": ""})
+    except Exception as e:
+        msgs.append(f"⚠️ 資料新鮮度檢查失敗: {e}")
+
     # heartbeat for passive diagnosis
     hb = {"ts": common.now_iso(), "missions": {}}
     for m in common.list_missions():

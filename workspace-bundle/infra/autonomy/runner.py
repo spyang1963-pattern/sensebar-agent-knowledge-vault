@@ -21,6 +21,43 @@ def _read_mission(arg):
         return json.load(f)
 
 
+def _pid_alive(pid):
+    """Windows tasklist probe. Assume alive when the probe itself fails."""
+    if not pid:
+        return False
+    try:
+        out = subprocess.run(
+            ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
+            capture_output=True, text=True, timeout=15,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        ).stdout or ""
+        return f"{pid}" in out
+    except Exception:
+        return True
+
+
+def _lock_is_stale(lock, timeout_s):
+    """A lock is stale when its pid is gone, or its age exceeds the mission
+    timeout + a grace period. A permanently strafed lock must not silently
+    poison every later tick (2026-09-11 incident: 4 days of no-op runs)."""
+    try:
+        with open(lock, encoding="utf-8") as f:
+            data = json.load(f)
+        pid = data.get("pid")
+        start = data.get("start")
+        alive = _pid_alive(pid)
+        too_old = False
+        if start:
+            t0 = common.datetime.fromisoformat(start)
+            if t0.tzinfo is None:
+                t0 = t0.replace(tzinfo=common.timezone.utc)
+            age = (common.datetime.now(common.timezone.utc) - t0).total_seconds()
+            too_old = age > timeout_s + 300
+        return (not alive) or too_old
+    except Exception:
+        return True
+
+
 def main():
     ap = argparse.ArgumentParser(description="Autonomy mission runner")
     ap.add_argument("mission", help="path to mission json")
@@ -36,10 +73,16 @@ def main():
     lock = common.lock_path(m)
     common.ensure_state_dir()
 
-    # Fail-fast: a live lock means an instance is still running.
+    # Fail-fast: a live lock means an instance is still running. A stale lock
+    # (dead pid, or far beyond timeout) is cleared so a half-finished run
+    # cannot silently poison every later tick.
     if os.path.exists(lock):
-        print(f"[runner] {name} 已在執行中，跳過本次觸發")
-        sys.exit(0)
+        if _lock_is_stale(lock, timeout_s):
+            print(f"[runner] {name} 偵測到失效鎖（stale lock），清除後重跑")
+            os.remove(lock)
+        else:
+            print(f"[runner] {name} 已在執行中，跳過本次觸發")
+            sys.exit(0)
 
     with open(lock, "w", encoding="utf-8") as f:
         json.dump({"pid": os.getpid(), "start": common.now_iso(),
