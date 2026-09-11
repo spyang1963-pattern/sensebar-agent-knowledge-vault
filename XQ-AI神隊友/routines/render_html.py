@@ -1486,7 +1486,7 @@ DASH_HEAD = """<!DOCTYPE html>
 </style></head><body><div class="wrap">
 <header><h1>📋 XQ 盤中儀表板</h1><div class="meta">每 15 分自動快照 · 目前顯示 <span id="cur-label">—</span> · 當日+昨日每一輪完整報告，更早輪次精簡版（保留最近 {days} 個交易日）</div></header>
 <div class="histbar" id="histbar"></div>
-<div class="histnote">時間軸：點一個時間點，那一輪的三份資料（資金排行／齊漲分歧／盤中三段）會一起帶出，用下面的頁籤切換看哪一份；「最新」回到最新一輪。當日與昨日為完整報告，更早交易日只有精簡版（一句話結論＋族群資金前10＋資金位移前10）。超過 {days} 個交易日的歷史仍在 snapshots\\ 的 CSV，可重產完整 HTML。</div>
+<div class="histnote">時間軸：點一個時間點，那一輪的三份資料（資金排行／齊漲分歧／盤中三段）會一起帶出，用下面的頁籤切換看哪一份；「最新」回到最新一輪。當日與昨日為完整報告，更早交易日只有精簡版（一句話結論＋族群資金前10＋資金位移前10）。「盤後綜合分析」也會一起帶出：顯示該日期產出的報告（當天有兩份會上下排列），該日無報告則顯示前一份；可再用下拉選單瀏覽全部歷史。超過 {days} 個交易日的歷史仍在 snapshots\\ 的 CSV，可重產完整 HTML。</div>
 <div class="tabbar" id="tabbar">
   <button class="tabbtn" data-kind="rank" onclick="setKind('rank')">資金排行</button>
   <button class="tabbtn" data-kind="breadth" onclick="setKind('breadth')">齊漲分歧</button>
@@ -1497,10 +1497,11 @@ DASH_HEAD = """<!DOCTYPE html>
   <div class="tabpage" id="page-rank"></div>
   <div class="tabpage" id="page-breadth"></div>
   <div class="tabpage" id="page-notes"></div>
-  <div class="tabpage" id="page-postmarket">{postmarket}</div>
+  <div class="tabpage" id="page-postmarket"></div>
 </div>
 <div class="footer">本看板每 30 分由快照自動更新。盤中資料到收盤前仍會變動；僅描述資金結構與盤面事實，不含買賣建議或目標價推測。</div>
 <script type="application/json" id="histdata">{hist_json}</script>
+<script type="application/json" id="pmdata">{pmdata}</script>
 <script>{js}</script>
 </div></body></html>"""
 
@@ -1510,6 +1511,44 @@ var curKind = 'rank';
 var KIND_LABEL = {rank:'資金排行', breadth:'齊漲分歧', notes:'盤中三段'};
 function label(stamp){ /* yyyymmdd_HHMM -> 09/08 10:55 */ return stamp.slice(4,6)+'/'+stamp.slice(6,8)+' '+stamp.slice(9,11)+':'+stamp.slice(11,13); }
 function emptyMsg(k){ return '<div class="card"><div class="trend-empty">這一輪沒有 '+KIND_LABEL[k]+' 快照。</div></div>'; }
+var PMDATA = []; try { PMDATA = JSON.parse(document.getElementById('pmdata').textContent || '[]'); } catch(e){}
+var PM_CUR_OVERRIDE = ''; // 非空＝用下拉選單手動指定某一份（date|slot），有時間軸互動才清除
+function pmShort(d,s){ var dd=d.slice(4,6)+'/'+d.slice(6,8); return (s==='morning'?'盤後分析 開盤前更新版':'盤後分析 前一晚初版')+'（'+dd+'）'; }
+function pmPickDate(){ return PMDATA.filter(function(r){return (r.date+'|'+r.slot)===PM_CUR_OVERRIDE;}); }
+function renderPostmarket(stamp){
+  var el = document.getElementById('page-postmarket');
+  var body='';
+  if(!PMDATA.length){
+    el.innerHTML = '<div class="card"><div class="trend-empty">尚無盤後綜合分析報告。排程會在前一晚 22:00（初版）與開盤前 06:30（更新版）自動產生。</div></div>';
+    return;
+  }
+  var list=[];
+  if(PM_CUR_OVERRIDE){
+    list = pmPickDate();
+  } else {
+    var d = stamp ? stamp.slice(0,8) : PMDATA[PMDATA.length-1].date;
+    list = PMDATA.filter(function(r){return r.date===d;});
+    if(!list.length){ // 該日期沒報告：向前找最近一份（含當天與更早），標示為「最接近」
+      var prev = PMDATA.filter(function(r){return r.date < d;}).pop();
+      if(prev){ list=[prev]; body += '<div class="card"><div class="trend-empty">該日期沒有盤後分析產出，顯示前一份：'+pmShort(prev.date,prev.slot)+'</div></div>'; }
+      else { list=[PMDATA[PMDATA.length-1]]; }
+    }
+  }
+  // 下拉選單：預設「依時間軸」；手動選完顯示該份（直到再點時間軸或點回首項）
+  var opts = '<option value=""'+(PM_CUR_OVERRIDE?'':' selected')+'>依時間軸（這一天產出的報告）</option>';
+  for (var i=PMDATA.length-1;i>=0;i--){
+    var r=PMDATA[i]; var sel=(PM_CUR_OVERRIDE===(r.date+'|'+r.slot))?' selected':'';
+    opts += '<option value="'+r.date+'|'+r.slot+'"'+sel+'>'+pmShort(r.date,r.slot)+'</option>';
+  }
+  body += '<div class="card pc" style="margin-bottom:8px"><select id="pm-sel" style="width:100%;padding:6px;border:1px solid var(--line);border-radius:6px;background:#0f1626;color:var(--txt)" onchange="pmOverride(this.value)">'+opts+'</select></div>';
+  body += '<div class="postmarket">' + list.map(function(r){
+    var tag = (r.slot==='morning'?'開盤前更新版':'前一晚初版');
+    return '<div class="card"><div style="margin-bottom:8px;color:var(--sub);font-size:12px">盤後綜合分析 · '+r.date.slice(4,6)+'/'+r.date.slice(6,8)+' '+tag+' · <code>postmarket_'+r.date+'_'+r.slot+'.md</code></div>' + r.html + '</div>';
+  }).join('') + '</div>';
+  body += '<div class="card"><div class="trend-empty">數字/漲幅/價位＝淡黃色標示；股名＝藍色；方向<strong>偏多/偏空</strong>用紅/綠標籤。內容由 Gemini 依當日 XQ 快照＋融資券＋三大法人＋千張大戶＋美股＋行事曆＋金融報告生成，僅供解讀盤面與機構可能路徑，不構成買賣建議。</div></div>';
+  el.innerHTML = body;
+}
+function pmOverride(v){ PM_CUR_OVERRIDE = v; render(); if(document.getElementById('pm-sel')){document.getElementById('pm-sel').value=v;} }
 function render(){
   var idx = parseInt(document.getElementById('histbar').getAttribute('data-cur') || '0', 10);
   var f = HIST[idx] || {};
@@ -1517,6 +1556,7 @@ function render(){
   ['rank','breadth','notes'].forEach(function(k){
     document.getElementById('page-'+k).innerHTML = f[k] ? f[k] : emptyMsg(k);
   });
+  renderPostmarket(f.stamp);
   showKind(curKind);
   document.getElementById('cur-label').textContent = idx===0 ? ('最新：' + label(HIST[0].stamp)) : label(HIST[idx].stamp);
   document.querySelectorAll('.dot').forEach(function(b){b.classList.toggle('active', parseInt(b.getAttribute('data-i'),10)===idx);});
@@ -1620,7 +1660,7 @@ def render_dashboard(d):
         # 轉義 </script>：完整 HTML fragment 內含自己的 <script>，若不轉義，內嵌 JSON 會被瀏覽器截斷（JSON 內 "</" 轉 "<\\/" 是合法且安全）
         hist_json=json.dumps(d["hist"], ensure_ascii=False).replace("</", "<\\/"),
         css=CSS, js=DASH_JS,
-        postmarket=render_postmarket_tab(),
+        pmdata=json.dumps(pm_records(), ensure_ascii=False).replace("</", "<\\/"),
     )
 
 
@@ -1899,39 +1939,31 @@ def _pm_render_md(text):
     return "".join(out)
 
 
-def render_postmarket_tab():
-    """把最新的 postmarket md 轉成 HTML，塞進 dashboard 第四頁籤。
+def pm_records():
+    """把 routines/outputs/postmarket/*.md 全部轉成 [{date, slot, html}]，塞進 pmdata JSON。
 
-    同一日有多份（evening/morning）時，依「檔案修改時間」取最新（開盤前更新版
-    比前一晚初版晚寫入，自然優先；手動重跑產出時也以最新產出為準）。
-    沒報告時顯示引導訊息。
+    date = yyyyMMdd，slot = morning/evening。輸出依日期舊→新排序（JS 端自行挑當天）。
     """
     if not os.path.isdir(POSTMARKET_OUT):
-        return '<div class="card"><div class="trend-empty">尚無盤後綜合分析（routines/outputs/postmarket/ 不存在）。</div></div>'
-    # 全部候選後依修改時間取最新（檔名排序不保證「最新」：morning/evening 同日都有時，
-    # 一律 morning 優先會蓋過手動重跑的 evening，故改用 mtime）。
+        return []
     files = [f for f in os.listdir(POSTMARKET_OUT) if f.startswith("postmarket_") and f.endswith(".md")]
     if not files:
-        return '<div class="card"><div class="trend-empty">尚無盤後綜合分析報告。排程會在前一晚 22:00（初版）與開盤前 06:30（更新版）自動產生。</div></div>'
-    def mtime(fn):
-        return os.path.getmtime(os.path.join(POSTMARKET_OUT, fn))
-    latest = max(files, key=mtime)
-    m = re.match(r"postmarket_(\d{8})_(morning|evening)\.md", latest)
-    if m:
-        slot_disp = {"morning": "開盤前更新版", "evening": "前一晚初版"}[m.group(2)]
-    else:
-        slot_disp = "?"
-    path = os.path.join(POSTMARKET_OUT, latest)
-    try:
-        with io.open(path, "r", encoding="utf-8") as f:
-            text = f.read()
-    except IOError:
-        return '<div class="card"><div class="trend-empty">讀取盤後綜合分析失敗。</div></div>'
-    sec_html = _pm_render_md(text)
-    file_date = latest[11:15] + "-" + latest[15:17] + "-" + latest[17:19]
-    return f"""<div style="margin-bottom:8px;color:var(--sub);font-size:12.5px">盤後綜合分析 · {file_date} {slot_disp} · <code>{latest}</code></div>
-<div class="postmarket">{sec_html}</div>
-<div class="meta" style="margin-top:12px">數字/漲幅/價位＝淡黃色標示；股名＝藍色；方向<strong>偏多/偏空</strong>用紅/綠標籤。內容由 Gemini 依當日 XQ 快照＋融資券＋三大法人＋千張大戶＋美股＋行事曆＋金融報告生成，僅供解讀盤面與機構可能路徑，不構成買賣建議。</div>"""
+        return []
+    recs = []
+    for fn in files:
+        m = re.match(r"postmarket_(\d{8})_(morning|evening)\.md", fn)
+        if not m:
+            continue
+        date, slot = m.group(1), m.group(2)
+        path = os.path.join(POSTMARKET_OUT, fn)
+        try:
+            with io.open(path, "r", encoding="utf-8") as f:
+                text = f.read()
+        except IOError:
+            continue
+        recs.append({"date": date, "slot": slot, "html": _pm_render_md(text)})
+    recs.sort(key=lambda r: (r["date"], 0 if r["slot"] == "morning" else 1))
+    return recs
 
 
 # ============================================================
