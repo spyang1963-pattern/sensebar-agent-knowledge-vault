@@ -345,6 +345,22 @@ def latest_market_snapshot(symbol):
         conn.close()
 
 
+def latest_event_times():
+    """Newest fetched_at/published across kept (non-noise, non-duplicate) events.
+
+    Used by the freshness gate: when keeping custom reports going, the data
+    authoring pipeline must be able to say "latest collected at {t}"."""
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT MAX(fetched_at) AS fetched_at, MAX(published) AS published
+               FROM events WHERE is_noise=0 AND is_duplicate=0"""
+        ).fetchone()
+        return dict(row)
+    finally:
+        conn.close()
+
+
 def stats():
     conn = connect()
     try:

@@ -581,7 +581,27 @@ def write_doc(analysis_md, day, now_str, label=""):
     # report (same folder, next to the .docx/.doc files).
     md_path = os.path.join(DEEP_DIR, f"深度分析報告 {day} {label}.md").strip()
     try:
-        header = f"> 報告時間：{now_str}\n\n---\n\n"
+        header = f"> 報告時間：{now_str}"
+        try:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import db as _db
+            lat = _db.latest_event_times() or {}
+            nt = lat.get("fetched_at")
+            if nt:
+                t = datetime.fromisoformat(nt)
+                if t.tzinfo is None:
+                    t = t.replace(tzinfo=timezone.utc)
+                cutoff = t.astimezone(timezone(timedelta(hours=8))).strftime("%m-%d %H:%M")
+                age_h = (datetime.now(timezone.utc) - t).total_seconds() / 3600.0
+                header += f"\n> 資料截止：{cutoff}"
+                if age_h >= 6:
+                    header += (
+                        f"\n> ⚠️ **資料停滯警示：已 {age_h:.0f} 小時未收錄新事件**，"
+                        f"本報告基於的資料可能非最新。"
+                    )
+        except Exception:
+            pass
+        header += "\n\n---\n\n"
         with open(md_path, "w", encoding="utf-8") as f:
             f.write(header + analysis_md)
         print(f"[deep_report] Markdown 已存知識庫: {md_path}")

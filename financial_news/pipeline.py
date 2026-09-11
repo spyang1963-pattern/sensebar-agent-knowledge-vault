@@ -72,6 +72,52 @@ def run_analyze(batch_size=40, time_budget=None):
     return analyzed, quota_hit
 
 
+def _notify_stale(stale_hours, cutoff_display):
+    """Send a data-freshness alert, rate-limited to one per 6h (logs/freshness.json)."""
+    try:
+        os.makedirs(os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs"), exist_ok=True)
+        fp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "freshness.json")
+        data = {}
+        if os.path.exists(fp):
+            try:
+                with open(fp, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception:
+                pass
+        last = data.get("last_notify")
+        now = datetime.now(timezone.utc)
+        if last:
+            try:
+                t = datetime.fromisoformat(last)
+                if t.tzinfo is None:
+                    t = t.replace(tzinfo=timezone.utc)
+                if (now - t).total_seconds() < 6 * 3600:
+                    return
+            except Exception:
+                pass
+        data.update({
+            "check_time": now.isoformat(timespec="seconds"),
+            "newest_fetched_at": data.get("newest_fetched_at"),
+            "stale_hours": round(stale_hours, 1),
+            "last_notify": now.isoformat(timespec="seconds"),
+        })
+        with open(fp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=1)
+        try:
+            import notifier
+            text = (
+                f"⚠️ 金融新聞資料停滯\n"
+                f"已 {stale_hours:.0f} 小時未收錄新事件（最新事件 {cutoff_display}），"
+                f"蒐集上游可能中斷。請檢查 PC3 30min 排程與 finance.db。"
+            )
+            ok = notifier.send_telegram(text)
+            print(f"report: freshness alert sent={ok}")
+        except Exception as e:
+            print(f"report: freshness alert failed: {e}")
+    except Exception as e:
+        print(f"report: freshness notify error: {e}")
+
+
 def run_report(deep=False, slot=None, no_push=False):
     # Always refresh the market snapshot right before writing a report so the
     # report never reuses yesterday's quotes (Yahoo close can lag by hours).
@@ -83,6 +129,29 @@ def run_report(deep=False, slot=None, no_push=False):
         logger.info(msg)
     except Exception as e:
         logger.warning("report: snapshot refresh failed: %s", e)
+
+    # Freshness gate: how long since the newest kept event was collected.
+    # Without this, a broken collector silently re-renders stale reports.
+    now_utc = datetime.now(timezone.utc)
+    lat = db.latest_event_times() or {}
+    newest = lat.get("fetched_at") or lat.get("published")
+    stale_hours = 0.0
+    data_cutoff_display = None
+    if newest:
+        try:
+            t = datetime.fromisoformat(newest)
+            if t.tzinfo is None:
+                t = t.replace(tzinfo=timezone.utc)
+            stale_hours = max(0.0, (now_utc - t).total_seconds() / 3600.0)
+            data_cutoff_display = t.astimezone(
+                timezone(timedelta(hours=8))).strftime("%m-%d %H:%M")
+        except Exception:
+            pass
+    if stale_hours >= 6:
+        msg = f"report: ⚠️ 資料停滯 {stale_hours:.0f}h（最新事件 {data_cutoff_display}），可能漏收事件"
+        print(msg)
+        logger.warning(msg)
+        _notify_stale(stale_hours, data_cutoff_display)
 
     # Cutoff for "new since last run": mtime of today's report file, if any.
     now = datetime.now(timezone(timedelta(hours=8)))
@@ -101,7 +170,8 @@ def run_report(deep=False, slot=None, no_push=False):
     events = db.recent_events(limit=80, severity_min=0)
     new_events = db.events_fetched_since(since_iso, limit=60, severity_min=0)
     path = report_generator.write_daily_report(
-        events, date_str, new_events=new_events, since_display=since_display
+        events, date_str, new_events=new_events, since_display=since_display,
+        data_cutoff_display=data_cutoff_display, stale_hours=stale_hours if stale_hours >= 6 else None,
     )
     msg = f"report: {path} ({len(events)} events)"
     print(msg)

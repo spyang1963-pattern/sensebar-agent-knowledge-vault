@@ -79,7 +79,8 @@ def _quality_dashboard():
         return f"品質儀表板錯誤: {e}"
 
 
-def generate_report(events, title_date=None, new_events=None, since_display=None):
+def generate_report(events, title_date=None, new_events=None, since_display=None,
+                    data_cutoff_display=None, stale_hours=None):
     """Generate markdown report text for a list of events.
 
     new_events: events fetched since the previous report run (time-flow list of
@@ -92,6 +93,12 @@ def generate_report(events, title_date=None, new_events=None, since_display=None
     lines.append(f"# 金融重點報告 {date_str}")
     lines.append("")
     lines.append(f"> 產出時間: {now.strftime('%Y-%m-%d %H:%M')}（台灣時間）")
+    lines.append(f"> 資料截止: {data_cutoff_display or '無新事件'}（收錄庫最新事件，若久久未前進代表蒐集上游疑中斷）")
+    if stale_hours:
+        lines.append(
+            f"> ⚠️ **資料停滯警示：已 {stale_hours:.0f} 小時未收錄新事件**，"
+            f"本報告事件可能非最新，蒐集上游可能異常。"
+        )
     lines.append(f"> 品質儀表板: {_quality_dashboard()}")
     lines.append("> 本報告由 AI 自動生成，僅供參考，不構成投資建議。")
     lines.append("")
@@ -235,12 +242,14 @@ def generate_report(events, title_date=None, new_events=None, since_display=None
     return "\n".join(lines)
 
 
-def write_daily_report(events, date=None, new_events=None, since_display=None):
+def write_daily_report(events, date=None, new_events=None, since_display=None,
+                       data_cutoff_display=None, stale_hours=None):
     """Write the daily report into the KB."""
     os.makedirs(KB_DIR, exist_ok=True)
     now = datetime.now(timezone(timedelta(hours=8)))
     date_str = date or now.strftime("%Y-%m-%d")
-    md = generate_report(events, date_str, new_events=new_events, since_display=since_display)
+    md = generate_report(events, date_str, new_events=new_events, since_display=since_display,
+                         data_cutoff_display=data_cutoff_display, stale_hours=stale_hours)
     path = os.path.join(KB_DIR, f"{date_str}.md")
     with open(path, "w", encoding="utf-8") as f:
         f.write(md)

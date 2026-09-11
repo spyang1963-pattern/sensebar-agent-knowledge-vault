@@ -43,9 +43,35 @@ def _line_config():
         return None
 
 
+def _tg_env():
+    """Resolve Telegram credentials from env, falling back to the same in
+    ~/.telegram_env (KEY=VALUE per line) that the autonomy layer uses."""
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+    if token and chat_id:
+        return token, chat_id
+    envf = os.path.join(os.path.expanduser("~"), ".telegram_env")
+    if os.path.exists(envf):
+        try:
+            for line in open(envf, encoding="utf-8"):
+                line = line.strip()
+                if line and "=" in line:
+                    k, v = line.split("=", 1)
+                    k, v = k.strip(), v.strip()
+                    if k == "TELEGRAM_BOT_TOKEN":
+                        token = v
+                    elif k == "TELEGRAM_CHAT_ID":
+                        chat_id = v
+        except Exception:
+            pass
+    return token, chat_id
+
+
 def send_telegram(text, token=None, chat_id=None):
     token = token or TELEGRAM_TOKEN
     chat_id = chat_id or TELEGRAM_CHAT_ID
+    if not token or not chat_id:
+        token, chat_id = _tg_env()
     if not token or not chat_id:
         print("[Telegram] 未設定 token/chat_id，跳過")
         return False
