@@ -729,7 +729,7 @@ tr:hover td{background:#1c2438}
 .postmarket table{margin:8px 0}
 .pm-stock{padding:2px 0 10px;margin:10px 0 12px;border-bottom:1px solid var(--line)}
 .pm-stock:last-of-type{border-bottom:none}
-.pm-stock .pm-name{font-size:14.5px;font-weight:700;margin-bottom:4px;color:var(--txt)}
+.pm-stock .pm-name{font-size:14.5px;font-weight:700;margin-bottom:4px;color:var(--txt);display:flex;align-items:center;flex-wrap:wrap}
 .pm-stock .pm-name b{color:var(--txt)}
 .pm-stock .pm-name b.key-red{color:var(--up)}
 .pm-stock .pm-name b.key-green{color:var(--down)}
@@ -744,6 +744,9 @@ tr:hover td{background:#1c2438}
 .postmarket .pm-sub{display:inline-block;border-radius:4px;padding:0 6px;font-size:12px;font-weight:700;background:#243156;color:#bcd2ff;margin-right:6px}
 .pm-mg{display:inline-block;border-radius:4px;padding:0 6px;font-size:13px;font-weight:700;background:#4d1c2b;color:#e7748a;margin-right:6px}
 .postmarket .pm-sub.pm-mg{background:#4d1c2b;color:#e7748a}
+.postmarket .pm-sub.pm-judge{background:#4a3a10;color:#e0b34d}
+.pm-idx{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:4px;background:#4a3a10;color:#e0b34d;font-size:12.5px;font-weight:800;margin-right:8px}
+.pm-note{display:inline-block;margin-left:8px;font-size:11.5px;font-weight:500;color:#ffab40;vertical-align:middle}
 .postmarket .card li{margin:4px 0}
 @media(max-width:640px){.wrap{padding:10px;font-size:13px}.hide-sm{display:none}}
 """
@@ -1683,7 +1686,7 @@ _PM_STR_RE = re.compile(r"強度[：:]\s*([強中弱])")
 _PM_KW_COLOR = {}
 _PM_CUR_STOCKS = {}          # name -> code（本次報告預測榜的股票；內文股名標示用）
 _PM_CUR_DIR = {}             # name -> key-red/key-green/""（內文股名依方向紅綠）
-_PM_SUB_MAGENTA = {"大家怎麼想", "數據怎麼說", "我的判斷與理由"}
+_PM_SUB_JUDGE = {"我的判斷", "我的判斷與理由"}
 
 
 def _pm_dir_label(d):
@@ -1753,8 +1756,8 @@ def _pm_hl_line(line):
 
 
 def _pm_sub_span(label):
-    """次標籤：價值點的三個次標（大家怎麼想/數據怎麼說/我的判斷與理由）用洋紅，其餘維持藍底。"""
-    cls = "pm-sub pm-mg" if label in _PM_SUB_MAGENTA else "pm-sub"
+    """次標籤：價值點的「我的判斷」用薑黃（pm-judge）凸顯，其餘維持淡藍（pm-sub）。"""
+    cls = "pm-sub pm-judge" if label in _PM_SUB_JUDGE else "pm-sub"
     return f'<span class="{cls}">{label}</span>：'
 
 
@@ -1793,16 +1796,19 @@ def _pm_stk_cls(name):
     return "pm-stk"
 
 
-def _pm_forecast_section(body):
+def _pm_forecast_section(body, note=""):
     """「明日個股預測榜」：每檔做成卡片＋股名依方向上色，卡上附一鍵複製。
 
     Gemini 輸出格式不穩（行首常見整行 **粗體**、方向可能是「中含偏多」這類複合詞），
     解析時先剝掉粗體標記再抓 代碼＋股名，方向/強度用獨立的搜尋 regex 容錯。
+    note：標題尾註（如「含 5 檔中小型股」），當作小字附註顯示在標題旁。
     """
+    note_html = f'<span class="pm-note">{_pm_esc(note)}</span>' if note else ""
     parts = ['<div class="card" id="pm-forecast"><div style="display:flex;align-items:center;justify-content:space-between">'
-             '<h2 style="margin:0">明日個股預測榜</h2>'
-             '<button class="copybtn" onclick="copyStocks(this)" title="複製全部股號+股名到 Excel（兩欄）">📋 一鍵複製</button></div>']
+             '<h2 style="margin:0">明日個股預測榜{note}</h2>'
+             '<button class="copybtn" onclick="copyStocks(this)" title="複製全部股號+股名到 Excel（兩欄）">📋 一鍵複製</button></div>'.format(note=note_html)]
     cur = None
+    idx = 0
     for ln in body:
         s = ln.strip()
         if not s or s == "---":
@@ -1812,6 +1818,7 @@ def _pm_forecast_section(body):
         if m and m.group(2):
             if cur is not None:
                 parts.append(cur + "</div>")
+            idx += 1
             code, name = m.group(1), m.group(2)
             dm = _PM_DIR_RE.search(flat)
             sm = _PM_STR_RE.search(flat)
@@ -1823,7 +1830,8 @@ def _pm_forecast_section(body):
                 name_html = f'<b class="{ncls}" data-code="{code}" data-name="{name}">{code} {name}</b>'
             else:
                 name_html = f'<b data-code="{code}" data-name="{name}">{code} {name}</b>'
-            cur = f'<div class="pm-stock {cls}"><div class="pm-name">{name_html}{pill}{strat_html}</div>'
+            cur = (f'<div class="pm-stock {cls}">'
+                   f'<div class="pm-name"><span class="pm-idx">{idx}</span>{name_html}{pill}{strat_html}</div>')
         elif (s.startswith("-") or s.startswith("·")) and cur is not None:
             raw = s.lstrip("-· ").strip()
             mm = re.match(r"^([^：]+)：\s*(.*)$", raw, re.S)
@@ -1918,7 +1926,7 @@ def _pm_render_md(text):
     _PM_CUR_STOCKS.clear()
     _PM_CUR_DIR.clear()
     for title, body in sections:
-        if title != "明日個股預測榜":
+        if not title.startswith("明日個股預測榜"):
             continue
         for ln in body:
             flat = ln.strip().replace("**", "")
@@ -1932,8 +1940,9 @@ def _pm_render_md(text):
 
     out = []
     for title, body in sections:
-        if title == "明日個股預測榜":
-            out.append(_pm_forecast_section(body))
+        if title.startswith("明日個股預測榜"):
+            note = title[len("明日個股預測榜"):].strip().strip("（）()")
+            out.append(_pm_forecast_section(body, note))
         else:
             out.append(_pm_generic_section(title, body))
     return "".join(out)
