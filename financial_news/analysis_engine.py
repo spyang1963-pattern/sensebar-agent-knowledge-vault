@@ -36,7 +36,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db
 
 MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
-BATCH_NUM = 8  # events per Gemini call
+BATCH_NUM = 8  # events per call
+PROVIDER_ORDER = [p.strip() for p in os.environ.get("ANALYZE_PROVIDERS", "gemini,groq,openrouter").split(",") if p.strip()]
+GROQ_ANALYZE_MODEL = os.environ.get("GROQ_ANALYZE_MODEL", "openai/gpt-oss-120b")
+OPENROUTER_MODEL = os.environ.get("OPENROUTER_ANALYZE_MODEL", "openrouter/auto")
 
 SYSTEM_PROMPT = """你是一名專業的國際金融分析師。你的任務是分析以下新聞事件，針對台股/美股/全球宏觀投資者提供精簡、可執行的重點。
 
@@ -74,21 +77,34 @@ def _calendar_context():
         return ""
 
 
-def _read_key():
-    api_key = os.environ.get("GEMINI_API_KEY") or ""
+def _read_key(env_name, keyfile, label):
+    api_key = os.environ.get(env_name) or ""
     if not api_key:
-        kf = Path.home() / ".gemini_api_key"
+        kf = Path.home() / keyfile
         if kf.exists():
             api_key = kf.read_text("utf-8").strip()
-    if not api_key:
-        raise Exception("GEMINI_API_KEY not found")
     return api_key
 
 
-def _client():
+def _gemini_key():
+    key = _read_key("GEMINI_API_KEY", ".gemini_api_key", "Gemini")
+    if not key:
+        raise Exception("GEMINI_API_KEY not found")
+    return key
+
+
+def _gemini_client():
     if genai is None:
         raise Exception("google-genai not installed")
-    return genai.Client(api_key=_read_key())
+    return genai.Client(api_key=_gemini_key())
+
+
+def _groq_key():
+    return _read_key("GROQ_API_KEY", ".groq_api_key", "Groq")
+
+
+def _openrouter_key():
+    return _read_key("OPENROUTER_API_KEY", ".openrouter_api_key", "OpenRouter")
 
 
 def _json_from_text(text):
@@ -108,19 +124,27 @@ def _json_from_text(text):
     return None
 
 
-def analyze_batch(events, model=MODEL, max_attempts=8):
-    """Analyze a batch of events via Gemini. Returns list of dict results."""
-    if not events:
-        return []
-    client = _client()
+def _payload_for(events):
     payload = "\n".join(
         f"[{ev['id']}] ({ev['published']}) {ev['title']}\n"
         f"   來源: {ev.get('link') or ev.get('source') or ''}\n"
         f"   摘要: {ev['summary'][:300]}"
         for ev in events
     )
-    prompt = f"{_calendar_context()}請分析以下 {len(events)} 則新聞事件：\n\n{payload}\n\n{EVENT_PROMPT_SUFFIX}"
+    return f"{_calendar_context()}請分析以下 {len(events)} 則新聞事件：\n\n{payload}\n\n{EVENT_PROMPT_SUFFIX}"
 
+
+def _is_daily_quota(message, provider):
+    m = (message or "").lower()
+    if provider == "gemini":
+        return "tokens per day" in m or "daily tokens" in m or "quota exceeded" in m
+    return "429" in m or "rate limit" in m
+
+
+def _call_gemini(prompt, max_attempts):
+    print("[analysis] provider=gemini")
+    client = _gemini_client()
+    model = os.environ.get("GEMINI_MODEL", MODEL)
     last_err = ""
     for attempt in range(max_attempts):
         try:
@@ -135,25 +159,134 @@ def analyze_batch(events, model=MODEL, max_attempts=8):
             )
             parsed = _json_from_text(resp.text or "")
             if parsed and "events" in parsed:
-                return parsed["events"]
+                return parsed["events"], None
             if isinstance(parsed, list):
-                return parsed
+                return parsed, None
             last_err = "json format unexpected"
         except Exception as e:
-            es = str(e)
-            last_err = es[:200]
-            if "tokens per day" in es.lower() or "daily tokens" in es.lower():
-                print(f"[analysis] 已達 Gemini 每日額度，停止（{es[:120]}）")
-                return None
-            is_rpm = ("quota exceeded" in es.lower() or "resource_exhausted" in es.lower()) and "retry in" in es.lower()
+            es = str(e)[:200]
+            last_err = es
+            if _is_daily_quota(es, "gemini"):
+                return None, f"gemini daily quota: {es[:120]}"
             retry_sec = 30
-            if is_rpm:
-                m = re.search(r"retry in ([0-9.]+)s", es)
-                if m:
-                    retry_sec = int(float(m.group(1))) + 2
-            print(f"[analysis] batch fail ({attempt+1}/{max_attempts}): {es[:120]} wait {retry_sec}s")
+            m = re.search(r"retry in ([0-9.]+)s", es)
+            if m:
+                retry_sec = int(float(m.group(1))) + 2
+            print(f"[analysis] gemini fail ({attempt+1}/{max_attempts}): {es[:120]} wait {retry_sec}s")
             time.sleep(retry_sec)
-    print(f"[analysis] batch failed permanently: {last_err}")
+    return None, last_err or "unknown"
+
+
+def _call_groq(prompt, max_attempts):
+    import groq
+    api_key = _groq_key()
+    if not api_key:
+        return None, "GROQ_API_KEY not found"
+    print("[analysis] provider=groq")
+    client = groq.Groq(api_key=api_key, timeout=90, max_retries=0)
+    last_err = ""
+    for attempt in range(max_attempts):
+        try:
+            resp = client.chat.completions.create(
+                model=GROQ_ANALYZE_MODEL,
+                messages=[{"role": "system", "content": SYSTEM_PROMPT},
+                          {"role": "user", "content": prompt}],
+                max_tokens=4000,
+                temperature=0.2,
+            )
+            raw = _strip_think(resp.choices[0].message.content or "")
+            parsed = _json_from_text(raw)
+            if parsed and "events" in parsed:
+                return parsed["events"], None
+            if isinstance(parsed, list):
+                return parsed, None
+            last_err = f"json format unexpected: {raw[:80]}"
+        except Exception as e:
+            es = str(e)[:200]
+            last_err = es
+            if "429" in es or "rate limit" in es.lower():
+                time.sleep(10 + 5 * attempt)
+                print(f"[analysis] groq rate-limit ({attempt+1}/{max_attempts}), retry")
+                continue
+            break
+    return None, last_err or "unknown"
+
+
+def _call_openrouter(prompt, max_attempts):
+    import requests
+    api_key = _openrouter_key()
+    if not api_key:
+        return None, "OPENROUTER_API_KEY not found"
+    print("[analysis] provider=openrouter")
+    last_err = ""
+    for attempt in range(max_attempts):
+        r = None
+        try:
+            r = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}",
+                         "Content-Type": "application/json"},
+                json={
+                    "model": OPENROUTER_MODEL,
+                    "messages": [{"role": "system", "content": SYSTEM_PROMPT},
+                                 {"role": "user", "content": prompt}],
+                    "temperature": 0.2,
+                },
+                timeout=90,
+            )
+            r.raise_for_status()
+            msg = r.json()["choices"][0]["message"]["content"] or ""
+            parsed = _json_from_text(_strip_think(msg))
+            if parsed and "events" in parsed:
+                return parsed["events"], None
+            if isinstance(parsed, list):
+                return parsed, None
+            last_err = f"json format unexpected: {msg[:80]}"
+        except Exception as e:
+            es = str(e)[:200]
+            last_err = es
+            if _is_daily_quota(es, "groq") or (r is not None and r.status_code == 429):
+                time.sleep(10 + 5 * attempt)
+                print(f"[analysis] openrouter rate-limit ({attempt+1}/{max_attempts}), retry")
+                continue
+            break
+    return None, last_err or "unknown"
+
+
+def analyze_batch(events, model=MODEL, max_attempts=8):
+    """Analyze a batch of events, trying providers in order until one works.
+
+    Attempts each ANALYZE_PROVIDERS entry (default: gemini, groq, openrouter)
+    in sequence. A provider that hits its daily quota is skipped so the next
+    one can take over. Returns list of result dicts, or None if all failed.
+    """
+    if not events:
+        return []
+    if not _openrouter_key():
+        providers = [p for p in PROVIDER_ORDER if p != "openrouter"]
+    else:
+        providers = PROVIDER_ORDER
+    if not providers:
+        providers = ["gemini", "groq"]
+    prompt = _payload_for(events)
+    last_err = ""
+    for provider in providers:
+        try:
+            if provider == "gemini":
+                results, err = _call_gemini(prompt, max_attempts)
+            elif provider == "groq":
+                results, err = _call_groq(prompt, max_attempts)
+            elif provider == "openrouter":
+                results, err = _call_openrouter(prompt, max_attempts)
+            else:
+                continue
+        except Exception as e:
+            results, err = None, f"{provider} crashed: {str(e)[:120]}"
+        if results is not None:
+            return results
+        last_err = f"{provider}: {err}"
+        print(f"[analysis] {provider} 不可用（{err[:100]}），換下一個模型")
+    print(f"[analysis] 所有分析模型均不可用：{last_err}")
     return None
 
 
