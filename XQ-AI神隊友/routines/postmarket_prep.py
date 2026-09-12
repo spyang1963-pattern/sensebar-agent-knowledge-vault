@@ -49,9 +49,63 @@ except Exception:
 # ============================================================
 #  1. XQ 當日快照摘要
 # ============================================================
+root = 0  # dummy（避免命名衝突）
+_PX = {}  # code -> close（最新 breadth 快照現價，供撐壓基準與速查表）
+
+
+def _load_price_map():
+    """從最新 breadth 快照建立 {code: close} 現價 map。失敗時保留空 dict。"""
+    global _PX
+    if _PX:
+        return
+    try:
+        snaps = rh.list_snapshots("breadth") if rh else {}
+        if not snaps:
+            return
+        _, path = snaps.popitem()
+        rows = rh.load_csv(path)
+        _PX = {r["Code"]: r["Close"] for r in rows if r.get("Code")}
+    except Exception as e:
+        print(f"[prep] 現價 map 讀取失敗：{e}", file=sys.stderr)
+
+
+def _px_format(code):
+    v = _PX.get(code)
+    if v is None:
+        return "?"
+    return f"{v:,.0f}元" if float(v) == int(v) else f"{v:,.2f}元"
+
+
+def _price_table():
+    """現價速查表：成交值前 80 檔快照（代碼 名稱 現價），供撐壓推算用。"""
+    _load_price_map()
+    if not _PX or rh is None:
+        return "（無快照現價 — 支撐/壓力請自行保守估計，或明說資料不足）"
+    try:
+        snap_rows = rh.load_csv(next(iter(rh.list_snapshots("breadth").values())))
+    except Exception:
+        snap_rows = []
+    # 依成交值排序取前 80
+    order = [r for r in snap_rows if r.get("Code") in _PX and r.get("Val", 0)]
+    order.sort(key=lambda r: r.get("Val", 0), reverse=True)
+    order = order[:80]
+    if not order:
+        return "（本次快照無現價資料）"
+    rows = []
+    for r in order:
+        c = r["Code"]
+        v = _PX.get(c)
+        if v is None:
+            continue
+        px = f"{v:,.0f}元" if float(v) == int(v) else f"{v:,.2f}元"
+        rows.append(f"- {c} {r.get('Name', '')} 現價{px}")
+    return "### 現價速查表（成交值前80 · 支撐/壓力必須以此為基準）\n" + "\n".join(rows)
+
+
 def _xq_summary():
     if rh is None:
         return "（無法載入 render_html 模組）"
+    _load_price_map()
     groups = rh.build_group_map()
     lines = []
     for kind, label in (("rank", "族群資金排行"), ("breadth", "齊漲分歧診斷"), ("notes", "盤中觀察三段")):
@@ -96,7 +150,7 @@ def _xq_summary():
                     if items:
                         lines.append(f"個股訊號【{sig.get('title')}】：")
                         for s in items[:8]:
-                            lines.append(f"- {s.get('Code')} {s.get('Name')} 漲幅{s.get('Chg',0):+.2f}% 成交值{s.get('Val',0):.1f}億")
+                            lines.append(f"- {s.get('Code')} {s.get('Name')} 現價{_px_format(s.get('Code'))} 漲幅{s.get('Chg',0):+.2f}% 成交值{s.get('Val',0):.1f}億")
             else:
                 d = rh.build_notes(groups, path)
                 one = rh.one_line_notes(d)
@@ -334,6 +388,7 @@ def main():
 
     parts = []
     parts.append(f"# 盤後綜合分析 input — {today.isoformat()}（{slot_label}）\n")
+    parts.append(f"## 0. 現價速查表（支撐/壓力必須以此為基準）\n{_price_table()}\n")
     parts.append(f"## 1. XQ 盤中快照摘要\n{_xq_summary()}\n")
     parts.append(f"## 2. 融資券\n{_margin_summary()}\n")
     parts.append(f"## 3. 三大法人\n{_institutional_summary()}\n")

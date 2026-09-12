@@ -746,6 +746,7 @@ tr:hover td{background:#1c2438}
 .postmarket .pm-sub.pm-mg{background:#4d1c2b;color:#e7748a}
 .postmarket .pm-sub.pm-judge{background:#4a3a10;color:#e0b34d}
 .pm-idx{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:4px;background:#4a3a10;color:#e0b34d;font-size:12.5px;font-weight:800;margin-right:8px}
+.pm-pxwarn{display:block;margin:4px 0 2px;font-size:11.5px;font-weight:700;color:#ff9d4d;background:rgba(255,157,77,.1);border:1px solid rgba(255,157,77,.35);border-radius:4px;padding:2px 6px}
 .pm-note{display:inline-block;margin-left:8px;font-size:11.5px;font-weight:500;color:#ffab40;vertical-align:middle}
 .postmarket .card li{margin:4px 0}
 @media(max-width:640px){.wrap{padding:10px;font-size:13px}.hide-sm{display:none}}
@@ -1687,6 +1688,56 @@ _PM_KW_COLOR = {}
 _PM_CUR_STOCKS = {}          # name -> code（本次報告預測榜的股票；內文股名標示用）
 _PM_CUR_DIR = {}             # name -> key-red/key-green/""（內文股名依方向紅綠）
 _PM_SUB_JUDGE = {"我的判斷", "我的判斷與理由"}
+_PM_PRICE = {}               # code -> close（最新 breadth 快照現價，供價位驗證）
+
+
+def _pm_price_map():
+    """最新 breadth 快照的現價 {code: close}；沒有快照時回空 dict。"""
+    if _PM_PRICE:
+        return _PM_PRICE
+    try:
+        snaps = list_snapshots("breadth")
+        if not snaps:
+            return {}
+        _, path = snaps.popitem()
+        for r in load_csv(path):
+            c = r.get("Code")
+            if c:
+                _PM_PRICE[c] = float(r.get("Close", 0) or 0)
+    except Exception:
+        pass
+    return _PM_PRICE
+
+
+def _pm_check_price(code, text):
+    """驗證關鍵價位合理性：用現價檢查「支撐 X / 壓力 Y」。
+
+    現價有、且支撐或壓力與現價相差 ≥50%（或方向反了）→ 回傳警示 HTML，
+    否則回空字串。
+    """
+    if not code or not text:
+        return ""
+    px = _pm_price_map().get(code)
+    if not px:
+        return ""
+    m = re.findall(r"支撐\s*([\d,]+\.?\d*)\s*元?\s*/\s*壓力\s*([\d,]+\.?\d*)", text)
+    if not m:
+        return ""
+    try:
+        sup, res = float(m[0][0].replace(",", "")), float(m[0][1].replace(",", ""))
+    except ValueError:
+        return ""
+    bad = []
+    if sup >= px * 1.5:
+        bad.append(f"支撐{sup:g} 高於現價{px:g}太多")
+    if res <= px * 0.5:
+        bad.append(f"壓力{res:g} 低於現價{px:g}太多")
+    if sup >= px or res <= px:
+        bad.append("支撐/壓力方向反了" if sup >= px and res <= px else "")
+    bad = [b for b in bad if b]
+    if not bad:
+        return ""
+    return (f'<span class="pm-pxwarn">⚠ 價位可疑（現價 {px:g}）：' + "；".join(bad) + "</span>")
 
 
 def _pm_dir_label(d):
@@ -1838,6 +1889,8 @@ def _pm_forecast_section(body, note=""):
             if mm:
                 lab = mm.group(1).strip().replace("**", "")
                 rest = _pm_hl_line(mm.group(2).strip())
+                if cur is not None and "關鍵價位" in lab:
+                    rest += _pm_check_price(code, mm.group(2).strip())
                 cur += f'<div class="pm-detail"><span class="pm-k">{_pm_esc(lab)}</span>：{rest}</div>'
             else:
                 cur += f'<div class="pm-detail">{_pm_hl_line(raw)}</div>'
