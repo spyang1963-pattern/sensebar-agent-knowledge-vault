@@ -1753,7 +1753,7 @@ def _pm_dir_label(d):
     if "偏空" in d:
         return "偏空", "down", "key-green"
     if "中性" in d:
-        return "中性", "", ""
+        return "中性", "flat", ""
     return d.strip(), "flat", ""
 
 
