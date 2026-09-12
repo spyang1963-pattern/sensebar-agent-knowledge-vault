@@ -98,10 +98,13 @@
 > 這塊的樣式全在 `render_html.py` 的 `_pm_*` 函式＋CSS（`.pm-*`）。**不要憑記憶改**，重弄前先讀這段與 `_pm_forecast_section`／`_pm_render_md`／`_pm_hl_line` 實作。
 > 報告格式由 `postmarket_report.py` 的 SYSTEM_PROMPT 定義（管 Gemini 產出 md），渲染管樣式，兩者都要動才一致。
 
-### ✅ 範例基準版本（2026-09-12 使用者確認「這就是我希望呈現的樣子」）
-- **基準內容**：`eb4ef8b`（種子）+ `437b367`（樣式）+ `1b8afb3`（價位品質）已在 PC3 部署、線上 `xq-dashboard` 驗證通過（pmdata 4 份：09/10 morning 8 卡 / 09/10 evening 14 卡 / 09/11 morning 12 卡 / 09/11 evening 12 卡，每檔都有薑黃標號）。
-- **將來任何輸出跑掉**，以此為修正基準：重產後逐卡核對「有無薑黃標號（pm-idx）、有無方向 pill（缺方向時應顯示中性 flat）、有無 pm-pxwarn 價位警示（不該無故出現）」。
-- **前鼎教訓（2026-09-12）**：Gemini 的「方向：中性」在 `_pm_dir_label` 原本回傳 cls="" → 渲染層 `pool` 判斷 `if cls` 不成立 → **中性的股票天生沒 pill**。**任何方向（含中性）都要有 pill**：中性用 `.pill.flat`（`--flat` 灰）。「關係到牭方向欄」與「方向=中性」兩者都要顯示中性 pill。`eb4ef8b`＋`0a1b...`（中性 pill 修正版）。
+### ✅ 定稿範本版本（2026-09-12 使用者確認「這個版本定稿，記下來為範本」）
+- **定稿 commits（由舊到新，全部已 push 並部署 PC3＋線上）**：`437b367`（標題 startswith＋薑黃標號 pm-idx/尾註 pm-note/judge 薑黃）→ `1b8afb3`（現價錨定/價位品質）→ `eb4ef8b`（缺方向補中性 flat pill＋CSS）→ `dd2a6b2`（**方向=中性也有 pill**）→ `6dd58ce`（排名標籤 `N.` 取代 `N#`）。
+- **線上驗證基線**：pmdata 4 份（09/10 morning 8 卡 / 09/10 evening 14 卡 / 09/11 morning 12 卡 / 09/11 evening 12 卡），每檔有薑黃標號、每檔有方向 pill（中性＝灰 flat）、價位可疑才出現 pm-pxwarn。
+- **將來任何輸出跑掉**，以此為修正基準：重產後逐卡核對「有無薑黃標號（pm-idx）、有無方向 pill（含中性 flat）、有無不該出現的 pm-pxwarn、排名標籤是否 `N.`、股名紅綠對不對」。
+- **前鼎教訓（2026-09-12，兩次）**：
+  ① 第一次誤判「缺方向欄」補了 fallback，才發現 md 原文是 `方向：中性`——中性分支原本 cls="" 讓 `if cls` 不畫 pill。
+  ② **任何方向（含中性）都要有 pill**：`_pm_dir_label` 對空字串與「中性」都回 （"中性","flat",""）。`.pill.flat` 樣式＝`--flat` 灰。
 
 ### 版面定案（使用者逐輪確認過的「定版」）
 - **預測榜卡片（`.pm-stock`）**：每檔一行內含——**薑黃標號** `.pm-idx`（`background:#4a3a10;color:#e0b34d`，卡片順序 1,2,3…）＋股名 `<b data-code data-name>`（依方向 `key-red`紅／`key-green`綠）＋方向 pill（`.pill.up/.pill.down/.pill.flat`，缺方向時是中性 flat）＋「強度：X」`.pm-str`。
@@ -109,6 +112,7 @@
 - **次標籤 `.pm-sub`**（價值點的「大家怎麼想／數據怎麼說」等）＝淡藍底（同 `.pm-k`）；**「我的判斷／我的判斷與理由」＝ `.pm-sub.pm-judge` 薑黃**（`background:#4a3a10;color:#e0b34d`），比淡藍高一層、是這塊的視覺主角。先前用海棠紅 `_PM_SUB_MAGENTA` 已廢棄。
 - **標題尾註 `.pm-note`**：預測榜標題會帶小字（如「（含 5 檔中小型股）」），薑黃小字顯示在標題旁，**不要**把它當成整段標題的一部分去做比對。
 - **一鍵複製按鈕**：卡片標題右側 `copyStocks`，輸出 **TSV**（`code\tname` 換行）方便貼 Excel。
+- **排名標籤一律 `N.`**：盤面任何「第 N 名」的股票清單（頭號矛盾 `.contra-card .t`、齊漲分歧逐檔清單等）一律顯示 `1. 台積電` 格式（`{r['Rk']}.`），**不可用 `#`**（`6dd58ce`）。
 
 ### 關鍵陷阱（本次實踩，務必遵守）
 1. **標題比對用 `title.startswith("明日個股預測榜")`，不可 `==`**：Gemini 不時在標題加尾註（如「（含 5 檔中小型股）」），`==` 失配會讓整段預測榜**滑落 generic section**（整列海棠紅、方向只剩文字、無 pill 卡片）＝使用者看到的「權值股偏紅」。
