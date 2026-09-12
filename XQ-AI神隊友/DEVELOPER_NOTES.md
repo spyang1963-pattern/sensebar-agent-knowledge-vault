@@ -93,6 +93,34 @@
 
 ---
 
+## 四之一、盤後綜合分析（dashboard 第四 tab）— 格式定案（2026-09-11）
+
+> 這塊的樣式全在 `render_html.py` 的 `_pm_*` 函式＋CSS（`.pm-*`）。**不要憑記憶改**，重弄前先讀這段與 `_pm_forecast_section`／`_pm_render_md`／`_pm_hl_line` 實作。
+> 報告格式由 `postmarket_report.py` 的 SYSTEM_PROMPT 定義（管 Gemini 產出 md），渲染管樣式，兩者都要動才一致。
+
+### 版面定案（使用者逐輪確認過的「定版」）
+- **預測榜卡片（`.pm-stock`）**：每檔一行內含——**薑黃標號** `.pm-idx`（`background:#4a3a10;color:#e0b34d`，卡片順序 1,2,3…）＋股名 `<b data-code data-name>`（依方向 `key-red`紅／`key-green`綠）＋方向 pill（`.pill.up/.pill.down`）＋「強度：X」`.pm-str`。
+- **詳細行 `.pm-detail`**：`<span class="pm-k">`（藍底標籤，`background:#243156;color:#bcd2ff`）＋「：」＋ `_pm_hl_line` 高亮內容。
+- **次標籤 `.pm-sub`**（價值點的「大家怎麼想／數據怎麼說」等）＝淡藍底（同 `.pm-k`）；**「我的判斷／我的判斷與理由」＝ `.pm-sub.pm-judge` 薑黃**（`background:#4a3a10;color:#e0b34d`），比淡藍高一層、是這塊的視覺主角。先前用海棠紅 `_PM_SUB_MAGENTA` 已廢棄。
+- **標題尾註 `.pm-note`**：預測榜標題會帶小字（如「（含 5 檔中小型股）」），薑黃小字顯示在標題旁，**不要**把它當成整段標題的一部分去做比對。
+- **一鍵複製按鈕**：卡片標題右側 `copyStocks`，輸出 **TSV**（`code\tname` 換行）方便貼 Excel。
+
+### 關鍵陷阱（本次實踩，務必遵守）
+1. **標題比對用 `title.startswith("明日個股預測榜")`，不可 `==`**：Gemini 不時在標題加尾註（如「（含 5 檔中小型股）」），`==` 失配會讓整段預測榜**滑落 generic section**（整列海棠紅、方向只剩文字、無 pill 卡片）＝使用者看到的「權值股偏紅」。
+2. **price 速查表要餵進 input**：`postmarket_prep.py` 會讀最新 `breadth_*.csv` 的 `Close` 建「現價速查表（成交值前 80）」放 input 開頭，個股訊號行附現價。**沒有現價，Gemini 就會靠訓練記憶硬編支撐/壓力**（例：聯一光現價 166 卻寫「支撐 42/壓力 48」）。
+3. **prompt 鐵律**：SYSTEM_PROMPT 明定「支撐必須 < 現價 < 壓力、與現價合理距離（±3%~15%）、查無現價寫『無現價資料，不估價位』、嚴禁編價」。
+4. **渲染驗證層**：`_pm_check_price` 用最新 breadth 快照現價比對 md 的「支撐 X / 壓力 Y」，方向反了或偏差 ≥50% → 插 `.pm-pxwarn`（橙色警示）。**跨日渲染**（報告日 vs 快照日不同）且個股大漲大跌時可能誤標，門檻 ±50% 已是緩衝。
+5. **詳細行解析**：`- 標籤：內容` 用 `re.match(r"^([^：]+)：\s*(.*)$", raw, re.S)` 拆；**關鍵價位在 `cur is not None` 後才 `_pm_check_price(code, ...)`**（code 來自該檔股票變數）。
+6. 歷史報告以 `pmdata` JSON 內嵌進 dashboard；渲染時 embed 的 HTML 在 ``<script type="application/json" id="pmdata">``，`</` 要 `.replace("</","<\\/")` 防被 `</script>` 截斷（既有規則，沿用）。
+
+### 檔案分工（改這塊要知道）
+- `postmarket_prep.py`：彙整五路資料 → `routines\postmarket\input_{date}_{slot}.md`；現價速查表、資料時效註記都在這。
+- `postmarket_report.py`：SYSTEM_PROMPT（含預測榜 12~15 檔、至少 4~5 檔中小、關鍵價位鐵律、催化劑）＋呼叫 Gemini → `routines\outputs\postmarket\postmarket_{date}_{slot}.md`。
+- `render_html.py`：`_pm_render_md` 逐一 render pmdata；`_pm_forecast_section` 處理預測榜卡片；CSS `.pm-*` 在同檔。
+- 排程：`XQ_Postmarket_Evening`（22:00）／`XQ_Postmarket_Morning`（06:30）；跑 `xq_postmarket_loop.bat <slot>`（prep→report→render→deploy 串好）。
+
+---
+
 ## 五、排程（Windows Task Scheduler）
 
 - 任務名：**XQ_Snapshot_Loop**（系統管理員握有的舊任務，StartBoundary=09:25，待管理員停用）
