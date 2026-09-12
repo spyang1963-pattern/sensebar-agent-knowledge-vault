@@ -130,6 +130,33 @@
 - `render_html.py`：`_pm_render_md` 逐一 render pmdata；`_pm_forecast_section` 處理預測榜卡片；CSS `.pm-*` 在同檔。
 - 排程：`XQ_Postmarket_Evening`（22:00）／`XQ_Postmarket_Morning`（06:30）；跑 `xq_postmarket_loop.bat <slot>`（prep→report→render→deploy 串好）。
 
+### ⭐ 新功能需求（2026-09-12 使用者提出，接手 session 照此實作）
+
+#### 需求一：儀表板「一鍵輸出全部表 → 貼 Excel」
+- **目標**：dashboard 四個頁籤（資金排行／齊漲分歧／盤中三段／盤後綜合分析）每一張資料卡，**按一次鍵**就把「目前頁籤全部表」或「全部頁籤所有表」彙整成一整份，直接複製、貼到 Excel，不用一卡一張慢慢複製。
+- **現況**：每卡各自有 `copyStocks` 按鈕（`DASH_JS` 內，約 `render_html.py` L1601），只複製**單卡**（抓 `.card` 內 `[data-code]`→`code\tname`；無 `[data-code]` 則抓 `table` 全文）。
+- **做法（建議）**：
+  1. `DASH_HEAD`（L1492 的 header 區）tabbar 下方加一排按鈕：「📋 輸出本頁全部表」「📋 輸出全部頁籤」。
+  2. `DASH_JS` 新增 `copyAll(scope)`：`scope='page'` 只走 `.tabpage.active`；`scope='all'` 走全部 `.tabpage`（每頁前綴頁籤名）。對每個 `.card`，**前綴一行「【卡片標題】」**（取 `card.querySelector('h2').textContent`），再輸出複製內容（沿用 copyStocks 的 `[data-code]`→TSV 或 table 全文）；卡片間空一行。tab 分隔＝Excel 分欄、換行＝分列，貼上即「多張小表依序往下排」。
+  3. 成功提示沿用 `copyStocks` 的 `copied` 樣式＋「已複製 N 張表」。
+- **驗證**：`python -X utf8 render_html.py --dashboard` 重產，開 HTML 確認按鈕與 `copyAll` 存在；瀏覽器手測複製→貼 Excel 看分欄分列正確。
+- **注意**：`copyStocks` 有兩份等義實作（`JS` L775 與 `DASH_JS` L1601），各自獨立頁面，`copyAll` 只需加在 `DASH_JS`（盤中儀表板用）；若要單頁版也要就同步加 `JS`。
+
+#### 需求二：盤後預測榜「出榜依據＋可靠度＋大中小型涵蓋＋資金板塊權重」
+- **目標**：明日個股預測榜每檔都要——
+  1. **出榜依據**：條列「為何選上」的具體數據（引用 input 的資金位移增減/法人買賣超張數/融資券變化/千張大戶增減等實數），不可只寫「法人看好」空話。
+  2. **可靠度評級**：每檔標示「高/中/低」＋一句話理由（如「資金位移＋法人連買同步，可靠度高；僅單一指標者中/低」）。
+  3. **大中小型標示**：每檔註明「大型/中型/小型」，整體要涵蓋三類，維持至少 4~5 檔中小型。
+  4. **資金板塊權重**：明訂資金明顯流入板塊（XQ 盤中資金位移增加但股價未充分反映者）的檔次應佔榜單**最高比重（至少一半）**——這是本儀表板的核心資訊，出榜必須以其為主。
+- **現況**：`postmarket_report.py` SYSTEM_PROMPT 已有排序條件（資金位移優先→法人→融資券→催化劑→平衡族群）與「至少 4~5 檔中小型」，但輸出欄位只有操盤邏輯/關鍵價位/催化劑；**沒有「依據」「可靠度」「規模分類」欄位，資金權重未量化**。
+- **資料已全在 input**（`postmarket_prep.py` 組裝）：`## 0 現價速查表 / 1 XQ盤中資金 / 2 融資券 / 3 三大法人 / 4 千張大戶 / 5 美股 / 6 行事曆 / 7 金融報告`。渲染有現價速查表錨定＋pm-pxwarn 驗證層。
+- **待與使用者確認**：
+  - 「融資券分析中的**三大觸發**」→ 專案目前無此子功能，需定義（XQ 融資券頁分類？）。
+  - 「**法人買賣超 / 個股篩選 / 四象限**」→ 法人買賣超在 input $$3；個股篩選＝預測榜本身；**四象限**僅盤中 `compare_rank()` verdict（資金量×漲跌四象限），input 中無，若要納入出榜依據需先擴充 prep。
+  - 出榜簡報是否需要「可靠度」統一圖例（例：高＝綠勾/中＝黃/低＝灰）？渲染層配合（新 pill class）。
+- **改動範圍（三層）**：`postmarket_report.py`（SYSTEM_PROMPT 增欄位格式＋鐵律）→ `render_html.py`（`_pm_*` 解析新欄位＋可靠度 pill CSS）→ 可能 `postmarket_prep.py`（四象限/融資券摘要）→ 多輪驗證 Gemini 輸出格式（固定欄位、避免跑版）。
+- **建議由付費模型 DeepSeek-V4-Pro/GLM-5.1 開新 session 承接**：三層協動＋反覆驗證，big-pickle 免費層（200/5h）會很快燒完；定稿 tag `pm-v2-final` 已 push 遠端，改壞隨時還原（見回滾保險）。
+
 ---
 
 ## 五、排程（Windows Task Scheduler）
