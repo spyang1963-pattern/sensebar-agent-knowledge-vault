@@ -710,6 +710,7 @@ tr:hover td{background:#1c2438}
 .copybtn{background:#1d2840;border:1px solid #2f3d63;color:#bcd2ff;border-radius:14px;padding:3px 12px;font-size:11.5px;font-weight:600;cursor:pointer;margin-left:10px;vertical-align:middle}
 .copybtn:hover{background:#31406a}
 .copybtn.copied{background:#2e9e5b;color:#fff;border-color:#3cbf77}
+.copybar{margin:7px 0;padding:0 2px}
 .rest-open .rest-row{display:table-row}
 .rest-open .rest-inline{display:block}
 .unclassified{color:var(--warn)}
@@ -1498,6 +1499,11 @@ DASH_HEAD = """<!DOCTYPE html>
   <button class="tabbtn" data-kind="notes" onclick="setKind('notes')">盤中三段</button>
   <button class="tabbtn" data-kind="postmarket" onclick="setKind('postmarket')">盤後綜合分析</button>
 </div>
+<div class="copybar">
+  <button class="copybtn" id="copy-page-btn" onclick="copyAll('page')" title="複製目前頁籤所有表格到 Excel（TSV，每張表前綴標題）">📋 輸出本頁全部表</button>
+  <button class="copybtn" id="copy-all-btn" onclick="copyAll('all')" title="複製全部頁籤所有表格到 Excel（TSV，依表單分類，每張表前綴標題）">📋 輸出全部頁籤</button>
+  <span class="meta" style="margin-left:8px">一次複製整頁表格，直接貼上 Excel（tab 分欄、換行分列，每張表有標題）</span>
+</div>
 <div id="content">
   <div class="tabpage" id="page-rank"></div>
   <div class="tabpage" id="page-breadth"></div>
@@ -1626,6 +1632,52 @@ function copyStocks(btn){
   function done(){btn.classList.add('copied');btn.textContent='已複製 '+rows.length+' 項';setTimeout(function(){btn.classList.remove('copied');btn.textContent='📋';},1600);}
   function fb(){var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);done();}
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,fb);}else{fb();}
+}
+var PAGE_LABELS={rank:'資金排行', breadth:'齊漲分歧', notes:'盤中三段', postmarket:'盤後綜合分析'};
+function _cardTSV(card){
+  var seen={},out=[],els=card.querySelectorAll('[data-code]');
+  for(var i=0;i<els.length;i++){
+    var c=(els[i].getAttribute('data-code')||'').trim();
+    if(c&&!seen[c]){seen[c]=1;out.push(c+'\t'+els[i].getAttribute('data-name'));}
+  }
+  var rows=[];
+  if(out.length){rows=out;}
+  else{
+    var tbl=card.querySelector('table');
+    if(tbl){
+      for(var r=0;r<tbl.rows.length;r++){
+        var cellTxt=[];
+        for(var cc=0;cc<tbl.rows[r].cells.length;cc++){cellTxt.push(tbl.rows[r].cells[cc].innerText.replace(/\\s+/g,' ').trim());}
+        rows.push(cellTxt.join('\t'));
+      }
+    }
+  }
+  return rows;
+}
+function _cardTitle(card){var h=card.querySelector('h2');return h?(h.textContent||'').replace(/\\s+/g,' ').trim():'';}
+function _copyText(text,msg,id){
+  function done(){var b=document.getElementById(id);if(b){b.classList.add('copied');b.textContent=msg;setTimeout(function(){b.classList.remove('copied');b.textContent=id==='copy-all-btn'?'📋 輸出全部頁籤':'📋 輸出本頁全部表';},1600);}}
+  function fb(){var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);done();}
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,fb);}else{fb();}
+}
+function copyAll(scope){
+  var pages;
+  if(scope==='page'){var p=document.querySelector('.tabpage.active');pages=p?[p]:[];}
+  else{pages=document.querySelectorAll('.tabpage');}
+  var blocks=[],n=0;
+  for(var pi=0;pi<pages.length;pi++){
+    var page=pages[pi],pid=page.id.replace('page-','');
+    var cards=page.querySelectorAll('.card');
+    for(var i=0;i<cards.length;i++){
+      var rows=_cardTSV(cards[i]);
+      if(!rows.length){continue;}
+      var head='【'+(PAGE_LABELS[pid]||pid)+'｜'+(_cardTitle(cards[i])||'未命名')+'】';
+      blocks.push(head+'\n'+rows.join('\n'));
+      n++;
+    }
+  }
+  if(!n){return;}
+  _copyText(blocks.join('\n\n'),scope==='all'?'已複製 '+n+' 張表（全部頁籤）':'已複製 '+n+' 張表',scope==='all'?'copy-all-btn':'copy-page-btn');
 }
 window.onload = function(){
   var hb = document.getElementById('histbar');
