@@ -100,6 +100,7 @@
 
 ### ✅ 定稿範本版本（2026-09-12 使用者確認「這個版本定稿，記下來為範本」）
 - **定稿 commits（由舊到新，全部已 push 並部署 PC3＋線上）**：`437b367`（標題 startswith＋薑黃標號 pm-idx/尾註 pm-note/judge 薑黃）→ `1b8afb3`（現價錨定/價位品質）→ `eb4ef8b`（缺方向補中性 flat pill＋CSS）→ `dd2a6b2`（**方向=中性也有 pill**）→ `6dd58ce`（排名標籤 `N.` 取代 `N#`）。
+- **🔖 回滾保險 tag：`pm-v2-final`**（2026-09-12 建立，已 push 遠端）。指向定稿後最新 commit（dashboard 快照 commit），**此 tag 之後被開新分支做新功能，tag 永遠不移動**。還原方式：`git checkout pm-v2-final -- routines/render_html.py routines/postmarket_prep.py routines/postmarket_report.py publisher/deploy.py`（只還原程式檔）；整個回定稿：`git reset --hard pm-v2-final`。**改壞程式時，第一件事就是查 `git log --oneline --all` 找這個 tag**。
 - **線上驗證基線**：pmdata 4 份（09/10 morning 8 卡 / 09/10 evening 14 卡 / 09/11 morning 12 卡 / 09/11 evening 12 卡），每檔有薑黃標號、每檔有方向 pill（中性＝灰 flat）、價位可疑才出現 pm-pxwarn。
 - **將來任何輸出跑掉**，以此為修正基準：重產後逐卡核對「有無薑黃標號（pm-idx）、有無方向 pill（含中性 flat）、有無不該出現的 pm-pxwarn、排名標籤是否 `N.`、股名紅綠對不對」。
 - **前鼎教訓（2026-09-12，兩次）**：
