@@ -882,7 +882,7 @@ def render_rank(d):
         h += '<div class="meta" style="margin-bottom:8px">資金還停在這裡，但股價不認帳——通常是出貨重的量，不是承接重的量。</div>'
         for r in d["contradictions"]:
             h += f"""<div class="contra-card">
-  <div class="t"><span class="key-green">{r['Rk']}# {r['Name']}</span> <span class="pill down">{r['Grp']}</span></div>
+  <div class="t"><span class="key-green">{r['Rk']}. {r['Name']}</span> <span class="pill down">{r['Grp']}</span></div>
   <div class="w">{fmt_chg(r['Chg'])} · 成交值 {fmt(r['Val'])}億（全場第 {r['Rk']} 大）· 內外盤比 {fmt(r['IO'],0)} · 乖離 {fmt(r['Dev'],1)}</div>
   <div class="why">這代表什麼：{r['Why']}</div></div>"""
         h += "</div>"
@@ -920,7 +920,7 @@ def render_rank(d):
         tagclass = chg_class(r["Chg"])
         rest = " rest-inline" if si >= 5 else ""
         h += f"""<div class="trend-item{rest}">
-  <b>{r['Rk']}#</b> <b class="key-{'red' if r['Chg']>0 else 'green' if r['Chg']<0 else 'yellow'}" data-code="{r['Code']}" data-name="{r['Name']}">{r['Name']}</b>
+  <b>{r['Rk']}.</b> <b class="key-{'red' if r['Chg']>0 else 'green' if r['Chg']<0 else 'yellow'}" data-code="{r['Code']}" data-name="{r['Name']}">{r['Name']}</b>
   <span class="pill {tagclass}">{r['Grp']}</span>
   <span class="num" style="float:right">{fmt_chg(r['Chg'])} · {fmt(r['Val'])}億</span>
   <div class="stock-why">{r['Why']}</div>
