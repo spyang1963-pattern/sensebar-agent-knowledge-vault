@@ -1638,7 +1638,7 @@ function _cardTSV(card){
   var seen={},out=[],els=card.querySelectorAll('[data-code]');
   for(var i=0;i<els.length;i++){
     var c=(els[i].getAttribute('data-code')||'').trim();
-    if(c&&!seen[c]){seen[c]=1;out.push(c+'\t'+els[i].getAttribute('data-name'));}
+    if(c&&!seen[c]){seen[c]=1;out.push(c+'\\t'+els[i].getAttribute('data-name'));}
   }
   var rows=[];
   if(out.length){rows=out;}
@@ -1648,7 +1648,7 @@ function _cardTSV(card){
       for(var r=0;r<tbl.rows.length;r++){
         var cellTxt=[];
         for(var cc=0;cc<tbl.rows[r].cells.length;cc++){cellTxt.push(tbl.rows[r].cells[cc].innerText.replace(/\\s+/g,' ').trim());}
-        rows.push(cellTxt.join('\t'));
+        rows.push(cellTxt.join('\\t'));
       }
     }
   }
@@ -1672,12 +1672,12 @@ function copyAll(scope){
       var rows=_cardTSV(cards[i]);
       if(!rows.length){continue;}
       var head='【'+(PAGE_LABELS[pid]||pid)+'｜'+(_cardTitle(cards[i])||'未命名')+'】';
-      blocks.push(head+'\n'+rows.join('\n'));
+      blocks.push(head+'\\n'+rows.join('\\n'));
       n++;
     }
   }
   if(!n){return;}
-  _copyText(blocks.join('\n\n'),scope==='all'?'已複製 '+n+' 張表（全部頁籤）':'已複製 '+n+' 張表',scope==='all'?'copy-all-btn':'copy-page-btn');
+  _copyText(blocks.join('\\n\\n'),scope==='all'?'已複製 '+n+' 張表（全部頁籤）':'已複製 '+n+' 張表',scope==='all'?'copy-all-btn':'copy-page-btn');
 }
 window.onload = function(){
   var hb = document.getElementById('histbar');

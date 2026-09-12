@@ -141,6 +141,7 @@
   3. 成功提示沿用 `copyStocks` 的 `copied` 樣式＋「已複製 N 張表」。
 - **驗證**：`python -X utf8 render_html.py --dashboard` 重產，開 HTML 確認按鈕與 `copyAll` 存在；瀏覽器手測複製→貼 Excel 看分欄分列正確。
 - **注意**：`copyStocks` 有兩份等義實作（`JS` L775 與 `DASH_JS` L1601），各自獨立頁面，`copyAll` 只需加在 `DASH_JS`（盤中儀表板用）；若要單頁版也要就同步加 `JS`。
+- **⚠️ JS 內嵌 Python 陷阱（2026-09-12 實踩）**：DASH_JS 是 Python 三引號字串，寫 JS 字串常數 `'\n'` 會被 Python **展開成真實換行字元塞進 JS**＝JS SyntaxError→整個 script 崩→時間軸/報告/按鈕全失效。**內嵌 JS 的換行一律寫 `'\\n'`、Tab 寫 `'\\t'`**（成對雙反斜線）。事後可用產出 HTML 的 `blocks.join` 行＋`repr()` 檢查是否為逃脫序列。
 
 #### 需求二：盤後預測榜「出榜依據＋可靠度＋大中小型涵蓋＋資金板塊權重」
 - **目標**：明日個股預測榜每檔都要——
