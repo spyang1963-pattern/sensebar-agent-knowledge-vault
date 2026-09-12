@@ -98,8 +98,13 @@
 > 這塊的樣式全在 `render_html.py` 的 `_pm_*` 函式＋CSS（`.pm-*`）。**不要憑記憶改**，重弄前先讀這段與 `_pm_forecast_section`／`_pm_render_md`／`_pm_hl_line` 實作。
 > 報告格式由 `postmarket_report.py` 的 SYSTEM_PROMPT 定義（管 Gemini 產出 md），渲染管樣式，兩者都要動才一致。
 
+### ✅ 範例基準版本（2026-09-12 使用者確認「這就是我希望呈現的樣子」）
+- **基準內容**：`eb4ef8b`（種子）+ `437b367`（樣式）+ `1b8afb3`（價位品質）已在 PC3 部署、線上 `xq-dashboard` 驗證通過（pmdata 4 份：09/10 morning 8 卡 / 09/10 evening 14 卡 / 09/11 morning 12 卡 / 09/11 evening 12 卡，每檔都有薑黃標號）。
+- **將來任何輸出跑掉**，以此為修正基準：重產後逐卡核對「有無薑黃標號（pm-idx）、有無方向 pill（缺方向時應顯示中性 flat）、有無 pm-pxwarn 價位警示（不該無故出現）」。
+- **前鼎教訓（2026-09-12）**：Gemini 偶爾漏寫「方向：」欄（只寫強度）→ 渲染層 `_pm_dir_label("")` 需補「中性」flat pill，**不可讓卡片漏一顆 pill**（`eb4ef8b`）。
+
 ### 版面定案（使用者逐輪確認過的「定版」）
-- **預測榜卡片（`.pm-stock`）**：每檔一行內含——**薑黃標號** `.pm-idx`（`background:#4a3a10;color:#e0b34d`，卡片順序 1,2,3…）＋股名 `<b data-code data-name>`（依方向 `key-red`紅／`key-green`綠）＋方向 pill（`.pill.up/.pill.down`）＋「強度：X」`.pm-str`。
+- **預測榜卡片（`.pm-stock`）**：每檔一行內含——**薑黃標號** `.pm-idx`（`background:#4a3a10;color:#e0b34d`，卡片順序 1,2,3…）＋股名 `<b data-code data-name>`（依方向 `key-red`紅／`key-green`綠）＋方向 pill（`.pill.up/.pill.down/.pill.flat`，缺方向時是中性 flat）＋「強度：X」`.pm-str`。
 - **詳細行 `.pm-detail`**：`<span class="pm-k">`（藍底標籤，`background:#243156;color:#bcd2ff`）＋「：」＋ `_pm_hl_line` 高亮內容。
 - **次標籤 `.pm-sub`**（價值點的「大家怎麼想／數據怎麼說」等）＝淡藍底（同 `.pm-k`）；**「我的判斷／我的判斷與理由」＝ `.pm-sub.pm-judge` 薑黃**（`background:#4a3a10;color:#e0b34d`），比淡藍高一層、是這塊的視覺主角。先前用海棠紅 `_PM_SUB_MAGENTA` 已廢棄。
 - **標題尾註 `.pm-note`**：預測榜標題會帶小字（如「（含 5 檔中小型股）」），薑黃小字顯示在標題旁，**不要**把它當成整段標題的一部分去做比對。
@@ -111,7 +116,8 @@
 3. **prompt 鐵律**：SYSTEM_PROMPT 明定「支撐必須 < 現價 < 壓力、與現價合理距離（±3%~15%）、查無現價寫『無現價資料，不估價位』、嚴禁編價」。
 4. **渲染驗證層**：`_pm_check_price` 用最新 breadth 快照現價比對 md 的「支撐 X / 壓力 Y」，方向反了或偏差 ≥50% → 插 `.pm-pxwarn`（橙色警示）。**跨日渲染**（報告日 vs 快照日不同）且個股大漲大跌時可能誤標，門檻 ±50% 已是緩衝。
 5. **詳細行解析**：`- 標籤：內容` 用 `re.match(r"^([^：]+)：\s*(.*)$", raw, re.S)` 拆；**關鍵價位在 `cur is not None` 後才 `_pm_check_price(code, ...)`**（code 來自該檔股票變數）。
-6. 歷史報告以 `pmdata` JSON 內嵌進 dashboard；渲染時 embed 的 HTML 在 ``<script type="application/json" id="pmdata">``，`</` 要 `.replace("</","<\\/")` 防被 `</script>` 截斷（既有規則，沿用）。
+6. **缺方向欄要補中性 pill**：`_pm_dir_label("")` 回「中性/flat」，不可空白（Gemini 常漏「方向：」只寫強度）。`.pill.flat` 用 `--flat` 灰。
+7. 歷史報告以 `pmdata` JSON 內嵌進 dashboard；渲染時 embed 的 HTML 在 ``<script type="application/json" id="pmdata">``，`</` 要 `.replace("</","<\\/")` 防被 `</script>` 截斷（既有規則，沿用）。
 
 ### 檔案分工（改這塊要知道）
 - `postmarket_prep.py`：彙整五路資料 → `routines\postmarket\input_{date}_{slot}.md`；現價速查表、資料時效註記都在這。
