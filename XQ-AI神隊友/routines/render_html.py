@@ -1500,9 +1500,11 @@ DASH_HEAD = """<!DOCTYPE html>
   <button class="tabbtn" data-kind="postmarket" onclick="setKind('postmarket')">盤後綜合分析</button>
 </div>
 <div class="copybar">
-  <button class="copybtn" id="copy-page-btn" onclick="copyAll('page')" title="複製目前頁籤所有表格到 Excel（TSV，每張表前綴標題）">📋 輸出本頁全部表</button>
-  <button class="copybtn" id="copy-all-btn" onclick="copyAll('all')" title="複製全部頁籤所有表格到 Excel（TSV，依表單分類，每張表前綴標題）">📋 輸出全部頁籤</button>
-  <span class="meta" style="margin-left:8px">一次複製整頁表格，直接貼上 Excel（tab 分欄、換行分列，每張表有標題）</span>
+  <button class="copybtn" id="copy-page-btn" onclick="copyAll('page')" title="橫向並排：目前頁籤所有表格，每張表各自一組欄位、表間空一欄">📋 輸出本頁全部表</button>
+  <button class="copybtn" id="copy-all-btn" onclick="copyAll('all')" title="橫向並排：全部頁籤所有表格，每張表各自一組欄位、表間空一欄">📋 輸出全部頁籤</button>
+  <button class="copybtn" id="copy-page-v-btn" onclick="copyAllV('page')" title="直排：目前頁籤所有表格，每張表標題＋股號股名往下串接（佔 A、B 兩欄）">📋 直排輸出本頁全部表</button>
+  <button class="copybtn" id="copy-all-v-btn" onclick="copyAllV('all')" title="直排：全部頁籤所有表格，每張表標題＋股號股名往下串接（佔 A、B 兩欄）">📋 直排輸出全部頁籤</button>
+  <span class="meta" style="margin-left:8px">橫排＝各表並排（AB表1、C空、DE表2…）；直排＝各表依序往下（每表標題＋兩欄資料）。貼上 Excel 即生效</span>
 </div>
 <div id="content">
   <div class="tabpage" id="page-rank"></div>
@@ -1655,7 +1657,13 @@ function _cardGrid(card){
 }
 function _cardTitle(card){var h=card.querySelector('h2');return h?(h.textContent||'').replace(/\\s+/g,' ').trim():'';}
 function _copyText(text,msg,id){
-  function done(){var b=document.getElementById(id);if(b){b.classList.add('copied');b.textContent=msg;setTimeout(function(){b.classList.remove('copied');b.textContent=id==='copy-all-btn'?'📋 輸出全部頁籤':'📋 輸出本頁全部表';},1600);}}
+  function label(){
+    if(id==='copy-all-btn'){return '📋 輸出全部頁籤';}
+    if(id==='copy-page-btn'){return '📋 輸出本頁全部表';}
+    if(id==='copy-all-v-btn'){return '📋 直排輸出全部頁籤';}
+    return '📋 直排輸出本頁全部表';
+  }
+  function done(){var b=document.getElementById(id);if(b){b.classList.add('copied');b.textContent=msg;setTimeout(function(){b.classList.remove('copied');b.textContent=label();},1600);}}
   function fb(){var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);done();}
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,fb);}else{fb();}
 }
@@ -1696,6 +1704,27 @@ function copyAll(scope){
     lines.push(cells.join('\\t'));
   }
   _copyText(lines.join('\\n'),scope==='all'?'已複製 '+n+' 張表（全部頁籤）':'已複製 '+n+' 張表',scope==='all'?'copy-all-btn':'copy-page-btn');
+}
+function copyAllV(scope){
+  var pages;
+  if(scope==='page'){var p=document.querySelector('.tabpage.active');pages=p?[p]:[];}
+  else{pages=document.querySelectorAll('.tabpage');}
+  var blocks=[],n=0;
+  for(var pi=0;pi<pages.length;pi++){
+    var page=pages[pi],pid=page.id.replace('page-','');
+    var cards=page.querySelectorAll('.card');
+    for(var i=0;i<cards.length;i++){
+      var rows=_cardGrid(cards[i]);
+      if(!rows.length){continue;}
+      var head='【'+(PAGE_LABELS[pid]||pid)+'｜'+(_cardTitle(cards[i])||'未命名')+'】';
+      var lines=[head];
+      for(var ri=0;ri<rows.length;ri++){lines.push(rows[ri].join('\\t'));}
+      blocks.push(lines.join('\\n'));
+      n++;
+    }
+  }
+  if(!n){return;}
+  _copyText(blocks.join('\\n\\n'),scope==='all'?'已複製 '+n+' 張表（直排·全部頁籤）':'已複製 '+n+' 張表（直排）',scope==='all'?'copy-all-v-btn':'copy-page-v-btn');
 }
 window.onload = function(){
   var hb = document.getElementById('histbar');
