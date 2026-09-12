@@ -682,6 +682,7 @@ tr:hover td{background:#1c2438}
 .pill{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11.5px;font-weight:600;margin-left:6px}
 .pill.up{color:var(--up);background:rgba(214,69,65,.12)}
 .pill.down{color:var(--down);background:rgba(46,158,91,.12)}
+.pill.flat{color:var(--flat);background:rgba(154,154,154,.12)}
 .contra-card{background:#2a1a1d;border:1px solid #5a2530;border-left:5px solid var(--up);border-radius:10px;padding:12px 14px;margin:10px 0}
 .contra-card .t{font-weight:700;font-size:15px}
 .contra-card .w{color:#ff9f9a;font-size:12.5px;margin-top:3px}
@@ -1741,16 +1742,19 @@ def _pm_check_price(code, text):
 
 
 def _pm_dir_label(d):
-    """把「方向」欄的字串（可能像「中含偏多」）簡化成 偏多/偏空/中性 + 配色。"""
-    if not d:
-        return "", "", ""
+    """把「方向」欄的字串（可能像「中含偏多」）簡化成 偏多/偏空/中性 + 配色。
+
+    Gemini 偶爾漏寫「方向：」欄（只寫強度）→ 空字串也補顯示「中性」，避免卡片缺 pill。
+    """
+    if not d or not d.strip():
+        return "中性", "flat", ""
     if "偏多" in d:
         return "偏多", "up", "key-red"
     if "偏空" in d:
         return "偏空", "down", "key-green"
     if "中性" in d:
         return "中性", "", ""
-    return d.strip(), "", ""
+    return d.strip(), "flat", ""
 
 
 def _pm_build_kw():
