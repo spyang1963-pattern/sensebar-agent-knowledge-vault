@@ -107,6 +107,14 @@
   ① 第一次誤判「缺方向欄」補了 fallback，才發現 md 原文是 `方向：中性`——中性分支原本 cls="" 讓 `if cls` 不畫 pill。
   ② **任何方向（含中性）都要有 pill**：`_pm_dir_label` 對空字串與「中性」都回 （"中性","flat",""）。`.pill.flat` 樣式＝`--flat` 灰。
 
+### 🟦 範本二：一鍵全輸出（橫向排版）版本（2026-09-13 使用者確認成形，列為可還原追朔版本）
+- **🔖 tag：`pm-v2-export-all`**（2026-09-13 建立，已 push 遠端）。指向 `81cf0a9`（需求一完成版：tabbar 下兩顆按鈕「輸出本頁全部表／輸出全部頁籤」＋`copyAll` 橫向並排 grid）。還原：`git checkout pm-v2-export-all -- routines/render_html.py publisher/deploy.py` 或 `git reset --hard pm-v2-export-all`。
+- **功能內容**：`copyAll(scope)` 把所有卡轉成格子陣列 `_cardGrid`（有 `[data-code]`→`[code,name]`，否則 table 全文），**橫向並排**成一張大 grid（每表寬＝自己最大欄數、表間空 1 欄 Tab），第 0 列放各表標題。貼 Excel＝AB 表1、C 空、DE 表2…（使用者指定排版）。
+- **包含前序全部**：含範本一（pm-v2-final）的盤後綜合分析定稿（中性 pill、`N.` 句點、價位驗證）。
+- **線上驗證（2026-09-13，`04682b0`）**：histdata 53 輪、時間軸 09/09→09/11 完整；pmdata 4 份；前鼎中性 flat pill 正常；`_cardGrid` 與按鈕上線；copyAll 無真實換行（JS 語法安全）。
+- **踩雷要記**：JS 內嵌 Python 三引號字串時，字串常數內的換行/tab 必須寫 `'\\n'`/`'\\t'`（雙反斜線）——Python 會把 `\n` 展開成真實換行字元 → JS SyntaxError → 整個 script 崩 → 時間軸/報告/按鈕全失效。此版已修正並驗證（`7e32a71`）。
+- **💡 範本一 vs 範本二**：`pm-v2-final`＝盤後預測榜樣式定稿；`pm-v2-export-all`＝在此之上加一鍵全輸出。若只改預測榜格式跑掉 → 查範本一；若新功能跑掉 → 查範本二。兩 tag 均已 push 遠端、永不移動。
+
 ### 版面定案（使用者逐輪確認過的「定版」）
 - **預測榜卡片（`.pm-stock`）**：每檔一行內含——**薑黃標號** `.pm-idx`（`background:#4a3a10;color:#e0b34d`，卡片順序 1,2,3…）＋股名 `<b data-code data-name>`（依方向 `key-red`紅／`key-green`綠）＋方向 pill（`.pill.up/.pill.down/.pill.flat`，缺方向時是中性 flat）＋「強度：X」`.pm-str`。
 - **詳細行 `.pm-detail`**：`<span class="pm-k">`（藍底標籤，`background:#243156;color:#bcd2ff`）＋「：」＋ `_pm_hl_line` 高亮內容。
