@@ -115,6 +115,13 @@
 - **踩雷要記**：JS 內嵌 Python 三引號字串時，字串常數內的換行/tab 必須寫 `'\\n'`/`'\\t'`（雙反斜線）——Python 會把 `\n` 展開成真實換行字元 → JS SyntaxError → 整個 script 崩 → 時間軸/報告/按鈕全失效。此版已修正並驗證（`7e32a71`）。
 - **💡 範本一 vs 範本二**：`pm-v2-final`＝盤後預測榜樣式定稿；`pm-v2-export-all`＝在此之上加一鍵全輸出。若只改預測榜格式跑掉 → 查範本一；若新功能跑掉 → 查範本二。兩 tag 均已 push 遠端、永不移動。
 
+### 🟥 範本三：一鍵全輸出「四鍵版」（橫向＋直排）版本（2026-09-13 使用者確認成形，列為可還原追朔版本）
+- **🔖 tag：`pm-v3-4btn`**。指向 `5eddd1f`（需求一加直排版完成）。還原：`git checkout pm-v3-4btn -- routines/render_html.py publisher/deploy.py` 或 `git reset --hard pm-v3-4btn`。
+- **功能內容**：tabbar 下四顆按四顆按鈕——📋 輸出本頁全部表／📋 輸出全部頁籤（**橫向並排**，AB表1、C空、DE表2…）＋📋 直排輸出本頁全部表／📋 直排輸出全部頁籤（`copyAllV(scope)`，**直排往下**：每表標題＋股號股名兩欄 A、B，表間空一行）。`_copyText` 已改成 `label()` 依按鈕 id 還原文字（4 分支）。
+- **包含前序全部**：範本一＋範本二全部內容（中性 pill、`N.` 句點、價位驗證、橫向一鍵全輸出）。
+- **線上驗證（2026-09-13，`31e775b`）**：histdata 53 輪、時間軸 09/09→09/11 完整；4 按鈕全上線；`copyAllV` 無真實換行/Tab（JS 語法安全）；使用者確認「都看到了」。
+- **💡 定位**：這是**需求二動工前的最後完整可工作版本**。四鍵讓使用者可一眼看出各表在時間軸上的變化（時間軸下拉＋任一鍵輸出）。需求二（出榜依據＋可靠度等）改程式時若跑掉，`git reset --hard pm-v3-4btn`（或只 checkout render_html.py＋deploy.py）即時還原。
+
 ### 版面定案（使用者逐輪確認過的「定版」）
 - **預測榜卡片（`.pm-stock`）**：每檔一行內含——**薑黃標號** `.pm-idx`（`background:#4a3a10;color:#e0b34d`，卡片順序 1,2,3…）＋股名 `<b data-code data-name>`（依方向 `key-red`紅／`key-green`綠）＋方向 pill（`.pill.up/.pill.down/.pill.flat`，缺方向時是中性 flat）＋「強度：X」`.pm-str`。
 - **詳細行 `.pm-detail`**：`<span class="pm-k">`（藍底標籤，`background:#243156;color:#bcd2ff`）＋「：」＋ `_pm_hl_line` 高亮內容。
