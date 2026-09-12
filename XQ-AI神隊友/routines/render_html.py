@@ -1634,21 +1634,20 @@ function copyStocks(btn){
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,fb);}else{fb();}
 }
 var PAGE_LABELS={rank:'資金排行', breadth:'齊漲分歧', notes:'盤中三段', postmarket:'盤後綜合分析'};
-function _cardTSV(card){
-  var seen={},out=[],els=card.querySelectorAll('[data-code]');
+function _cardGrid(card){
+  var seen={},rows=[],els=card.querySelectorAll('[data-code]');
   for(var i=0;i<els.length;i++){
     var c=(els[i].getAttribute('data-code')||'').trim();
-    if(c&&!seen[c]){seen[c]=1;out.push(c+'\\t'+els[i].getAttribute('data-name'));}
+    if(c&&!seen[c]){seen[c]=1;rows.push([c,els[i].getAttribute('data-name')]);}
   }
-  var rows=[];
-  if(out.length){rows=out;}
-  else{
+  if(!rows.length){
     var tbl=card.querySelector('table');
     if(tbl){
+      rows=[];
       for(var r=0;r<tbl.rows.length;r++){
-        var cellTxt=[];
-        for(var cc=0;cc<tbl.rows[r].cells.length;cc++){cellTxt.push(tbl.rows[r].cells[cc].innerText.replace(/\\s+/g,' ').trim());}
-        rows.push(cellTxt.join('\\t'));
+        var cells=[];
+        for(var cc=0;cc<tbl.rows[r].cells.length;cc++){cells.push(tbl.rows[r].cells[cc].innerText.replace(/\\s+/g,' ').trim());}
+        rows.push(cells);
       }
     }
   }
@@ -1664,20 +1663,39 @@ function copyAll(scope){
   var pages;
   if(scope==='page'){var p=document.querySelector('.tabpage.active');pages=p?[p]:[];}
   else{pages=document.querySelectorAll('.tabpage');}
-  var blocks=[],n=0;
+  var tables=[],n=0;
   for(var pi=0;pi<pages.length;pi++){
     var page=pages[pi],pid=page.id.replace('page-','');
     var cards=page.querySelectorAll('.card');
     for(var i=0;i<cards.length;i++){
-      var rows=_cardTSV(cards[i]);
+      var rows=_cardGrid(cards[i]);
       if(!rows.length){continue;}
       var head='【'+(PAGE_LABELS[pid]||pid)+'｜'+(_cardTitle(cards[i])||'未命名')+'】';
-      blocks.push(head+'\\n'+rows.join('\\n'));
+      tables.push({head:head,rows:rows});
       n++;
     }
   }
   if(!n){return;}
-  _copyText(blocks.join('\\n\\n'),scope==='all'?'已複製 '+n+' 張表（全部頁籤）':'已複製 '+n+' 張表',scope==='all'?'copy-all-btn':'copy-page-btn');
+  // 每張表的寬度（欄數）＋表間留 1 空欄；總列數 = 各表列數最大值 + 標題列
+  var widths=[],maxRows=0;
+  for(var ti=0;ti<tables.length;ti++){
+    var w=1,r=tables[ti].rows;
+    for(var ri=0;ri<r.length;ri++){if(r[ri].length>w)w=r[ri].length;}
+    widths.push(w);
+    if(r.length>maxRows)maxRows=r.length;
+  }
+  maxRows+=1; // 標題列
+  var lines=[];
+  for(var rowIdx=0;rowIdx<maxRows;rowIdx++){
+    var cells=[];
+    for(var t2=0;t2<tables.length;t2++){
+      var t=tables[t2],src=(rowIdx===0)?[t.head]:(t.rows[rowIdx-1]||[]);
+      for(var ci=0;ci<widths[t2];ci++){cells.push(src[ci]||'');}
+      cells.push(''); // 表間空一欄
+    }
+    lines.push(cells.join('\\t'));
+  }
+  _copyText(lines.join('\\n'),scope==='all'?'已複製 '+n+' 張表（全部頁籤）':'已複製 '+n+' 張表',scope==='all'?'copy-all-btn':'copy-page-btn');
 }
 window.onload = function(){
   var hb = document.getElementById('histbar');

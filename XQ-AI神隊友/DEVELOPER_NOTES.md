@@ -137,7 +137,7 @@
 - **現況**：每卡各自有 `copyStocks` 按鈕（`DASH_JS` 內，約 `render_html.py` L1601），只複製**單卡**（抓 `.card` 內 `[data-code]`→`code\tname`；無 `[data-code]` 則抓 `table` 全文）。
 - **做法（建議）**：
   1. `DASH_HEAD`（L1492 的 header 區）tabbar 下方加一排按鈕：「📋 輸出本頁全部表」「📋 輸出全部頁籤」。
-  2. `DASH_JS` 新增 `copyAll(scope)`：`scope='page'` 只走 `.tabpage.active`；`scope='all'` 走全部 `.tabpage`（每頁前綴頁籤名）。對每個 `.card`，**前綴一行「【卡片標題】」**（取 `card.querySelector('h2').textContent`），再輸出複製內容（沿用 copyStocks 的 `[data-code]`→TSV 或 table 全文）；卡片間空一行。tab 分隔＝Excel 分欄、換行＝分列，貼上即「多張小表依序往下排」。
+  2. `DASH_JS` 新增 `copyAll(scope)`：`scope='page'` 只走 `.tabpage.active`；`scope='all'` 走全部 `.tabpage`（每頁前綴頁籤名）。每張卡轉成格子陣列 `_cardGrid`（有 `[data-code]`→`[code,name]` 列；否則 table 全文）；**所有卡片橫向並排成一大張 grid，每張表寬＝自己的最大欄數，表與表之間留 1 格空欄（Tab）**，第 0 列放各表標題（`【頁籤｜卡片標題】`）。貼 Excel 後：AB貼表1、C空、DE貼表2、F空…依此類推（=使用者指定排版）。
   3. 成功提示沿用 `copyStocks` 的 `copied` 樣式＋「已複製 N 張表」。
 - **驗證**：`python -X utf8 render_html.py --dashboard` 重產，開 HTML 確認按鈕與 `copyAll` 存在；瀏覽器手測複製→貼 Excel 看分欄分列正確。
 - **注意**：`copyStocks` 有兩份等義實作（`JS` L775 與 `DASH_JS` L1601），各自獨立頁面，`copyAll` 只需加在 `DASH_JS`（盤中儀表板用）；若要單頁版也要就同步加 `JS`。
