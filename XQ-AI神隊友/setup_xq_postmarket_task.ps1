@@ -2,7 +2,7 @@
 #  setup_xq_postmarket_task.ps1 ─ 建立盤後綜合分析排程
 #
 #  建立兩個任務：
-#    XQ_Postmarket_Evening  週一至週五 22:00  前一晚初版（含當日法人/融資券/晚報）
+#    XQ_Postmarket_Evening  週日至週四 22:00  前一晚初版（含當日法人/融資券/晚報；週日晚上出週一初版）
 #    XQ_Postmarket_Morning  週一至週五 06:30  開盤前更新版（隔夜美股收盤已定案 + 06:00 晨報可參考）
 #
 #  共同流程：xq_postmarket_loop.bat <slot>
@@ -23,9 +23,9 @@ $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 15)
 
-# ---- 前一晚初版 22:00 ----
+# ---- 前一晚初版 22:00（週日至週四，每晚出隔天初版；週日晚上出週一初版） ----
 $trigEvening = New-ScheduledTaskTrigger -Weekly `
-    -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday -At 22:00
+    -DaysOfWeek Sunday, Monday, Tuesday, Wednesday, Thursday -At 22:00
 $actEvening = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c `"$batPath`" evening"
 if (Get-ScheduledTask -TaskName 'XQ_Postmarket_Evening' -ErrorAction SilentlyContinue) {
     Unregister-ScheduledTask -TaskName 'XQ_Postmarket_Evening' -Confirm:$false -ErrorAction SilentlyContinue
