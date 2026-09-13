@@ -683,6 +683,12 @@ tr:hover td{background:#1c2438}
 .pill.up{color:var(--up);background:rgba(214,69,65,.12)}
 .pill.down{color:var(--down);background:rgba(46,158,91,.12)}
 .pill.flat{color:var(--flat);background:rgba(154,154,154,.12)}
+.pill.rel-high{color:#46d88a;background:rgba(70,216,138,.14)}
+.pill.rel-mid{color:#e0b34d;background:rgba(224,179,77,.14)}
+.pill.rel-low{color:#9aa0a6;background:rgba(154,160,166,.14)}
+.pill.size-lg{color:#7fa8dd;background:rgba(127,168,221,.14)}
+.pill.size-md{color:#9db8e8;background:rgba(157,184,232,.12)}
+.pill.size-sm{color:#6d7d99;background:rgba(109,125,153,.14)}
 .contra-card{background:#2a1a1d;border:1px solid #5a2530;border-left:5px solid var(--up);border-radius:10px;padding:12px 14px;margin:10px 0}
 .contra-card .t{font-weight:700;font-size:15px}
 .contra-card .w{color:#ff9f9a;font-size:12.5px;margin-top:3px}
@@ -1783,6 +1789,8 @@ _PM_BEARISH = ["偏空", "賣超", "流出", "調節", "出貨", "轉弱", "走�
 _PM_STOCK_RE = re.compile(r"^\s*(?:[-*]|\d+[.、])?\s*(\d{4,5})\s+([^\s｜|，,。]+)")
 _PM_DIR_RE = re.compile(r"方向[：:]\s*([^｜|，,。]*)")
 _PM_STR_RE = re.compile(r"強度[：:]\s*([強中弱])")
+_PM_SIZE_RE = re.compile(r"規模[：:]\s*([大小中]型)")
+_PM_REL_RE = re.compile(r"^([高中低])\s*[（(：:、]?\s*")
 
 _PM_KW_COLOR = {}
 _PM_CUR_STOCKS = {}          # name -> code（本次報告預測榜的股票；內文股名標示用）
@@ -1854,6 +1862,22 @@ def _pm_dir_label(d):
     if "中性" in d:
         return "中性", "flat", ""
     return d.strip(), "flat", ""
+
+
+def _pm_size_pill(size):
+    """規模 → 彩色 pill（大型/中型/小型）。"""
+    if not size:
+        return ""
+    if "大" in size:
+        return '<span class="pill size-lg">大型</span>'
+    if "小" in size:
+        return '<span class="pill size-sm">小型</span>'
+    return '<span class="pill size-md">中型</span>'
+
+
+def _pm_rel_pill(level):
+    """可靠度 高/中/低 → 彩色 pill class。"""
+    return {"高": "rel-high", "中": "rel-mid", "低": "rel-low"}.get(level, "rel-mid")
 
 
 def _pm_build_kw():
@@ -1976,25 +2000,38 @@ def _pm_forecast_section(body, note=""):
             code, name = m.group(1), m.group(2)
             dm = _PM_DIR_RE.search(flat)
             sm = _PM_STR_RE.search(flat)
+            szm = _PM_SIZE_RE.search(flat)
             dlabel, cls, ncls = _pm_dir_label(dm.group(1).strip() if dm else "")
             strat = sm.group(1) if sm else ""
+            size = szm.group(1) if szm else ""
             pill = f'<span class="pill {cls}">{dlabel}</span>' if cls else ""
             strat_html = f'<span class="pm-str">強度：{_pm_esc(strat)}</span>' if strat else ""
+            size_html = _pm_size_pill(size)
             if ncls:
                 name_html = f'<b class="{ncls}" data-code="{code}" data-name="{name}">{code} {name}</b>'
             else:
                 name_html = f'<b data-code="{code}" data-name="{name}">{code} {name}</b>'
             cur = (f'<div class="pm-stock {cls}">'
-                   f'<div class="pm-name"><span class="pm-idx">{idx}</span>{name_html}{pill}{strat_html}</div>')
+                   f'<div class="pm-name"><span class="pm-idx">{idx}</span>{name_html}{pill}{size_html}{strat_html}</div>')
         elif (s.startswith("-") or s.startswith("·")) and cur is not None:
             raw = s.lstrip("-· ").strip()
             mm = re.match(r"^([^：]+)：\s*(.*)$", raw, re.S)
             if mm:
                 lab = mm.group(1).strip().replace("**", "")
                 rest = _pm_hl_line(mm.group(2).strip())
-                if cur is not None and "關鍵價位" in lab:
-                    rest += _pm_check_price(code, mm.group(2).strip())
-                cur += f'<div class="pm-detail"><span class="pm-k">{_pm_esc(lab)}</span>：{rest}</div>'
+                if "可靠度" in lab:
+                    mrel = _PM_REL_RE.match(mm.group(2).strip())
+                    if mrel:
+                        lv = mrel.group(1)
+                        reason = mm.group(2).strip()[mrel.end():].strip().strip("（）()")
+                        reason_html = f"（{_pm_hl_line(reason)}）" if reason else ""
+                        cur += f'<div class="pm-detail"><span class="pm-k">可靠度</span>：<span class="pill {_pm_rel_pill(lv)}">{lv}</span>{reason_html}</div>'
+                    else:
+                        cur += f'<div class="pm-detail"><span class="pm-k">{_pm_esc(lab)}</span>：{rest}</div>'
+                else:
+                    if cur is not None and "關鍵價位" in lab:
+                        rest += _pm_check_price(code, mm.group(2).strip())
+                    cur += f'<div class="pm-detail"><span class="pm-k">{_pm_esc(lab)}</span>：{rest}</div>'
             else:
                 cur += f'<div class="pm-detail">{_pm_hl_line(raw)}</div>'
         else:

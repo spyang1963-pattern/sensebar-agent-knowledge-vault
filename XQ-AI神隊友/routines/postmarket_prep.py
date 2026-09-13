@@ -77,7 +77,7 @@ def _px_format(code):
 
 
 def _price_table():
-    """現價速查表：成交值前 80 檔快照（代碼 名稱 現價），供撐壓推算用。"""
+    """現價速查表：成交值前 80 檔快照（代碼 名稱 現價 市值），供撐壓推算＋規模分類用。"""
     _load_price_map()
     if not _PX or rh is None:
         return "（無快照現價 — 支撐/壓力請自行保守估計，或明說資料不足）"
@@ -98,8 +98,15 @@ def _price_table():
         if v is None:
             continue
         px = f"{v:,.0f}元" if float(v) == int(v) else f"{v:,.2f}元"
-        rows.append(f"- {c} {r.get('Name', '')} 現價{px}")
-    return "### 現價速查表（成交值前80 · 支撐/壓力必須以此為基準）\n" + "\n".join(rows)
+        mcap = ""
+        try:
+            cap = float(r.get("Cap") or 0)
+            if cap > 0:
+                mcap = f" 市值{cap * float(v) / 10:,.0f}億"
+        except (ValueError, TypeError):
+            pass
+        rows.append(f"- {c} {r.get('Name', '')} 現價{px}{mcap}")
+    return "### 現價速查表（成交值前80 · 含市值 · 支撐/壓力與規模分類以此為基準）\n" + "\n".join(rows)
 
 
 def _xq_summary():
@@ -234,6 +241,117 @@ def _margin_summary():
         out.append("融資大減（前8）：")
         for chg, _, sid, nm, m0, pct in deltas[-8:]:
             out.append(f"- {sid} {nm} 融資 {m0:,} 張（{chg:+,} 張，{pct:+.1f}%）")
+    # 融券增減
+    shorts = []
+    for sid, r in today.items():
+        s0 = _as_int(r.get("short_balance"))
+        p = prev.get(sid, {})
+        s1 = _as_int(p.get("short_balance"))
+        if not p:
+            continue
+        chg = s0 - s1
+        if abs(chg) >= 100:
+            shorts.append((chg, sid, r.get("stock_name", ""), s0))
+    shorts.sort(key=lambda x: -x[0])
+    if shorts:
+        out.append("融券大增（前5）：")
+        for chg, sid, nm, s0 in shorts[:5]:
+            out.append(f"- {sid} {nm} 融券 {s0:,} 張（{chg:+,} 張）")
+        out.append("融券大減（前5）：")
+        for chg, sid, nm, s0 in shorts[-5:]:
+            out.append(f"- {sid} {nm} 融券 {s0:,} 張（{chg:+,} 張）")
+    # 券資比（融券/融資，≥8% 有軋空潛力）
+    sbr = []
+    for sid, r in today.items():
+        m0 = _as_int(r.get("margin_balance"))
+        s0 = _as_int(r.get("short_balance"))
+        if m0 > 0 and s0 > 0:
+            ratio = s0 / m0 * 100
+            if ratio >= 8:
+                sbr.append((ratio, sid, r.get("stock_name", ""), s0, m0))
+    sbr.sort(key=lambda x: -x[0])
+    if sbr:
+        out.append("券資比偏高（前5，≥8% 有軋空潛力）：")
+        for ratio, sid, nm, s0, m0 in sbr[:5]:
+            out.append(f"- {sid} {nm} 券資比 {ratio:.1f}%（融券{s0:,}/融資{m0:,}）")
+    return "\n".join(out)
+
+
+_CHG = {}
+
+
+def _breadth_chg_map():
+    """最新 breadth 快照 {code: chg_pct}，供三大觸發（漲跌×融資變動）計算。"""
+    global _CHG
+    if _CHG:
+        return _CHG
+    if rh is None:
+        return _CHG
+    try:
+        snaps = rh.list_snapshots("breadth")
+        if not snaps:
+            return _CHG
+        _, path = snaps.popitem()
+        for r in rh.load_csv(path):
+            c = r.get("Code")
+            if c:
+                try:
+                    _CHG[str(c).zfill(4)] = float(r.get("Chg", 0) or 0)
+                except (ValueError, TypeError):
+                    pass
+    except Exception:
+        pass
+    return _CHG
+
+
+def _margin_triggers():
+    """三大觸發（簡化：漲跌幅 × 融資變動），對齊 stock-monitor 的法人吃貨/恐慌殺出/斷頭語義。"""
+    path = os.path.join(STOCK_MONITOR, "output", "cache", "margin_history.csv")
+    rows, dates = _latest_dates_csv(path)
+    if len(dates) < 1:
+        return "（無融資券資料，無法計算三大觸發）"
+    d0, d1 = dates[-1], (dates[-2] if len(dates) >= 2 else None)
+    if not d1:
+        return "（僅單日融資券資料，無法計算變動）"
+    today = {str(r["stock_id"]).zfill(4): r for r in rows if r.get("date") == d0}
+    prev = {str(r["stock_id"]).zfill(4): r for r in rows if r.get("date") == d1}
+    chg_map = _breadth_chg_map()
+    ib, ps, mc = [], [], []
+    for code, r in today.items():
+        p = prev.get(code)
+        if not p:
+            continue
+        m0 = _as_int(r.get("margin_balance"))
+        m1 = _as_int(p.get("margin_balance"))
+        d_margin = m0 - m1
+        chg = chg_map.get(code)
+        if chg is None:
+            continue
+        nm = r.get("stock_name", "")
+        if chg >= 2.0 and d_margin <= -80:
+            ib.append((chg, d_margin, code, nm))
+        if chg <= -4.0 and d_margin <= -100:
+            ps.append((chg, d_margin, code, nm))
+        if chg <= -6.0 and d_margin <= -500:
+            mc.append((chg, d_margin, code, nm))
+    if not (ib or ps or mc):
+        return "三大觸發：今日無明顯觸發訊號（法人吃貨／恐慌殺出／斷頭均無）。"
+    ib.sort(key=lambda x: -x[0])
+    ps.sort(key=lambda x: x[0])
+    mc.sort(key=lambda x: x[0])
+    out = ["三大觸發（漲跌 × 融資變動）："]
+    if ib:
+        out.append("① 法人吃貨（股漲≥2% 且融資減，散戶賣法人接，前6）：")
+        for chg, dm, code, nm in ib[:6]:
+            out.append(f"- {code} {nm} 漲{chg:+.1f}% 融資{dm:+,} 張")
+    if ps:
+        out.append("② 恐慌殺出（股跌≤-4% 且融資減，前6）：")
+        for chg, dm, code, nm in ps[:6]:
+            out.append(f"- {code} {nm} 跌{chg:+.1f}% 融資{dm:+,} 張")
+    if mc:
+        out.append("③ 斷頭壓力（股跌≤-6% 且融資大減≤-500，前6）：")
+        for chg, dm, code, nm in mc[:6]:
+            out.append(f"- {code} {nm} 跌{chg:+.1f}% 融資{dm:+,} 張")
     return "\n".join(out)
 
 
@@ -390,7 +508,7 @@ def main():
     parts.append(f"# 盤後綜合分析 input — {today.isoformat()}（{slot_label}）\n")
     parts.append(f"## 0. 現價速查表（支撐/壓力必須以此為基準）\n{_price_table()}\n")
     parts.append(f"## 1. XQ 盤中快照摘要\n{_xq_summary()}\n")
-    parts.append(f"## 2. 融資券\n{_margin_summary()}\n")
+    parts.append(f"## 2. 融資券\n{_margin_summary()}\n\n{_margin_triggers()}\n")
     parts.append(f"## 3. 三大法人\n{_institutional_summary()}\n")
     parts.append(f"## 4. 千張大戶\n{_tdcc_summary()}\n")
     parts.append(f"## 5. 美股與國際盤（Yahoo 抓取）\n{_us_summary(fetch=not args.no_fetch)}\n")
