@@ -173,6 +173,18 @@
 - **改動範圍（三層）**：`postmarket_report.py`（SYSTEM_PROMPT 增欄位格式＋鐵律）→ `render_html.py`（`_pm_*` 解析新欄位＋可靠度 pill CSS）→ 可能 `postmarket_prep.py`（四象限/融資券摘要）→ 多輪驗證 Gemini 輸出格式（固定欄位、避免跑版）。
 - **建議由付費模型 DeepSeek-V4-Pro/GLM-5.1 開新 session 承接**：三層協動＋反覆驗證，big-pickle 免費層（200/5h）會很快燒完；定稿 tag `pm-v2-final` 已 push 遠端，改壞隨時還原（見回滾保險）。
 
+#### ✅ 需求二已實作（2026-09-13，commit `21947a1`，三層完成＋本機驗證通過）
+- **「三大觸發」已確認**：＝stock-monitor `src/analyzer.py` 的 `_detect_triggers`——①法人吃貨（股漲≥2%＋融資減）、②恐慌殺出（股跌≤-4%＋融資減）、③斷頭壓力（股跌≤-6%＋融資大減）。非新子功能，資料本就可在 stock-monitor 算。
+- **prep 擴充（`postmarket_prep.py`）**：
+  1. `_price_table()` 現價速查表加「市值」欄（`Cap(萬張)×Close/10 → 億`），供規模分類。
+  2. `_margin_summary()` 補「融券大增/大減」「券資比（≥8% 軋空潛力）」。
+  3. 新增 `_margin_triggers()`：三大觸發三類（用 `_breadth_chg_map()` 拿最新 breadth 快照的 Chg × margin_history 融資變動交叉）。
+  4. `main()` 的 `## 2 融資券` 接上三大觸發輸出。
+- **report 改寫（`postmarket_report.py` SYSTEM_PROMPT）**：預測榜每檔改為固定格式 `N. 代碼 名稱｜方向｜強度｜規模：大型/中型/小型`，細節行新增 `- 出榜依據（條列實數）`／`- 可靠度：高/中/低＋理由`；新增**資金板塊權重鐵律**（verdict=進貨/惜售 且股價未充分反映者 ≥ 榜單一半 ≥6 檔）。規模分類用市值 <800 億＝中小型。
+- **render 擴充（`render_html.py`）**：新增 `_PM_SIZE_RE`/`_PM_REL_RE`/`_pm_size_pill`/`_pm_rel_pill`；標題行解析「規模」→ `.pill.size-lg/.size-md/.size-sm`；細節行「可靠度」→ `.pill.rel-high/.rel-mid/.rel-low`（綠/黃/灰）。CSS 新增 6 個 pill class。
+- **本機驗證**：prep 產出 input（7721 字元）含市值/融券/券資比/三大觸發；構造測試 md 跑 `_pm_render_md` 確認 size-lg/sm、rel-high/mid/low、出榜依據藍標籤、data-code 全正確；`--dashboard` 重產無 runtime error。
+- **⚠️ 待辦（下一步）**：① 端到端跑一次 `postmarket_report.py --slot evening` 確認 Gemini 真的照新格式輸出（規模/可靠度/依據欄位齊、資金權重≥一半）；② 部署 PC3 讓排程採用新 prompt；③ 若 Gemini 欄位跑版，用 `_PM_*_RE` 容錯微調。
+
 ---
 
 ## 五、排程（Windows Task Scheduler）
