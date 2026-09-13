@@ -183,7 +183,9 @@
 - **report 改寫（`postmarket_report.py` SYSTEM_PROMPT）**：預測榜每檔改為固定格式 `N. 代碼 名稱｜方向｜強度｜規模：大型/中型/小型`，細節行新增 `- 出榜依據（條列實數）`／`- 可靠度：高/中/低＋理由`；新增**資金板塊權重鐵律**（verdict=進貨/惜售 且股價未充分反映者 ≥ 榜單一半 ≥6 檔）。規模分類用市值 <800 億＝中小型。
 - **render 擴充（`render_html.py`）**：新增 `_PM_SIZE_RE`/`_PM_REL_RE`/`_pm_size_pill`/`_pm_rel_pill`；標題行解析「規模」→ `.pill.size-lg/.size-md/.size-sm`；細節行「可靠度」→ `.pill.rel-high/.rel-mid/.rel-low`（綠/黃/灰）。CSS 新增 6 個 pill class。
 - **本機驗證**：prep 產出 input（7721 字元）含市值/融券/券資比/三大觸發；構造測試 md 跑 `_pm_render_md` 確認 size-lg/sm、rel-high/mid/low、出榜依據藍標籤、data-code 全正確；`--dashboard` 重產無 runtime error。
-- **⚠️ 待辦（下一步）**：① 端到端跑一次 `postmarket_report.py --slot evening` 確認 Gemini 真的照新格式輸出（規模/可靠度/依據欄位齊、資金權重≥一半）；② 部署 PC3 讓排程採用新 prompt；③ 若 Gemini 欄位跑版，用 `_PM_*_RE` 容錯微調。
+- **✅ 已完成並上線（2026-09-13）**：① 本機跑 Gemini 端到端驗證（12~13 檔涵蓋大中小、三欄 pill 全正確、三大觸發被引用）；② PC3 部署（線上 `b7e9ee5`，pmdata 5 份、13 檔全有三欄 pill、時間軸 53 輪完整）；③ 微調 prompt（`9761c53` 規模三段閾值＝大型≥800億/中型100~800億/小型<100億；`781945d` 出榜依據強制「資金位移＋另一類籌碼指標」並陳、可靠度理由禁重複評級字）。
+- **⚠️ 排程 bug 修正（`5472c2b`）**：`setup_xq_postmarket_task.ps1` 的 evening 原本是「週一~五 22:00」，但 evening 語義是「前一晚初版」→ 週一開盤的初版應在週日晚產生，原設定漏掉週日晚。改為「**週日~週四**」22:00（bitmask 31），morning 維持「週一~五」06:30（bitmask 62）。PC3 已重跑註冊確認。
+- **待觀察**：明早 06:30 morning 首份用 `781945d` 新 prompt，驗證多指標並陳是否收斂（Gemini 曾只寫資金位移、可靠度理由混入重複評級字）。
 
 ---
 
