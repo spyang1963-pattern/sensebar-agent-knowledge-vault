@@ -1,0 +1,194 @@
+analysis:
+  output:
+    dashboard_dir: output/dashboard
+    data_dir: data
+  thresholds:
+    margin_decrease_pct: -5.0
+    margin_decrease_qty: -50
+    min_volume: 100
+    price_drop_pct: -2.0
+  triggers:
+    institutional_buy:
+      daily_rise_pct: 2.0
+      enabled: true
+      margin_decrease_qty: -80
+    margin_call:
+      consecutive_days: 3
+      cumulative_drop_pct: -10.0
+      enabled: true
+      max_maintenance_rate: 135.0
+      top_margin_decrease: 10
+    panic_sell:
+      daily_drop_pct: -4.0
+      enabled: true
+      margin_decrease_qty: -100
+      min_maintenance_rate: 145.0
+channels:
+  email:
+    enabled: true
+    sender_email: spyang1963@gmail.com
+    sender_password: qodk pthc zklc lwrb
+    smtp_port: 587
+    smtp_server: smtp.gmail.com
+  line:
+    channel_access_token: tptSa8HT7DCuMo8pz7taDvba+cDTSUsOTrgUXAPhXeGAz+UTL417VK6ugJzCUUIZGNdCh5eGJVwknIYrjs2Bi214ExRK/FJ6CvOE83oGR9DQ0BpbO0/2bJimckB/ZeaYE2dbK0s3ygM87nTYoyc7bgdB04t89/1O/w1cDnyilFU=
+    enabled: true
+    user_ids:
+    - name: spyang
+      user_id: U22237069d5d57cdb8ea50c4c762e36df
+messages:
+- content: '【胚騰 AI 股票警報】
+
+
+    加權指數: {index}
+
+    今日警示股: {alert_count} 檔
+
+
+    {top_stocks}
+
+
+    查看看板: {url}
+
+
+    ---
+
+    胚騰 AI Agent'
+  enabled: true
+  id: stock_alert
+  name: 台股融資券分析
+  recipients:
+  - channel: line
+    name: spyang
+    status: 暫停
+    target: U22237069d5d57cdb8ea50c4c762e36df
+  - channel: email
+    name: spyang
+    status: 暫停
+    target: spyang1963@gmail.com
+  - channel: email
+    name: 聶大師
+    status: 暫停
+    target: nie0936280018@gmail.com
+  schedule:
+    end: never
+    repeat: daily
+    start: immediately
+    time: '21:30'
+  status: 運作中
+- content: 早安！本週開始，請記得檢查投資組合
+  enabled: true
+  id: weekly_greeting
+  name: 每週一早安
+  recipients:
+  - channel: line
+    name: spyang
+    status: 運作中
+    target: U22237069d5d57cdb8ea50c4c762e36df
+  - channel: email
+    name: spyang
+    status: 運作中
+    target: spyang1963@gmail.com
+  schedule:
+    end: '2026-12-31'
+    repeat: once
+    start: immediately
+    time: '21:50'
+  status: 已停止
+- content: 🧪 測試訊息：如果你收到這則，代表 Scheduler 正常運作！
+  enabled: true
+  id: test_trigger
+  name: 測試觸發訊息
+  recipients:
+  - channel: line
+    name: spyang
+    status: 運作中
+    target: U22237069d5d57cdb8ea50c4c762e36df
+  schedule:
+    end: never
+    repeat: once
+    start: immediately
+    time: '22:26'
+  status: 已停止
+- content: '【胚騰 AI 股票警報】
+
+
+    加權指數: {index}
+
+    今日警示股: {alert_count} 檔
+
+
+    {top_stocks}
+
+
+    查看看板: {url}
+
+
+    ---
+
+    胚騰 AI Agent
+
+    '
+  enabled: true
+  id: stock_alert_copy
+  name: 台股融資券分析 (複製)
+  recipients:
+  - channel: line
+    name: spyang
+    status: 運作中
+    target: U22237069d5d57cdb8ea50c4c762e36df
+  - channel: email
+    name: spyang
+    status: 運作中
+    target: spyang1963@gmail.com
+  schedule:
+    end: never
+    repeat: daily
+    start: immediately
+    time: '18:00'
+  status: 已停止
+realtime_monitor:
+  check_interval_minutes: 5
+  default_thresholds:
+    price_drop_pct: -3.0
+    volume_surge_ratio: 2.0
+  enabled: true
+  futures_watchlist:
+  - code: TX
+    name: 台指期
+    thresholds:
+      price_drop_pct: -1.0
+  monitor_hours:
+    end: 05:00
+    start: 08:45
+  watchlist:
+  - code: '2330'
+    name: 台積電
+    thresholds:
+      price_drop_pct: -3.0
+      volume_surge_ratio: 2.0
+  - code: '2317'
+    name: 鴻海
+    thresholds:
+      price_drop_pct: -3.0
+      volume_surge_ratio: 2.0
+  - code: '2454'
+    name: 聯發科
+    thresholds:
+      price_drop_pct: -3.0
+      volume_surge_ratio: 2.0
+  - code: '2308'
+    name: 台達電
+    thresholds:
+      price_drop_pct: -3.0
+      volume_surge_ratio: 2.0
+  - code: '2881'
+    name: 富邦金
+    thresholds:
+      price_drop_pct: -2.0
+      volume_surge_ratio: 2.0
+  - code: '2301'
+    name: 光寶科
+    thresholds:
+      price_drop_pct: -3.0
+      volume_surge_ratio: 2.0

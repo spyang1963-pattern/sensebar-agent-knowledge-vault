@@ -22,3 +22,10 @@ financial_news/logs/
 XQ-AI神隊友/routines/postmarket/input_*.md
 XQ-AI神隊友/routines/outputs/postmarket/
 XQ-AI神隊友/routines/outputs/*.html
+
+# stock-monitor 運行時檔案（cache 已由 output/ 規則排除）
+stock-monitor/logs/
+stock-monitor/scheduler.lock
+stock-monitor/scheduler.pid
+stock-monitor/sent_log.json
+stock-monitor/*.log
