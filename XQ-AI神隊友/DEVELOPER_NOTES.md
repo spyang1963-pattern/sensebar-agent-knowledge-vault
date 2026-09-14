@@ -187,6 +187,23 @@
 - **⚠️ 排程 bug 修正（`5472c2b`）**：`setup_xq_postmarket_task.ps1` 的 evening 原本是「週一~五 22:00」，但 evening 語義是「前一晚初版」→ 週一開盤的初版應在週日晚產生，原設定漏掉週日晚。改為「**週日~週四**」22:00（bitmask 31），morning 維持「週一~五」06:30（bitmask 62）。PC3 已重跑註冊確認。
 - **待觀察**：明早 06:30 morning 首份用 `781945d` 新 prompt，驗證多指標並陳是否收斂（Gemini 曾只寫資金位移、可靠度理由混入重複評級字）。
 
+### 🔄 預測績效稽核閉環（2026-09-13，commit `d7dc29e`，回應「預測差＝虛設」）
+- **動機**：預測榜從不回頭檢驗 → 沒有 feedback → Gemini 不會進步、使用者無法信任。先補閉環。
+- **支撐壓力技術化**（回應「離譜的壓力支撐沒意義」）：
+  - `postmarket_prep.py` 新增 `_tech_levels()`：從 stock-monitor `output/cache/kline/{code}.json`（OHLC）算每檔「前收/前高/前低/MA5/MA20/前20日高/前20日低」，輸出「## 0b 技術位階速查表」。
+  - `postmarket_report.py` 關鍵價位鐵律改：支撐/壓力**必須從技術位階選取並括號標依據**（例「壓力 2520（前20日高）」「支撐 2380（MA20）」），廢掉無依據的 ±3%~15% 隨機編。
+- **新腳本 `routines/predict_audit.py`**：
+  - `parse_forecast` 解析預測榜每檔（code/name/dir/strength/size/rel/support/resistance）。
+  - `audit_day(day)`：讀「前一晚 evening 初稿」+「當日 morning 定稿」，跟「當日收盤」（最新 breadth 快照 Close/Chg）比對。
+  - 計分：方向命中（偏多→漲/偏空→跌/中性不計）、價位命中（偏多 突破壓力=2/守住=1/跌破支撐=0）、可靠度校準（高/中/低分層命中率）、規模分層。
+  - `_diff`：初稿→定稿變動清單（方向/支撐/壓力/可靠度/新增移除）。
+  - 累積 `routines/outputs/audit/audit_history.json`；`recent_summary(5)` 產生 Gemini 回饋摘要。
+- **回饋 Gemini**：`postmarket_report.py` 呼叫前讀 `recent_summary(5)`，把「過去 5 天命中率/可靠度校準/檢討」塞進 input 開頭，強迫 Gemini 修正。
+- **績效區塊**：`render_html.py` 新增 `_audit_block()`＋`renderAudit()`（JS）＋`.audit-*` CSS；「盤後綜合分析」tab 頂部顯示「方向命中率＋可靠度校準 pill＋每日趨勢＋初稿→定稿變動清單」。
+- **排程整合**：`xq_postmarket_loop.bat` 的 evening 開頭跑 `predict_audit.py`（收盤後稽核當日預測）。
+- **時序**：每天早 morning 預測 → 當晚 22:00 evening 稽核（用當日收盤）→ 回饋下次。**下一個交易日（09/14 週一）22:00 才有第一筆稽核數據**（週末無收盤快照，audit 會自動 skip）。
+- **待辦（第二版）**：① 盤前試搓（08:30-09:00 集合競價，需新快照排程＋XQ 試撮介面）；② evening→morning 變動原因由 Gemini 說明（需把 evening 內容回灌 morning prompt）；③ 價位命中改用盤中 High/Low 精算（現用收盤近似）。
+
 ---
 
 ## 五、排程（Windows Task Scheduler）
