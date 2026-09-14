@@ -2082,6 +2082,7 @@ def _pm_forecast_section(body, note=""):
                     if mrel:
                         lv = mrel.group(1)
                         reason = mm.group(2).strip()[mrel.end():].strip().strip("（）()")
+                        reason = re.sub(r"^[。.]?\s*理由[：:]\s*", "", reason).strip()
                         reason_html = f"（{_pm_hl_line(reason)}）" if reason else ""
                         cur += f'<div class="pm-detail"><span class="pm-k">可靠度</span>：<span class="pill {_pm_rel_pill(lv)}">{lv}</span>{reason_html}</div>'
                     else:
