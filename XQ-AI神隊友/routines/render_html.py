@@ -689,6 +689,16 @@ tr:hover td{background:#1c2438}
 .pill.size-lg{color:#7fa8dd;background:rgba(127,168,221,.14)}
 .pill.size-md{color:#9db8e8;background:rgba(157,184,232,.12)}
 .pill.size-sm{color:#6d7d99;background:rgba(109,125,153,.14)}
+.audit-card{background:#16202f;border:1px solid #2f3d63;border-left:4px solid #e0b34d}
+.audit-head{font-weight:700;font-size:15px;margin-bottom:8px}
+.audit-rate{font-size:16px;color:var(--txt);margin:4px 0}
+.audit-rate b{color:#46d88a;font-size:24px}
+.audit-rel{margin:6px 0}
+.audit-trend{display:flex;gap:4px;margin:8px 0;flex-wrap:wrap}
+.audit-trend .tseg{background:#1d2840;border:1px solid #2f3d63;border-radius:4px;padding:2px 8px;font-size:12px;color:var(--sub)}
+.audit-chg{font-size:12.5px;color:var(--sub);margin-top:8px}
+.audit-chg ul{margin:4px 0 0 16px}
+.audit-chg li{margin:2px 0}
 .contra-card{background:#2a1a1d;border:1px solid #5a2530;border-left:5px solid var(--up);border-radius:10px;padding:12px 14px;margin:10px 0}
 .contra-card .t{font-weight:700;font-size:15px}
 .contra-card .w{color:#ff9f9a;font-size:12.5px;margin-top:3px}
@@ -1521,6 +1531,7 @@ DASH_HEAD = """<!DOCTYPE html>
 <div class="footer">本看板每 30 分由快照自動更新。盤中資料到收盤前仍會變動；僅描述資金結構與盤面事實，不含買賣建議或目標價推測。</div>
 <script type="application/json" id="histdata">{hist_json}</script>
 <script type="application/json" id="pmdata">{pmdata}</script>
+<script type="application/json" id="auditdata">{auditdata}</script>
 <script>{js}</script>
 </div></body></html>"""
 
@@ -1531,12 +1542,27 @@ var KIND_LABEL = {rank:'資金排行', breadth:'齊漲分歧', notes:'盤中三�
 function label(stamp){ /* yyyymmdd_HHMM -> 09/08 10:55 */ return stamp.slice(4,6)+'/'+stamp.slice(6,8)+' '+stamp.slice(9,11)+':'+stamp.slice(11,13); }
 function emptyMsg(k){ return '<div class="card"><div class="trend-empty">這一輪沒有 '+KIND_LABEL[k]+' 快照。</div></div>'; }
 var PMDATA = []; try { PMDATA = JSON.parse(document.getElementById('pmdata').textContent || '[]'); } catch(e){}
+var AUDIT = {}; try { AUDIT = JSON.parse(document.getElementById('auditdata').textContent || '{}'); } catch(e){}
 var PM_CUR_OVERRIDE = ''; // 非空＝用下拉選單手動指定某一份（date|slot），有時間軸互動才清除
 function pmShort(d,s){ var dd=d.slice(4,6)+'/'+d.slice(6,8); return (s==='morning'?'盤後分析 開盤前更新版':'盤後分析 前一晚初版')+'（'+dd+'）'; }
 function pmPickDate(){ return PMDATA.filter(function(r){return (r.date+'|'+r.slot)===PM_CUR_OVERRIDE;}); }
+function renderAudit(a){
+  if(!a || !a.days) return '';
+  var rate = (a.rate==null) ? '—' : a.rate+'%';
+  var html = '<div class="card audit-card"><div class="audit-head">📊 預測績效稽核 <span class="meta">（'+a.days+' 個交易日累計）</span></div>';
+  html += '<div class="audit-rate">方向命中率 <b>'+rate+'</b><span class="meta">（'+a.dir_hit+'/'+a.dir_n+' 檔）</span></div>';
+  html += '<div class="audit-rel">';
+  var rm={'高':'rel-high','中':'rel-mid','低':'rel-low'}, rl={'高':'可靠度·高','中':'可靠度·中','低':'可靠度·低'};
+  ['高','中','低'].forEach(function(k){ var r=a.rel[k]; if(r && r.n){ html += '<span class="pill '+rm[k]+'">'+rl[k]+'：'+r.hit+'/'+r.n+'（'+(r.n?Math.round(r.hit/r.n*100):0)+'%）</span>'; } });
+  html += '</div>';
+  if(a.trend && a.trend.length>1){ html += '<div class="audit-trend">'; a.trend.forEach(function(t){ html += '<span class="tseg" title="'+t.date+'">'+t.rate+'%</span>'; }); html += '</div>'; }
+  if(a.changes && a.changes.length){ html += '<div class="audit-chg">最近 初稿→定稿 變動：<ul>'; a.changes.forEach(function(c){ html += '<li><code>'+c.code+'</code> '+c.name+'：'+c.change+'</li>'; }); html += '</ul></div>'; }
+  html += '</div>';
+  return html;
+}
 function renderPostmarket(stamp){
   var el = document.getElementById('page-postmarket');
-  var body='';
+  var body = renderAudit(AUDIT);
   if(!PMDATA.length){
     el.innerHTML = '<div class="card"><div class="trend-empty">尚無盤後綜合分析報告。排程會在前一晚 22:00（初版）與開盤前 06:30（更新版）自動產生。</div></div>';
     return;
@@ -1758,6 +1784,37 @@ window.onload = function(){
 """
 
 
+def _audit_block():
+    """讀預測績效稽核歷史，產生績效區塊資料 dict（供 dashboard JS 渲染）。"""
+    try:
+        import predict_audit
+        hist = predict_audit.load_history()
+    except Exception:
+        return {}
+    if not hist:
+        return {}
+    mh = mn = 0
+    rel = {"高": [0, 0], "中": [0, 0], "低": [0, 0]}
+    trend = []
+    for r in hist:
+        m = r.get("morning", {}).get("stats", {})
+        mh += m.get("dir_hit", 0)
+        mn += m.get("dir_n", 0)
+        for k in rel:
+            rel[k][0] += m.get("rel", {}).get(k, [0, 0])[0]
+            rel[k][1] += m.get("rel", {}).get(k, [0, 0])[1]
+        if m.get("dir_n"):
+            trend.append({"date": r["date"][4:], "rate": round(m["dir_hit"] / m["dir_n"] * 100)})
+    return {
+        "days": len(hist),
+        "dir_hit": mh, "dir_n": mn,
+        "rate": round(mh / mn * 100) if mn else None,
+        "rel": {k: {"hit": v[0], "n": v[1]} for k, v in rel.items()},
+        "trend": trend[-10:],
+        "changes": (hist[-1].get("changes") or [])[:12],
+    }
+
+
 def render_dashboard(d):
     if not d:
         return ""
@@ -1771,6 +1828,7 @@ def render_dashboard(d):
         hist_json=json.dumps(d["hist"], ensure_ascii=False).replace("</", "<\\/"),
         css=CSS, js=DASH_JS,
         pmdata=json.dumps(pm_records(), ensure_ascii=False).replace("</", "<\\/"),
+        auditdata=json.dumps(_audit_block(), ensure_ascii=False).replace("</", "<\\/"),
     )
 
 

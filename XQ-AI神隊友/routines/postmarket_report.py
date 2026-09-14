@@ -58,11 +58,12 @@ N. 代碼 名稱｜方向：偏多/偏空/中性｜強度：強/中/弱｜規模
 - 每檔「出榜依據」第一條若來自資金位移，要寫明該股的 verdict 與成交值增減數字，否則視為未遵守。
 
 ⚠️ 關鍵價位的鐵律（最重要，不可違反）：
-- input 開頭有「## 0. 現價速查表」，列出各股當日現價。**支撐與壓力必須以該表現價為基準推估**：
-  支撐必須在現價之下、壓力必須在現價之上，且彼此與現價有合理距離（約現價的 ±3%~15% 區間）。
-- **嚴禁**寫出與現價脫節的價位（例如現價已是 166 元，卻寫「支撐 42 元/壓力 48 元」，這是重大錯誤）。
-- 若某檔在現價速查表查不到現價，或你無法確定合理價位，該檔「關鍵價位」一律寫「無現價資料，不估價位」，**不許硬編數字**。
-- 每寫一檔價位，產出前自我核對一次：支撐 < 現價 < 壓力 且三數都在合理量級。
+- input 有「## 0b. 技術位階速查表」，列出各股 前收/前高/前低/MA5/MA20/前20日高/前20日低。
+- **支撐與壓力必須從這些技術位階中選取**，並在價位後括號標明依據，例：「壓力 2520（前20日高）」「支撐 2380（MA20）」「支撐 2300（前20日低）」。
+- 支撐 < 現價 < 壓力，價位應落在前高/前低/MA/前20日高低這些真實位階附近。
+- **嚴禁無依據的隨機價位**（例：現價已是 166 元，卻寫「支撐 42 元/壓力 48 元」＝重大錯誤）。
+- 若「## 0b」查無該股技術位階，該檔「關鍵價位」一律寫「無技術位階資料，不估價位」，**不許硬編數字**。
+- 每寫一檔價位，產出前自我核對一次：價位有標明依據、支撐 < 現價 < 壓力。
 
 挑選條件（依序權重）：
 1. 盤中資金位移（成交值增減 + 股價方向的進貨/出貨訊號）優先 —— 這是核心，占榜單至少一半
@@ -127,6 +128,15 @@ def call_gemini(input_text, slot):
     return text, model
 
 
+def _audit_feedback():
+    """讀預測績效稽核歷史，回饋給 Gemini 修正本次預測。"""
+    try:
+        import predict_audit
+        return predict_audit.recent_summary(5)
+    except Exception:
+        return ""
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--slot", choices=["evening", "morning"], default="evening")
@@ -140,6 +150,10 @@ def main():
 
     with io.open(in_path, "r", encoding="utf-8") as f:
         input_text = f.read()
+
+    fb = _audit_feedback()
+    if fb and "尚無" not in fb:
+        input_text = "【歷史預測績效檢討（供你修正本次預測）】\n" + fb + "\n\n" + input_text
 
     print(f"[report] 呼叫 Gemini（{args.slot}）…")
     text, model = call_gemini(input_text, args.slot)

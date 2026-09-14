@@ -16,6 +16,11 @@ cd /d "%~dp0"
 
 echo [postmarket] slot=%SLOT% start: %date% %time%
 
+REM ---- Step 0: audit today's forecast performance (evening only, after close) ----
+if "%SLOT%"=="evening" (
+  python "%~dp0routines\predict_audit.py"
+)
+
 REM ---- Step 1: gather five data sources into input md ----
 python "%~dp0routines\postmarket_prep.py" --slot %SLOT%
 if errorlevel 1 goto :fail

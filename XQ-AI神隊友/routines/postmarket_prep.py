@@ -109,6 +109,59 @@ def _price_table():
     return "### 現價速查表（成交值前80 · 含市值 · 支撐/壓力與規模分類以此為基準）\n" + "\n".join(rows)
 
 
+def _tech_levels():
+    """技術位階速查表：從 stock-monitor K 線算每檔 前收/前高/前低/MA5/MA20/前20日高低，供支撐壓力引用。"""
+    _load_price_map()
+    if not _PX or rh is None:
+        return "（無快照現價，無法算技術位階）"
+    kline_dir = os.path.join(STOCK_MONITOR, "output", "cache", "kline")
+    try:
+        snap_rows = rh.load_csv(next(iter(rh.list_snapshots("breadth").values())))
+    except Exception:
+        snap_rows = []
+    order = [r for r in snap_rows if r.get("Code") in _PX and r.get("Val", 0)]
+    order.sort(key=lambda r: r.get("Val", 0), reverse=True)
+    order = order[:80]
+    if not order:
+        return "（本次快照無資料）"
+
+    def _fmt(v):
+        return f"{v:,.0f}" if float(v) == int(v) else f"{v:,.1f}"
+
+    rows = []
+    for r in order:
+        c = str(r["Code"]).zfill(4)
+        path = os.path.join(kline_dir, f"{c}.json")
+        if not os.path.isfile(path):
+            continue
+        try:
+            with io.open(path, "r", encoding="utf-8") as f:
+                data = json.load(f).get("data", [])
+        except Exception:
+            continue
+        if not data:
+            continue
+        closes = [float(d.get("close", 0)) for d in data if d.get("close")]
+        highs = [float(d.get("high", 0)) for d in data if d.get("high")]
+        lows = [float(d.get("low", 0)) for d in data if d.get("low")]
+        if not closes:
+            continue
+        last = data[-1]
+        prev_close = float(last.get("close", 0))
+        prev_high = float(last.get("high", 0))
+        prev_low = float(last.get("low", 0))
+        ma5 = sum(closes[-5:]) / len(closes[-5:]) if closes[-5:] else 0
+        ma20 = sum(closes[-20:]) / len(closes[-20:]) if closes[-20:] else 0
+        h20 = max(highs[-20:]) if highs else 0
+        l20 = min(lows[-20:]) if lows else 0
+        rows.append(f"- {c} {r.get('Name', '')} 前收{_fmt(prev_close)} 前高{_fmt(prev_high)} 前低{_fmt(prev_low)} "
+                    f"MA5={_fmt(ma5)} MA20={_fmt(ma20)} 前20日高{_fmt(h20)} 前20日低{_fmt(l20)}")
+    if not rows:
+        return "（無 K 線資料）"
+    return ("### 技術位階速查表（成交值前80 · 支撐/壓力必須引用這些位階並括號標明依據）\n"
+            + "\n".join(rows))
+
+
 def _xq_summary():
     if rh is None:
         return "（無法載入 render_html 模組）"
@@ -507,6 +560,7 @@ def main():
     parts = []
     parts.append(f"# 盤後綜合分析 input — {today.isoformat()}（{slot_label}）\n")
     parts.append(f"## 0. 現價速查表（支撐/壓力必須以此為基準）\n{_price_table()}\n")
+    parts.append(f"## 0b. 技術位階速查表（支撐/壓力必須引用這些位階）\n{_tech_levels()}\n")
     parts.append(f"## 1. XQ 盤中快照摘要\n{_xq_summary()}\n")
     parts.append(f"## 2. 融資券\n{_margin_summary()}\n\n{_margin_triggers()}\n")
     parts.append(f"## 3. 三大法人\n{_institutional_summary()}\n")
