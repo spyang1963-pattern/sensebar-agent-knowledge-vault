@@ -287,6 +287,15 @@ def main():
     else:
         print("  跳過歷史更新與圖表建置（--skip-history）")
 
+    # fetch-only 也要抓 TDCC（正常流程在 Step 9 產看板時才抓，fetch-only 跳過看板需補抓）
+    if fetch_only:
+        print("\n[Step 8.6] 抓取千張大戶（TDCC）...")
+        try:
+            from src.advanced_data import get_tdcc_shareholding
+            get_tdcc_shareholding()
+        except Exception as e:
+            print(f"    [TDCC] 抓取失敗: {e}")
+
     # === Step 9: 產生看板 ===
     if fetch_only:
         print("\n[Step 9-11] 跳過看板/通知/部署（--fetch-only 模式，資料已寫入 cache）")
