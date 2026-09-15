@@ -204,6 +204,18 @@
 - **時序**：每天早 morning 預測 → 當晚 22:00 evening 稽核（用當日收盤）→ 回饋下次。**下一個交易日（09/14 週一）22:00 才有第一筆稽核數據**（週末無收盤快照，audit 會自動 skip）。
 - **待辦（第二版）**：① 盤前試搓（08:30-09:00 集合競價，需新快照排程＋XQ 試撮介面）；② evening→morning 變動原因由 Gemini 說明（需把 evening 內容回灌 morning prompt）；③ 價位命中改用盤中 High/Low 精算（現用收盤近似）。
 
+### 📉 稽核首跑分析＋改善（2026-09-15，commit `ab771ba`→`b5c13d7`，回應「預測 33% 失真」）
+- **稽核首跑（09/14）**：方向命中率 33%（4/12）。拆解＝**偏多 0/7（0%）、偏空 4/5（80%）**——不是亂猜，是「機械式把資金位移 verdict=進貨 翻成偏多」，當天費半 -5.28%、大盤重挫，偏多股全被拖累。
+- **根因**：① 個股方向沒跟「明日大盤情境」自洽；② 「資金位移=進貨」是「今日」狀態，被誤當「明日會漲」；③ 缺「前瞻/位階」資訊（見下四項）。
+- **改善 1（prompt，`ab771ba`）**：`postmarket_report.py` 加「大盤方向一致性鐵律」——先定大盤情境、個股方向與之自洽、大盤弱時偏空為主、偏多需「逆勢抗跌」依據、禁把進貨機械翻偏多；資金板塊權重鐵律修正「占榜單≠判偏多」。
+- **改善 3（排程，`ab771ba`）**：`setup_xq_postmarket_task.ps1` 加 `XQ_Postmarket_Audit`（週一~五 14:00，收盤 13:35 定格後立即稽核），不必等 22:00。
+- **改善 ①②③④（prep 前瞻資訊，`b5c13d7`，全放 postmarket_prep.py 不動 stock-monitor）**：
+  - ① 全市場融資餘額日變化（`_margin_summary` 加，反映散戶整體槓桿情緒）
+  - ② 乖離率（`_tech_levels` 加 `(前收-MA20)/MA20%`，正值漲高於均線有回檔壓力）
+  - ③ 台積電 ADR（TSM）＋台灣 ETF（EWT）——美股收盤後反映對台股預期（**台指期夜盤 Yahoo 抓不到，用 EWT 替代**；借 `market_data.fetch_symbol` 直接抓，不動 financial_news）
+  - ④ 當日新聞情緒（`_news_sentiment_summary` 讀 finance.db events 表 severity≥2，輸出「## 7b 當日新聞情緒」）
+- **踩雷**：`market_data` 只在 `if fetch:` 內 import，`--no-fetch` 時 extra 抓取會 NameError → 改為 try 塊開頭無條件 import。
+
 ---
 
 ## 五、排程（Windows Task Scheduler）
