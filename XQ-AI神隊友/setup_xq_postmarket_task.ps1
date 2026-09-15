@@ -1,9 +1,10 @@
 ﻿# ============================================================
 #  setup_xq_postmarket_task.ps1 ─ 建立盤後綜合分析排程
 #
-#  建立兩個任務：
+#  建立三個任務：
 #    XQ_Postmarket_Evening  週日至週四 22:00  前一晚初版（含當日法人/融資券/晚報；週日晚上出週一初版）
 #    XQ_Postmarket_Morning  週一至週五 06:30  開盤前更新版（隔夜美股收盤已定案 + 06:00 晨報可參考）
+#    XQ_Postmarket_Audit    週一至週五 14:00  收盤後稽核今日預測榜績效（predict_audit.py）
 #
 #  共同流程：xq_postmarket_loop.bat <slot>
 #    prep（五路資料彙整）→ report（Gemini 明日預測）→ 重建 dashboard（第四頁籤）→ deploy push
@@ -45,8 +46,20 @@ Register-ScheduledTask -TaskName 'XQ_Postmarket_Morning' `
     -Action $actMorning -Trigger $trigMorning -Settings $settings `
     -Description '盤後綜合分析：開盤前 06:30 更新版' -Force
 
+# ---- 收盤後稽核 14:00（快照 13:35 定格後，立即稽核今日預測榜績效） ----
+$trigAudit = New-ScheduledTaskTrigger -Weekly `
+    -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday -At 14:00
+$actAudit = New-ScheduledTaskAction -Execute 'cmd.exe' `
+    -Argument "/c cd /d `"$scriptDir\routines`" && python -X utf8 predict_audit.py"
+if (Get-ScheduledTask -TaskName 'XQ_Postmarket_Audit' -ErrorAction SilentlyContinue) {
+    Unregister-ScheduledTask -TaskName 'XQ_Postmarket_Audit' -Confirm:$false -ErrorAction SilentlyContinue
+}
+Register-ScheduledTask -TaskName 'XQ_Postmarket_Audit' `
+    -Action $actAudit -Trigger $trigAudit -Settings $settings `
+    -Description '收盤後稽核今日預測榜績效（predict_audit.py）' -Force
+
 # ---- 驗證 ----
-foreach ($name in 'XQ_Postmarket_Evening', 'XQ_Postmarket_Morning') {
+foreach ($name in 'XQ_Postmarket_Evening', 'XQ_Postmarket_Morning', 'XQ_Postmarket_Audit') {
     $reg = Get-ScheduledTask -TaskName $name
     Write-Output "已建立任務：$($reg.TaskName)  （狀態：$($reg.State)）"
     ($reg.Triggers) | ForEach-Object {
