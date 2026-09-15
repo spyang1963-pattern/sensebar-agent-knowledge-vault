@@ -709,6 +709,19 @@ tr:hover td{background:#1c2438}
 .audit-chg{font-size:12.5px;color:var(--sub);margin-top:8px}
 .audit-chg ul{margin:4px 0 0 16px}
 .audit-chg li{margin:2px 0}
+.monitor-card{background:#14231a;border:1px solid #2f3d63;border-left:4px solid #46d88a}
+.monitor-grid{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.monitor-item{padding:5px 9px;border-radius:8px;font-size:12.5px;border:1px solid #2f3d63;background:#1d2840}
+.monitor-item .m-code{font-weight:700;color:#e0b34d;margin-right:4px}
+.monitor-item .m-name{color:var(--txt);margin-right:6px}
+.monitor-item .m-dir{color:var(--sub);margin-right:6px}
+.monitor-item .m-px{color:#d8d2c0;margin-right:6px}
+.monitor-item .m-status{font-weight:600}
+.monitor-item.m-hit{background:rgba(70,216,138,.10);border-color:rgba(70,216,138,.4)}
+.monitor-item.m-hit .m-status{color:#46d88a}
+.monitor-item.m-watch .m-status{color:#e0b34d}
+.monitor-item.m-break{background:rgba(214,69,65,.12);border-color:rgba(214,69,65,.4)}
+.monitor-item.m-break .m-status{color:#d64541}
 .contra-card{background:#2a1a1d;border:1px solid #5a2530;border-left:5px solid var(--up);border-radius:10px;padding:12px 14px;margin:10px 0}
 .contra-card .t{font-weight:700;font-size:15px}
 .contra-card .w{color:#ff9f9a;font-size:12.5px;margin-top:3px}
@@ -1542,6 +1555,7 @@ DASH_HEAD = """<!DOCTYPE html>
 <script type="application/json" id="histdata">{hist_json}</script>
 <script type="application/json" id="pmdata">{pmdata}</script>
 <script type="application/json" id="auditdata">{auditdata}</script>
+<script type="application/json" id="monitordata">{monitordata}</script>
 <script>{js}</script>
 </div></body></html>"""
 
@@ -1553,9 +1567,23 @@ function label(stamp){ /* yyyymmdd_HHMM -> 09/08 10:55 */ return stamp.slice(4,6
 function emptyMsg(k){ return '<div class="card"><div class="trend-empty">這一輪沒有 '+KIND_LABEL[k]+' 快照。</div></div>'; }
 var PMDATA = []; try { PMDATA = JSON.parse(document.getElementById('pmdata').textContent || '[]'); } catch(e){}
 var AUDIT = {}; try { AUDIT = JSON.parse(document.getElementById('auditdata').textContent || '{}'); } catch(e){}
+var MONITOR = {}; try { MONITOR = JSON.parse(document.getElementById('monitordata').textContent || '{}'); } catch(e){}
 var PM_CUR_OVERRIDE = ''; // 非空＝用下拉選單手動指定某一份（date|slot），有時間軸互動才清除
 function pmShort(d,s){ var dd=d.slice(4,6)+'/'+d.slice(6,8); return (s==='morning'?'盤後分析 開盤前更新版':'盤後分析 前一晚初版')+'（'+dd+'）'; }
 function pmPickDate(){ return PMDATA.filter(function(r){return (r.date+'|'+r.slot)===PM_CUR_OVERRIDE;}); }
+function renderMonitor(m){
+  if(!m || !m.items || !m.items.length) return '';
+  var st = {hit:{t:'🟢 兌現中',c:'m-hit'}, watch:{t:'🟡 觀望',c:'m-watch'}, break:{t:'🔴 破位',c:'m-break'}};
+  var hits = m.items.filter(function(x){return x.status==='hit';}).length;
+  var breaks = m.items.filter(function(x){return x.status==='break';}).length;
+  var html = '<div class="card monitor-card"><div class="audit-head">🎯 預測兌現監控 <span class="meta">（快照 '+m.stamp.slice(4,6)+'/'+m.stamp.slice(6,8)+' '+m.stamp.slice(9,11)+':'+m.stamp.slice(11,13)+' · 兌現 '+hits+' · 破位 '+breaks+'）</span></div>';
+  html += '<div class="monitor-grid">';
+  m.items.forEach(function(it){
+    html += '<div class="monitor-item '+st[it.status].c+'"><span class="m-code">'+it.code+'</span> <span class="m-name">'+it.name+'</span><span class="m-dir">'+it.dir+'</span><span class="m-px">'+it.close.toFixed(1)+'（'+(it.chg>=0?'+':'')+it.chg.toFixed(1)+'%）</span><span class="m-status">'+st[it.status].t+'</span></div>';
+  });
+  html += '</div></div>';
+  return html;
+}
 function renderAudit(a){
   if(!a || !a.days) return '';
   var rate = (a.rate==null) ? '—' : a.rate+'%';
@@ -1572,7 +1600,7 @@ function renderAudit(a){
 }
 function renderPostmarket(stamp){
   var el = document.getElementById('page-postmarket');
-  var body = renderAudit(AUDIT);
+  var body = renderAudit(AUDIT) + renderMonitor(MONITOR);
   if(!PMDATA.length){
     el.innerHTML = '<div class="card"><div class="trend-empty">尚無盤後綜合分析報告。排程會在前一晚 22:00（初版）與開盤前 06:30（更新版）自動產生。</div></div>';
     return;
@@ -1825,6 +1853,54 @@ def _audit_block():
     }
 
 
+def _monitor_status(s, close, chg):
+    """預測兌現狀態：hit=兌現中 / watch=觀望 / break=破位。"""
+    d = s.get("dir", "")
+    sup = s.get("support")
+    res = s.get("resistance")
+    if "偏多" in d:
+        if sup is not None and close < sup:
+            return "break"
+        return "hit" if chg > 0 else "watch"
+    if "偏空" in d:
+        if res is not None and close > res:
+            return "break"
+        return "hit" if chg < 0 else "watch"
+    return "watch"
+
+
+def _pm_monitor():
+    """預測兌現監控：比對今日預測榜 vs 最新盤中快照，標 🟢兌現/🟡觀望/🔴破位。"""
+    try:
+        import predict_audit
+    except Exception:
+        return {}
+    today = datetime.now().strftime("%Y%m%d")
+    md_path = os.path.join(POSTMARKET_OUT, f"postmarket_{today}_morning.md")
+    if not os.path.isfile(md_path):
+        md_path = os.path.join(POSTMARKET_OUT, f"postmarket_{today}_evening.md")
+    if not os.path.isfile(md_path):
+        return {}
+    with io.open(md_path, "r", encoding="utf-8") as f:
+        stocks = predict_audit.parse_forecast(f.read())
+    if not stocks:
+        return {}
+    cmap, stamp = predict_audit.actual_close_map()
+    if not cmap:
+        return {}
+    items = []
+    for s in stocks:
+        key = str(s["code"]).zfill(4)
+        got = cmap.get(key)
+        if not got:
+            continue
+        close, chg = got
+        status = _monitor_status(s, close, chg)
+        items.append({"code": s["code"], "name": s["name"], "dir": s["dir"],
+                      "close": close, "chg": chg, "status": status})
+    return {"stamp": stamp, "items": items}
+
+
 def render_dashboard(d):
     if not d:
         return ""
@@ -1839,6 +1915,7 @@ def render_dashboard(d):
         css=CSS, js=DASH_JS,
         pmdata=json.dumps(pm_records(), ensure_ascii=False).replace("</", "<\\/"),
         auditdata=json.dumps(_audit_block(), ensure_ascii=False).replace("</", "<\\/"),
+        monitordata=json.dumps(_pm_monitor(), ensure_ascii=False).replace("</", "<\\/"),
     )
 
 
