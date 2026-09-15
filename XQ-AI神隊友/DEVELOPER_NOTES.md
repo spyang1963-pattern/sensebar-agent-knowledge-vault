@@ -216,6 +216,17 @@
   - ④ 當日新聞情緒（`_news_sentiment_summary` 讀 finance.db events 表 severity≥2，輸出「## 7b 當日新聞情緒」）
 - **踩雷**：`market_data` 只在 `if fetch:` 內 import，`--no-fetch` 時 extra 抓取會 NameError → 改為 try 塊開頭無條件 import。
 
+### 🎯 方向四＋二＋三：預測可稽核化＋兌現監控（2026-09-15，commit `6841ec6`→`16333a4`）
+- **方向四（可稽核化，`6841ec6`）**：
+  - prompt 每檔加「預期：上漲概率 X%、區間 +X%~+Y%、vs大盤 跑贏/跑輸/同步」；前 5 檔標「【核心】」。
+  - render：`_pm_clean_name`（去【核心】）、`_pm_expect`（概率/區間/vs大盤 → `.pm-prob/.pm-range/.pm-vs` 彩色 badge）、`.pm-core` 金色標記；`data-name` 用乾淨股名（copyStocks 正確）。
+  - audit：`parse_forecast` 加 prob/range_lo/range_hi/vs_market；`_score_stocks` 加「區間命中（實際漲跌落在預期區間內）」＋「概率校準（有標概率的檔實際命中率）」；`recent_summary` 回饋 Gemini 兩者。
+- **方向二三（兌現監控，`16333a4`）**：
+  - `_pm_monitor()`：讀今日 morning/evening 預測 → 解析 → 比對最新 breadth 快照，每檔標 `hit=🟢兌現中 / watch=🟡觀望 / break=🔴破位`（偏多跌破支撐＝破位、偏空突破壓力＝破位）。
+  - `_monitor_status` 比對邏輯（單元測試 8 case 全過）。
+  - dashboard 盤後 tab 頂部「🎯 預測兌現監控」卡（`.monitor-grid` 每檔現價/漲跌/狀態）。
+  - **盤中即時＝免費得到**：`xq_snapshot_loop.bat` 本來就每 15 分鐘 render+deploy，監控卡自動隨每次 render 更新，不需改架構。
+
 ---
 
 ## 五、排程（Windows Task Scheduler）
