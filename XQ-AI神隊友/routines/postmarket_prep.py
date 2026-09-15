@@ -154,11 +154,12 @@ def _tech_levels():
         ma20 = sum(closes[-20:]) / len(closes[-20:]) if closes[-20:] else 0
         h20 = max(highs[-20:]) if highs else 0
         l20 = min(lows[-20:]) if lows else 0
+        bias = (prev_close - ma20) / ma20 * 100 if ma20 else 0
         rows.append(f"- {c} {r.get('Name', '')} 前收{_fmt(prev_close)} 前高{_fmt(prev_high)} 前低{_fmt(prev_low)} "
-                    f"MA5={_fmt(ma5)} MA20={_fmt(ma20)} 前20日高{_fmt(h20)} 前20日低{_fmt(l20)}")
+                    f"MA5={_fmt(ma5)} MA20={_fmt(ma20)} 前20日高{_fmt(h20)} 前20日低{_fmt(l20)} 乖離率{bias:+.1f}%")
     if not rows:
         return "（無 K 線資料）"
-    return ("### 技術位階速查表（成交值前80 · 支撐/壓力必須引用這些位階並括號標明依據）\n"
+    return ("### 技術位階速查表（成交值前80 · 支撐/壓力必須引用這些位階並括號標明依據；乖離率＝前收相對 MA20 偏離，正值＝漲高於均線有回檔壓力、負值＝跌低於均線有反彈空間）\n"
             + "\n".join(rows))
 
 
@@ -272,6 +273,11 @@ def _margin_summary():
     today = {r["stock_id"]: r for r in rows if r.get("date") == d0}
     prev = {r["stock_id"]: r for r in rows if r.get("date") == d1} if d1 else {}
     out = [f"（最新日期 {d0}，前一日 {d1 or '無'}，共{len(today)}檔）"]
+    total_m0 = sum(_as_int(r.get("margin_balance")) for r in today.values())
+    total_m1 = sum(_as_int(p.get("margin_balance")) for p in prev.values())
+    if total_m1:
+        chg_total = total_m0 - total_m1
+        out.append(f"全市場融資餘額 {total_m0:,} 張（前一日 {total_m1:,}，變化 {chg_total:+,} 張，{chg_total / total_m1 * 100:+.2f}%）→ 散戶整體{'加碼槓桿' if chg_total > 0 else '退場去槓桿'}")
     deltas = []
     for sid, r in today.items():
         m0 = _as_int(r.get("margin_balance"))
@@ -470,8 +476,8 @@ def _us_summary(fetch=True):
     sys.path.insert(0, FINANCIAL_DIR)
     try:
         from db import latest_market_snapshot, init_db, ensure_schema
+        import market_data
         if fetch:
-            import market_data
             market_data.collect_snapshot()
         symbols = [
             ("^TWII", "加權指數"), ("^SOX", "費城半導體"), ("^DJI", "道瓊"), ("^GSPC", "S&P 500"),
@@ -488,6 +494,16 @@ def _us_summary(fetch=True):
             arrow = "▲" if chg and chg > 0 else ("▼" if chg and chg < 0 else "―")
             asof = (s.get("asof_at") or s.get("captured_at") or "")[:16]
             out.append(f"- {nm}: {s['price']:,.2f} {arrow}{chg if chg is not None else 0:+.2f}%（{asof}）")
+        # 明日開盤領先指標：台積電 ADR + EWT 台灣 ETF（皆美股收盤後反映對台股預期）
+        for sym, nm in (("TSM", "台積電ADR"), ("EWT", "台灣ETF EWT")):
+            try:
+                res = market_data.fetch_symbol(sym)
+                if res and res[1] is not None:
+                    _, price, chg, _asof = res
+                    arrow = "▲" if chg > 0 else ("▼" if chg < 0 else "―")
+                    out.append(f"- {nm}: {price:,.2f} {arrow}{chg:+.2f}%")
+            except Exception:
+                pass
         return "\n".join(out) if out else "（美股行情無資料）"
     except Exception as e:
         return f"（美股行情抓取失敗：{e}）"
@@ -543,6 +559,33 @@ def _report_summary():
     return "\n\n".join(out)
 
 
+def _news_sentiment_summary():
+    """從 financial_news 的 finance.db 摘要近期重要新聞（severity≥2），反映市場情緒。"""
+    sys.path.insert(0, FINANCIAL_DIR)
+    try:
+        import sqlite3
+        if not os.path.isfile(FIN_DB):
+            return "（無新聞資料庫）"
+        conn = sqlite3.connect(FIN_DB)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT title, severity, sentiment, published FROM events "
+            "WHERE is_noise=0 AND is_duplicate=0 AND severity>=2 "
+            "ORDER BY published DESC LIMIT 20"
+        ).fetchall()
+        conn.close()
+        if not rows:
+            return "（近期無 severity≥2 的重要新聞）"
+        out = [f"近期重要新聞（severity≥2，最新 {len(rows)} 則）："]
+        for r in rows:
+            sent = r["sentiment"] or "—"
+            pub = (r["published"] or "")[:10]
+            out.append(f"- [{pub}][severity {r['severity']}][{sent}] {r['title']}")
+        return "\n".join(out)
+    except Exception as e:
+        return f"（新聞情緒讀取失敗：{e}）"
+
+
 # ============================================================
 #  主流程
 # ============================================================
@@ -568,6 +611,7 @@ def main():
     parts.append(f"## 5. 美股與國際盤（Yahoo 抓取）\n{_us_summary(fetch=not args.no_fetch)}\n")
     parts.append(f"## 6. 行事曆排期事件\n{_calendar_summary(today)}\n")
     parts.append(f"## 7. 金融報告摘錄\n{_report_summary()}\n")
+    parts.append(f"## 7b. 當日新聞情緒（severity≥2 重要新聞）\n{_news_sentiment_summary()}\n")
 
     body = "\n".join(parts)
     out_path = os.path.join(POSTMARKET_DIR, f"input_{stamp}_{args.slot}.md")
