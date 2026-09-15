@@ -57,12 +57,14 @@ def parse_forecast(md_text):
             dm = _DIR_RE.search(flat)
             sm = _STR_RE.search(flat)
             szm = _SIZE_RE.search(flat)
+            core_name = m.group(2).replace("【核心】", "").replace("[核心]", "").strip()
             cur = {
-                "code": m.group(1), "name": m.group(2),
+                "code": m.group(1), "name": core_name,
                 "dir": dm.group(1).strip() if dm else "",
                 "strength": sm.group(1) if sm else "",
                 "size": szm.group(1) if szm else "",
                 "rel": "", "support": None, "resistance": None,
+                "prob": None, "range_lo": None, "range_hi": None, "vs_market": "",
             }
         elif cur and (s.startswith("-") or s.startswith("·")):
             raw = s.lstrip("-· ").strip()
@@ -74,6 +76,17 @@ def parse_forecast(md_text):
             if "可靠度" in lab:
                 mrel = re.match(r"^([高中低])", val)
                 cur["rel"] = mrel.group(1) if mrel else ""
+            elif "預期" in lab:
+                mp = re.search(r"概率\s*(\d+)\s*%", val)
+                if mp:
+                    cur["prob"] = int(mp.group(1))
+                mi = re.search(r"區間\s*([+\-]?\d+(?:\.\d+)?)%\s*~\s*([+\-]?\d+(?:\.\d+)?)%", val)
+                if mi:
+                    cur["range_lo"] = float(mi.group(1))
+                    cur["range_hi"] = float(mi.group(2))
+                mv = re.search(r"vs\s*大盤\s*(跑贏|跑輸|同步)", val)
+                if mv:
+                    cur["vs_market"] = mv.group(1)
             elif "關鍵價位" in lab:
                 ms = re.search(r"支撐\s*([\d,]+\.?\d*)", val)
                 mr = re.search(r"壓力\s*([\d,]+\.?\d*)", val)
@@ -178,7 +191,8 @@ def _score_stocks(stocks, cmap):
     per = []
     stat = {"n": 0, "dir_hit": 0, "dir_n": 0,
             "rel": {"高": [0, 0], "中": [0, 0], "低": [0, 0]},
-            "size": {}, "price": {"total": 0, "score": 0, "break": 0}}
+            "size": {}, "price": {"total": 0, "score": 0, "break": 0},
+            "range": {"total": 0, "hit": 0}, "prob": {"n": 0, "hit": 0}}
     for s in stocks:
         key = str(s["code"]).zfill(4)
         got = cmap.get(key)
@@ -188,8 +202,15 @@ def _score_stocks(stocks, cmap):
         close, chg = got
         hit = _dir_hit(s, chg)
         ps = _price_score(s, close)
+        range_hit = None
+        if s.get("range_lo") is not None and s.get("range_hi") is not None:
+            stat["range"]["total"] += 1
+            range_hit = s["range_lo"] <= chg <= s["range_hi"]
+            if range_hit:
+                stat["range"]["hit"] += 1
         row = {"code": s["code"], "name": s["name"], "dir": s["dir"],
-               "chg": chg, "hit": hit, "price": ps, "rel": s["rel"], "size": s["size"]}
+               "chg": chg, "hit": hit, "price": ps, "rel": s["rel"], "size": s["size"],
+               "range_hit": range_hit, "prob": s.get("prob")}
         per.append(row)
         if hit is not None:
             stat["dir_n"] += 1
@@ -200,6 +221,10 @@ def _score_stocks(stocks, cmap):
                 stat["rel"][rel][1] += 1
                 if hit:
                     stat["rel"][rel][0] += 1
+            if s.get("prob") is not None:
+                stat["prob"]["n"] += 1
+                if hit:
+                    stat["prob"]["hit"] += 1
         if ps is not None:
             stat["price"]["total"] += 1
             stat["price"]["score"] += ps
@@ -294,6 +319,18 @@ def recent_summary(days=5):
             hr, ln = rel["高"][0] / rel["高"][1], rel["低"][0] / rel["低"][1]
             if hr <= ln:
                 lines.append("你的「高可靠度」命中率未高於「低可靠度」，可靠度評級缺乏區分力，請據實標示。")
+    # 區間命中率 + 概率校準
+    r_hit = r_n = p_hit = p_n = 0
+    for r in recent:
+        m = r.get("morning", {}).get("stats", {})
+        r_hit += m.get("range", {}).get("hit", 0)
+        r_n += m.get("range", {}).get("total", 0)
+        p_hit += m.get("prob", {}).get("hit", 0)
+        p_n += m.get("prob", {}).get("n", 0)
+    if r_n:
+        lines.append(f"預期區間命中率（實際漲跌落在你給的區間內）：{_rate(r_hit, r_n)}。")
+    if p_n:
+        lines.append(f"你標注概率的檔，實際方向命中率：{_rate(p_hit, p_n)}（若遠低於你標的平均概率，代表概率膨脹，請據實下修）。")
     return "\n".join(lines)
 
 

@@ -689,6 +689,16 @@ tr:hover td{background:#1c2438}
 .pill.size-lg{color:#7fa8dd;background:rgba(127,168,221,.14)}
 .pill.size-md{color:#9db8e8;background:rgba(157,184,232,.12)}
 .pill.size-sm{color:#6d7d99;background:rgba(109,125,153,.14)}
+.pm-core{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:700;margin-left:6px;background:#e0b34d;color:#1a1405}
+.pm-prob{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11.5px;font-weight:600;margin-right:4px}
+.pm-prob.prob-high{color:#46d88a;background:rgba(70,216,138,.14)}
+.pm-prob.prob-mid{color:#e0b34d;background:rgba(224,179,77,.14)}
+.pm-prob.prob-low{color:#9aa0a6;background:rgba(154,160,166,.14)}
+.pm-range{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11.5px;margin-right:4px;color:var(--sub);background:rgba(127,168,221,.12)}
+.pm-vs{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11.5px;font-weight:600}
+.pm-vs.vs-win{color:#d64541;background:rgba(214,69,65,.14)}
+.pm-vs.vs-lose{color:#2e9e5b;background:rgba(46,158,91,.14)}
+.pm-vs.vs-flat{color:#9aa0a6;background:rgba(154,160,166,.14)}
 .audit-card{background:#16202f;border:1px solid #2f3d63;border-left:4px solid #e0b34d}
 .audit-head{font-weight:700;font-size:15px;margin-bottom:8px}
 .audit-rate{font-size:16px;color:var(--txt);margin:4px 0}
@@ -1938,6 +1948,30 @@ def _pm_rel_pill(level):
     return {"高": "rel-high", "中": "rel-mid", "低": "rel-low"}.get(level, "rel-mid")
 
 
+def _pm_clean_name(name):
+    """股名去掉「【核心】」標記，回傳乾淨股名。"""
+    return name.replace("【核心】", "").replace("[核心]", "").strip()
+
+
+def _pm_expect(text):
+    """解析「上漲概率 X%、區間 +X%~+Y%、vs大盤 跑贏」→ 帶樣式 HTML。"""
+    out = []
+    mp = re.search(r"概率\s*(\d+)\s*%", text)
+    if mp:
+        p = int(mp.group(1))
+        cls = "prob-high" if p >= 60 else ("prob-mid" if p >= 45 else "prob-low")
+        out.append(f'<span class="pm-prob {cls}">概率 {p}%</span>')
+    mi = re.search(r"區間\s*([+\-]?\d+(?:\.\d+)?%)\s*~\s*([+\-]?\d+(?:\.\d+)?%)", text)
+    if mi:
+        out.append(f'<span class="pm-range">區間 {mi.group(1)}~{mi.group(2)}</span>')
+    mv = re.search(r"vs\s*大盤\s*(跑贏|跑輸|同步)", text)
+    if mv:
+        v = mv.group(1)
+        vcls = {"跑贏": "vs-win", "跑輸": "vs-lose", "同步": "vs-flat"}.get(v, "vs-flat")
+        out.append(f'<span class="pm-vs {vcls}">vs大盤 {v}</span>')
+    return "　".join(out) if out else _pm_hl_line(text)
+
+
 def _pm_build_kw():
     if _PM_KW_COLOR:
         return
@@ -2056,6 +2090,8 @@ def _pm_forecast_section(body, note=""):
                 parts.append(cur + "</div>")
             idx += 1
             code, name = m.group(1), m.group(2)
+            core = "【核心】" in name
+            name = _pm_clean_name(name)
             dm = _PM_DIR_RE.search(flat)
             sm = _PM_STR_RE.search(flat)
             szm = _PM_SIZE_RE.search(flat)
@@ -2065,12 +2101,13 @@ def _pm_forecast_section(body, note=""):
             pill = f'<span class="pill {cls}">{dlabel}</span>' if cls else ""
             strat_html = f'<span class="pm-str">強度：{_pm_esc(strat)}</span>' if strat else ""
             size_html = _pm_size_pill(size)
+            core_html = '<span class="pm-core">核心</span>' if core else ""
             if ncls:
                 name_html = f'<b class="{ncls}" data-code="{code}" data-name="{name}">{code} {name}</b>'
             else:
                 name_html = f'<b data-code="{code}" data-name="{name}">{code} {name}</b>'
             cur = (f'<div class="pm-stock {cls}">'
-                   f'<div class="pm-name"><span class="pm-idx">{idx}</span>{name_html}{pill}{size_html}{strat_html}</div>')
+                   f'<div class="pm-name"><span class="pm-idx">{idx}</span>{name_html}{core_html}{pill}{size_html}{strat_html}</div>')
         elif (s.startswith("-") or s.startswith("·")) and cur is not None:
             raw = s.lstrip("-· ").strip()
             mm = re.match(r"^([^：]+)：\s*(.*)$", raw, re.S)
@@ -2087,6 +2124,8 @@ def _pm_forecast_section(body, note=""):
                         cur += f'<div class="pm-detail"><span class="pm-k">可靠度</span>：<span class="pill {_pm_rel_pill(lv)}">{lv}</span>{reason_html}</div>'
                     else:
                         cur += f'<div class="pm-detail"><span class="pm-k">{_pm_esc(lab)}</span>：{rest}</div>'
+                elif "預期" in lab:
+                    cur += f'<div class="pm-detail"><span class="pm-k">預期</span>：{_pm_expect(mm.group(2).strip())}</div>'
                 else:
                     if cur is not None and "關鍵價位" in lab:
                         rest += _pm_check_price(code, mm.group(2).strip())
@@ -2184,7 +2223,7 @@ def _pm_render_md(text):
             flat = ln.strip().replace("**", "")
             mm = _PM_STOCK_RE.match(flat)
             if mm and mm.group(2) and not re.match(r"\d", mm.group(2)):
-                name = mm.group(2)
+                name = _pm_clean_name(mm.group(2))
                 _PM_CUR_STOCKS[name] = mm.group(1)
                 dm = _PM_DIR_RE.search(flat)
                 dlabel, cls, ncls = _pm_dir_label(dm.group(1).strip() if dm else "")
