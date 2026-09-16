@@ -727,6 +727,14 @@ tr:hover td{background:#1c2438}
 .seg.hit{background:#46d88a}
 .seg.watch{background:#e0b34d}
 .seg.break{background:#d64541}
+.m-val{color:var(--sub);font-size:11.5px;margin-right:6px}
+.m-vq{padding:1px 6px;border-radius:6px;font-size:11px;font-weight:600;margin-right:4px}
+.vq-buy{color:#46d88a;background:rgba(70,216,138,.14)}
+.vq-sell{color:#d64541;background:rgba(214,69,65,.14)}
+.vq-hold{color:#e0b34d;background:rgba(224,179,77,.14)}
+.vq-fade{color:#2e9e5b;background:rgba(46,158,91,.14)}
+.vq-flat{color:#9aa0a6;background:rgba(154,160,166,.14)}
+.m-next{color:var(--sub);font-size:11.5px;margin-right:6px}
 .contra-card{background:#2a1a1d;border:1px solid #5a2530;border-left:5px solid var(--up);border-radius:10px;padding:12px 14px;margin:10px 0}
 .contra-card .t{font-weight:700;font-size:15px}
 .contra-card .w{color:#ff9f9a;font-size:12.5px;margin-top:3px}
@@ -1581,16 +1589,29 @@ function renderMonitor(m){
   var st = {hit:{t:'🟢 兌現',c:'m-hit'}, watch:{t:'🟡 觀望',c:'m-watch'}, break:{t:'🔴 破位',c:'m-break'}};
   var hits = m.items.filter(function(x){return x.latest==='hit';}).length;
   var breaks = m.items.filter(function(x){return x.latest==='break';}).length;
-  var html = '<div class="card monitor-card"><div class="audit-head">🎯 預測兌現監控 <span class="meta">（'+m.stamp.slice(4,6)+'/'+m.stamp.slice(6,8)+' · 兌現 '+hits+' · 破位 '+breaks+' · 每格=15分時段）</span></div>';
+  var html = '<div class="card monitor-card"><div class="audit-head" style="display:flex;justify-content:space-between;align-items:center"><span>🎯 預測兌現監控 <span class="meta">（'+m.stamp.slice(4,6)+'/'+m.stamp.slice(6,8)+' · 兌現 '+hits+' · 破位 '+breaks+' · 每格=15分時段）</span></span><button class="copybtn" id="monitor-copy-btn" onclick="copyMonitor()">📋 輸出監控</button></div>';
   html += '<div class="monitor-grid">';
   m.items.forEach(function(it){
     html += '<div class="monitor-item '+st[it.latest].c+'"><span class="m-code">'+it.code+'</span> <span class="m-name">'+it.name+'</span><span class="m-dir">'+it.dir+'</span>';
+    html += '<span class="m-val">成交值 '+it.val.toFixed(1)+'（'+(it.dval>=0?'+':'')+it.dval.toFixed(1)+'）</span>';
+    var vqCls = {'進貨':'vq-buy', '出貨':'vq-sell', '惜售':'vq-hold', '退潮':'vq-fade', '平':'vq-flat'}[it.vq] || 'vq-flat';
+    html += '<span class="m-vq '+vqCls+'">'+it.vq+'</span>';
+    html += '<span class="m-next">→'+it.next+'</span>';
     html += '<span class="m-band">';
     it.series.forEach(function(p){ html += '<span class="seg '+p.s+'" title="'+p.t+'"></span>'; });
     html += '</span><span class="m-status">'+st[it.latest].t+'</span></div>';
   });
   html += '</div></div>';
   return html;
+}
+function copyMonitor(){
+  if(!MONITOR.items || !MONITOR.items.length) return;
+  var stTxt = {hit:'兌現', watch:'觀望', break:'破位'};
+  var lines = ['多空\t股號\t股名\t成交值\t成交值變化\t狀態\t量價關係\t下一輪傾向'];
+  MONITOR.items.forEach(function(it){
+    lines.push(it.dir+'\t'+it.code+'\t'+it.name+'\t'+it.val.toFixed(1)+'\t'+(it.dval>=0?'+':'')+it.dval.toFixed(1)+'\t'+stTxt[it.latest]+'\t'+it.vq+'\t'+it.next);
+  });
+  _copyText(lines.join('\\n'), '已複製 '+MONITOR.items.length+' 檔監控', 'monitor-copy-btn');
 }
 function renderAudit(a){
   if(!a || !a.days) return '';
@@ -1739,6 +1760,7 @@ function _copyText(text,msg,id){
     if(id==='copy-all-btn'){return '📋 輸出全部頁籤';}
     if(id==='copy-page-btn'){return '📋 輸出本頁全部表';}
     if(id==='copy-all-v-btn'){return '📋 直排輸出全部頁籤';}
+    if(id==='monitor-copy-btn'){return '📋 輸出監控';}
     return '📋 直排輸出本頁全部表';
   }
   function done(){var b=document.getElementById(id);if(b){b.classList.add('copied');b.textContent=msg;setTimeout(function(){b.classList.remove('copied');b.textContent=label();},1600);}}
@@ -1877,6 +1899,24 @@ def _monitor_status(s, close, chg):
     return "watch"
 
 
+def _vq_label(chg, dval):
+    """量價四象限：進貨(量增價漲)/出貨(量增價跌)/惜售(量縮價漲)/退潮(量縮價跌)。"""
+    if dval > 0 and chg > 0:
+        return "進貨"
+    if dval > 0 and chg < 0:
+        return "出貨"
+    if dval < 0 and chg > 0:
+        return "惜售"
+    if dval < 0 and chg < 0:
+        return "退潮"
+    return "平"
+
+
+def _next_trend(vq):
+    """量價 → 下一輪傾向（規則推論，準確度待稽核）。"""
+    return {"進貨": "續漲", "出貨": "續跌", "惜售": "觀望", "退潮": "續跌", "平": "觀望"}.get(vq, "觀望")
+
+
 def _pm_monitor():
     """預測兌現監控：比對今日預測榜 vs 今日所有盤中快照，產每檔狀態序列（時間帶）。"""
     try:
@@ -1903,24 +1943,31 @@ def _pm_monitor():
         for r in load_csv(p):
             c = str(r.get("Code")).zfill(4)
             try:
-                cmap[c] = (float(r.get("Close", 0) or 0), float(r.get("Chg", 0) or 0))
+                cmap[c] = (float(r.get("Close", 0) or 0), float(r.get("Chg", 0) or 0),
+                           float(r.get("Val", 0) or 0))
             except (TypeError, ValueError):
                 pass
         for s in stocks:
             key = str(s["code"]).zfill(4)
             got = cmap.get(key)
             if got:
-                close, chg = got
+                close, chg, val = got
                 status = _monitor_status(s, close, chg)
-                series_by_code[key].append({"t": st[9:13], "s": status})
+                series_by_code[key].append({"t": st[9:13], "s": status, "chg": chg, "val": val})
     items = []
     for s in stocks:
         key = str(s["code"]).zfill(4)
         series = series_by_code[key]
         if not series:
             continue
+        last = series[-1]
+        prev = series[-2] if len(series) >= 2 else last
+        dval = last["val"] - prev["val"]
+        vq = _vq_label(last["chg"], dval)
         items.append({"code": s["code"], "name": s["name"], "dir": s["dir"],
-                      "series": series, "latest": series[-1]["s"]})
+                      "val": last["val"], "dval": dval, "vq": vq,
+                      "next": _next_trend(vq),
+                      "series": series, "latest": last["s"]})
     return {"stamp": today_snaps[-1][0], "items": items}
 
 
