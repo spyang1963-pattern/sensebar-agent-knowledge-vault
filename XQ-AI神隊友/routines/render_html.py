@@ -690,6 +690,10 @@ tr:hover td{background:#1c2438}
 .pill.size-md{color:#9db8e8;background:rgba(157,184,232,.12)}
 .pill.size-sm{color:#6d7d99;background:rgba(109,125,153,.14)}
 .pm-core{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:700;margin-left:6px;background:#e0b34d;color:#1a1405}
+.pm-group-title{font-weight:700;font-size:14px;margin:12px 0 8px;padding:4px 12px;border-radius:6px;display:inline-block}
+.pm-group-title.bull{color:#d64541;background:rgba(214,69,65,.12)}
+.pm-group-title.bear{color:#2e9e5b;background:rgba(46,158,91,.12)}
+.pm-cond{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600;margin-left:6px;color:#bcd2ff;background:rgba(188,210,255,.12)}
 .pm-prob{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11.5px;font-weight:600;margin-right:4px}
 .pm-prob.prob-high{color:#46d88a;background:rgba(70,216,138,.14)}
 .pm-prob.prob-mid{color:#e0b34d;background:rgba(224,179,77,.14)}
@@ -1751,32 +1755,48 @@ function sortTable(th){
   if(cardId){var cb=document.querySelector('.expand-btn[data-wrap="'+cardId+'"]');if(cb){cb.textContent=cb.getAttribute('data-expand');}}
   t.setAttribute('data-asc',asc?'0':'1');
 }
-function copyStocks(btn){
+function copyStocks(btn, transpose){
   var card=btn.closest('.card');
-  var seen={}, out=[];
-  var els=card.querySelectorAll('[data-code]');
+  var stocks=[];
+  var els=card.querySelectorAll('.pm-stock');
   for(var i=0;i<els.length;i++){
-    var c=(els[i].getAttribute('data-code')||'').trim();
-    if(c&&!seen[c]){seen[c]=1;out.push(c+'\\t'+els[i].getAttribute('data-name'));}
+    var el=els[i];
+    var b=el.querySelector('b[data-code]');
+    if(!b) continue;
+    stocks.push({dir:el.getAttribute('data-dir')||'',code:b.getAttribute('data-code')||'',name:b.getAttribute('data-name')||'',strat:el.getAttribute('data-strat')||'',size:el.getAttribute('data-size')||'',cond:el.getAttribute('data-cond')||'',rel:el.getAttribute('data-rel')||'',prob:el.getAttribute('data-prob')||'',range:el.getAttribute('data-range')||'',vs:el.getAttribute('data-vs')||'',sup:el.getAttribute('data-sup')||'',res:el.getAttribute('data-res')||''});
   }
-  var rows=[];
-  if(out.length){
-    rows=[out.join('\\n')];
-  }else{
-    var tbl=card.querySelector('table');
-    if(tbl){
-      for(var r=0;r<tbl.rows.length;r++){
-        var cellTxt=[];
-        for(var cc=0;cc<tbl.rows[r].cells.length;cc++){
-          cellTxt.push(tbl.rows[r].cells[cc].innerText.replace(/\\s+/g,' ').trim());
-        }
-        rows.push(cellTxt.join('\\t'));
-      }
+  if(!stocks.length){
+    var seen={}, out=[];
+    var els2=card.querySelectorAll('[data-code]');
+    for(var j=0;j<els2.length;j++){
+      var c=(els2[j].getAttribute('data-code')||'').trim();
+      if(c&&!seen[c]){seen[c]=1;out.push(c+'\\t'+els2[j].getAttribute('data-name'));}
     }
+    if(!out.length){return;}
+    var text2=out.join('\\n');
+    function done2(){btn.classList.add('copied');btn.textContent='已複製 '+out.length+' 項';setTimeout(function(){btn.classList.remove('copied');btn.textContent='📋 一鍵複製';},1600);}
+    function fb2(){var ta=document.createElement('textarea');ta.value=text2;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);done2();}
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text2).then(done2,fb2);}else{fb2();}
+    return;
   }
-  if(!rows.length){return;}
-  var text=rows.join('\\n');
-  function done(){btn.classList.add('copied');btn.textContent='已複製 '+rows.length+' 項';setTimeout(function(){btn.classList.remove('copied');btn.textContent='📋';},1600);}
+  var head=['方向','股號','股名','強度','規模','滿足條件','概率','區間','vs大盤','可靠度','支撐','壓力'];
+  var rows=[head];
+  ['偏多','偏空'].forEach(function(d){
+    var g=stocks.filter(function(x){return x.dir.indexOf(d)>=0;});
+    if(!g.length){return;}
+    g.forEach(function(x){
+      rows.push([x.dir,x.code,x.name,x.strat,x.size,(x.cond?x.cond+'/5':''),(x.prob?x.prob+'%':''),x.range,x.vs,x.rel,x.sup,x.res]);
+    });
+  });
+  if(transpose){
+    var w=0;rows.forEach(function(r){w=Math.max(w,r.length);});
+    var out=[];
+    for(var c2=0;c2<w;c2++){var line=[];for(var r2=0;r2<rows.length;r2++){line.push(rows[r2][c2]||'');}out.push(line);}
+    rows=out;
+  }
+  var lines=rows.map(function(r){return r.join('\\t');});
+  var text=lines.join('\\n');
+  function done(){btn.classList.add('copied');btn.textContent='已複製 '+stocks.length+' 檔';setTimeout(function(){btn.classList.remove('copied');btn.textContent=btn.id==='forecast-copy-t-btn'?'📋 一鍵複製(轉置)':'📋 一鍵複製';},1600);}
   function fb(){var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);done();}
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,fb);}else{fb();}
 }
@@ -2075,6 +2095,7 @@ _PM_STOCK_RE = re.compile(r"^\s*(?:[-*]|\d+[.、])?\s*(\d{4,5})\s+([^\s｜|，,�
 _PM_DIR_RE = re.compile(r"方向[：:]\s*([^｜|，,。]*)")
 _PM_STR_RE = re.compile(r"強度[：:]\s*([強中弱])")
 _PM_SIZE_RE = re.compile(r"規模[：:]\s*([大小中]型)")
+_PM_COND_RE = re.compile(r"滿足條件[：:]\s*(\d+)\s*/\s*5")
 _PM_REL_RE = re.compile(r"^([高中低])\s*[（(：:、]?\s*")
 
 _PM_KW_COLOR = {}
@@ -2284,47 +2305,37 @@ def _pm_stk_cls(name):
 
 
 def _pm_forecast_section(body, note=""):
-    """「明日個股預測榜」：每檔做成卡片＋股名依方向上色，卡上附一鍵複製。
+    """「明日個股預測榜」：解析後按偏多/偏空分組渲染，每組各自編號。
 
     Gemini 輸出格式不穩（行首常見整行 **粗體**、方向可能是「中含偏多」這類複合詞），
     解析時先剝掉粗體標記再抓 代碼＋股名，方向/強度用獨立的搜尋 regex 容錯。
     note：標題尾註（如「含 5 檔中小型股」），當作小字附註顯示在標題旁。
     """
     note_html = f'<span class="pm-note">{_pm_esc(note)}</span>' if note else ""
-    parts = ['<div class="card" id="pm-forecast"><div style="display:flex;align-items:center;justify-content:space-between">'
-             '<h2 style="margin:0">明日個股預測榜{note}</h2>'
-             '<button class="copybtn" onclick="copyStocks(this)" title="複製全部股號+股名到 Excel（兩欄）">📋 一鍵複製</button></div>'.format(note=note_html)]
+    # 第一遍：解析成 list of stock dict
+    stocks = []
     cur = None
-    idx = 0
     for ln in body:
         s = ln.strip()
         if not s or s == "---":
             continue
-        flat = s.replace("**", "").strip()          # 剝掉粗體，像是 1. **2330 台積電｜方向：…**
+        flat = s.replace("**", "").strip()
         m = _PM_STOCK_RE.match(flat)
         if m and m.group(2):
             if cur is not None:
-                parts.append(cur + "</div>")
-            idx += 1
+                stocks.append(cur)
             code, name = m.group(1), m.group(2)
             core = "【核心】" in name
             name = _pm_clean_name(name)
             dm = _PM_DIR_RE.search(flat)
             sm = _PM_STR_RE.search(flat)
             szm = _PM_SIZE_RE.search(flat)
+            cm = _PM_COND_RE.search(flat)
             dlabel, cls, ncls = _pm_dir_label(dm.group(1).strip() if dm else "")
-            strat = sm.group(1) if sm else ""
-            size = szm.group(1) if szm else ""
-            pill = f'<span class="pill {cls}">{dlabel}</span>' if cls else ""
-            strat_html = f'<span class="pm-str">強度：{_pm_esc(strat)}</span>' if strat else ""
-            size_html = _pm_size_pill(size)
-            core_html = '<span class="pm-core">核心</span>' if core else ""
-            if ncls:
-                name_html = f'<b class="{ncls}" data-code="{code}" data-name="{name}">{code} {name}</b>'
-            else:
-                name_html = f'<b data-code="{code}" data-name="{name}">{code} {name}</b>'
-            cur = (f'<div class="pm-stock {cls}">'
-                   f'<div class="pm-name"><span class="pm-idx">{idx}</span>{name_html}{core_html}{pill}{size_html}{strat_html}</div>')
+            cur = {"code": code, "name": name, "dir": dlabel, "cls": cls, "ncls": ncls,
+                   "strat": sm.group(1) if sm else "", "size": szm.group(1) if szm else "",
+                   "core": core, "cond": cm.group(1) if cm else "", "details": [],
+                   "rel": "", "prob": "", "range": "", "vs": "", "sup": "", "res": ""}
         elif (s.startswith("-") or s.startswith("·")) and cur is not None:
             raw = s.lstrip("-· ").strip()
             mm = re.match(r"^([^：]+)：\s*(.*)$", raw, re.S)
@@ -2335,24 +2346,66 @@ def _pm_forecast_section(body, note=""):
                     mrel = _PM_REL_RE.match(mm.group(2).strip())
                     if mrel:
                         lv = mrel.group(1)
+                        cur["rel"] = lv
                         reason = mm.group(2).strip()[mrel.end():].strip().strip("（）()")
                         reason = re.sub(r"^[。.]?\s*理由[：:]\s*", "", reason).strip()
                         reason_html = f"（{_pm_hl_line(reason)}）" if reason else ""
-                        cur += f'<div class="pm-detail"><span class="pm-k">可靠度</span>：<span class="pill {_pm_rel_pill(lv)}">{lv}</span>{reason_html}</div>'
+                        cur["details"].append(f'<div class="pm-detail"><span class="pm-k">可靠度</span>：<span class="pill {_pm_rel_pill(lv)}">{lv}</span>{reason_html}</div>')
                     else:
-                        cur += f'<div class="pm-detail"><span class="pm-k">{_pm_esc(lab)}</span>：{rest}</div>'
+                        cur["details"].append(f'<div class="pm-detail"><span class="pm-k">{_pm_esc(lab)}</span>：{rest}</div>')
                 elif "預期" in lab:
-                    cur += f'<div class="pm-detail"><span class="pm-k">預期</span>：{_pm_expect(mm.group(2).strip())}</div>'
+                    val = mm.group(2).strip()
+                    mp = re.search(r"概率\s*(\d+)\s*%", val)
+                    if mp:
+                        cur["prob"] = mp.group(1)
+                    mi = re.search(r"區間\s*([+\-]?\d+(?:\.\d+)?)%\s*~\s*([+\-]?\d+(?:\.\d+)?)%", val)
+                    if mi:
+                        cur["range"] = f"{mi.group(1)}~{mi.group(2)}"
+                    mv = re.search(r"vs\s*大盤\s*(跑贏|跑輸|同步)", val)
+                    if mv:
+                        cur["vs"] = mv.group(1)
+                    cur["details"].append(f'<div class="pm-detail"><span class="pm-k">預期</span>：{_pm_expect(val)}</div>')
                 else:
-                    if cur is not None and "關鍵價位" in lab:
-                        rest += _pm_check_price(code, mm.group(2).strip())
-                    cur += f'<div class="pm-detail"><span class="pm-k">{_pm_esc(lab)}</span>：{rest}</div>'
+                    if "關鍵價位" in lab:
+                        ms = re.search(r"支撐\s*([\d,]+\.?\d*)", mm.group(2))
+                        mr = re.search(r"壓力\s*([\d,]+\.?\d*)", mm.group(2))
+                        if ms:
+                            cur["sup"] = ms.group(1)
+                        if mr:
+                            cur["res"] = mr.group(1)
+                        rest += _pm_check_price(cur["code"], mm.group(2).strip())
+                    cur["details"].append(f'<div class="pm-detail"><span class="pm-k">{_pm_esc(lab)}</span>：{rest}</div>')
             else:
-                cur += f'<div class="pm-detail">{_pm_hl_line(raw)}</div>'
-        else:
-            parts.append(f'<p>{_pm_hl_line(s)}</p>')
+                cur["details"].append(f'<div class="pm-detail">{_pm_hl_line(raw)}</div>')
     if cur is not None:
-        parts.append(cur + "</div>")
+        stocks.append(cur)
+
+    bull = [x for x in stocks if "偏多" in x["dir"]]
+    bear = [x for x in stocks if "偏空" in x["dir"]]
+
+    parts = ['<div class="card" id="pm-forecast"><div style="display:flex;align-items:center;justify-content:space-between">'
+             '<h2 style="margin:0">明日個股預測榜{note}</h2>'
+             '<span><button class="copybtn" id="forecast-copy-btn" onclick="copyStocks(this,false)">📋 一鍵複製</button> '
+             '<button class="copybtn" id="forecast-copy-t-btn" onclick="copyStocks(this,true)">📋 一鍵複製(轉置)</button></span></div>'.format(note=note_html)]
+    for label, group in (("偏多", bull), ("偏空", bear)):
+        if not group:
+            continue
+        gcls = "bull" if label == "偏多" else "bear"
+        gicon = "🔴" if label == "偏多" else "🟢"
+        parts.append(f'<div class="pm-group-title {gcls}">{gicon} {label}組（{len(group)} 檔）</div>')
+        for i, x in enumerate(group, 1):
+            pill = f'<span class="pill {x["cls"]}">{x["dir"]}</span>' if x["cls"] else ""
+            strat_html = f'<span class="pm-str">強度：{_pm_esc(x["strat"])}</span>' if x["strat"] else ""
+            size_html = _pm_size_pill(x["size"])
+            core_html = '<span class="pm-core">核心</span>' if x["core"] else ""
+            cond_html = f'<span class="pm-cond">滿足 {x["cond"]}/5</span>' if x["cond"] else ""
+            if x["ncls"]:
+                name_html = f'<b class="{x["ncls"]}" data-code="{x["code"]}" data-name="{x["name"]}">{x["code"]} {x["name"]}</b>'
+            else:
+                name_html = f'<b data-code="{x["code"]}" data-name="{x["name"]}">{x["code"]} {x["name"]}</b>'
+            parts.append(f'<div class="pm-stock {x["cls"]}" data-dir="{x["dir"]}" data-strat="{x["strat"]}" data-size="{x["size"]}" data-cond="{x["cond"]}" data-rel="{x["rel"]}" data-prob="{x["prob"]}" data-range="{x["range"]}" data-vs="{x["vs"]}" data-sup="{x["sup"]}" data-res="{x["res"]}">'
+                         f'<div class="pm-name"><span class="pm-idx">{i}</span>{name_html}{core_html}{pill}{size_html}{cond_html}{strat_html}</div>'
+                         + "".join(x["details"]) + "</div>")
     parts.append("</div>")
     return "".join(parts)
 
