@@ -191,8 +191,10 @@ def _score_stocks(stocks, cmap):
     per = []
     stat = {"n": 0, "dir_hit": 0, "dir_n": 0,
             "rel": {"高": [0, 0], "中": [0, 0], "低": [0, 0]},
-            "size": {}, "price": {"total": 0, "score": 0, "break": 0},
-            "range": {"total": 0, "hit": 0}, "prob": {"n": 0, "hit": 0}}
+            "size": {}, "by_dir": {"偏多": [0, 0], "偏空": [0, 0]},
+            "price": {"total": 0, "score": 0, "break": 0},
+            "range": {"total": 0, "hit": 0}, "prob": {"n": 0, "hit": 0},
+            "prob_sum": 0}
     for s in stocks:
         key = str(s["code"]).zfill(4)
         got = cmap.get(key)
@@ -221,8 +223,18 @@ def _score_stocks(stocks, cmap):
                 stat["rel"][rel][1] += 1
                 if hit:
                     stat["rel"][rel][0] += 1
+            d = s.get("dir", "")
+            if "偏多" in d:
+                stat["by_dir"]["偏多"][1] += 1
+                if hit:
+                    stat["by_dir"]["偏多"][0] += 1
+            elif "偏空" in d:
+                stat["by_dir"]["偏空"][1] += 1
+                if hit:
+                    stat["by_dir"]["偏空"][0] += 1
             if s.get("prob") is not None:
                 stat["prob"]["n"] += 1
+                stat["prob_sum"] += s["prob"]
                 if hit:
                     stat["prob"]["hit"] += 1
         if ps is not None:
@@ -290,47 +302,87 @@ def _rate(hit, n):
     return f"{hit}/{n}（{hit / n * 100:.0f}%）" if n else "—"
 
 
+def _merge_stats(recent):
+    """合併最近 N 天的 morning stats。"""
+    m = {"dir_hit": 0, "dir_n": 0, "rel": {"高": [0, 0], "中": [0, 0], "低": [0, 0]},
+         "size": {}, "by_dir": {"偏多": [0, 0], "偏空": [0, 0]},
+         "range": {"total": 0, "hit": 0}, "prob": {"n": 0, "hit": 0}, "prob_sum": 0}
+    for r in recent:
+        st = r.get("morning", {}).get("stats", {})
+        m["dir_hit"] += st.get("dir_hit", 0)
+        m["dir_n"] += st.get("dir_n", 0)
+        for k in m["rel"]:
+            m["rel"][k][0] += st.get("rel", {}).get(k, [0, 0])[0]
+            m["rel"][k][1] += st.get("rel", {}).get(k, [0, 0])[1]
+        for k, v in st.get("size", {}).items():
+            s = m["size"].setdefault(k, [0, 0])
+            s[0] += v[0]; s[1] += v[1]
+        for k in m["by_dir"]:
+            m["by_dir"][k][0] += st.get("by_dir", {}).get(k, [0, 0])[0]
+            m["by_dir"][k][1] += st.get("by_dir", {}).get(k, [0, 0])[1]
+        m["range"]["total"] += st.get("range", {}).get("total", 0)
+        m["range"]["hit"] += st.get("range", {}).get("hit", 0)
+        m["prob"]["n"] += st.get("prob", {}).get("n", 0)
+        m["prob"]["hit"] += st.get("prob", {}).get("hit", 0)
+        m["prob_sum"] += st.get("prob_sum", 0)
+    return m
+
+
 def recent_summary(days=5):
-    """最近 N 天績效摘要（供 Gemini 回饋）。"""
+    """歸納引擎：從稽核數據歸納錯誤模式，產生具體修正指令（供 Gemini 回饋）。"""
     hist = load_history()
     if not hist:
         return "（尚無預測績效紀錄）"
     recent = hist[-days:]
-    m_hit = m_n = 0
-    for r in recent:
-        m = r.get("morning", {}).get("stats", {})
-        m_hit += m.get("dir_hit", 0)
-        m_n += m.get("dir_n", 0)
-    lines = [f"你過去 {len(recent)} 個交易日的預測榜（morning 定稿）方向命中率：{_rate(m_hit, m_n)}。"]
-    # 可靠度校準（合併最近）
-    rel = {"高": [0, 0], "中": [0, 0], "低": [0, 0]}
-    for r in recent:
-        m = r.get("morning", {}).get("stats", {}).get("rel", {})
-        for k in rel:
-            rel[k][0] += m.get(k, [0, 0])[0]
-            rel[k][1] += m.get(k, [0, 0])[1]
-    for k in ("高", "中", "低"):
-        if rel[k][1]:
-            lines.append(f"可靠度「{k}」命中率：{_rate(rel[k][0], rel[k][1])}。")
-    if m_n:
-        if m_hit / m_n < 0.5:
-            lines.append("你的方向命中率低於擲銅板（50%），請檢討選股邏輯，勿再過度依賴單一指標。")
-        if rel["高"][1] and rel["低"][1]:
-            hr, ln = rel["高"][0] / rel["高"][1], rel["低"][0] / rel["低"][1]
-            if hr <= ln:
-                lines.append("你的「高可靠度」命中率未高於「低可靠度」，可靠度評級缺乏區分力，請據實標示。")
-    # 區間命中率 + 概率校準
-    r_hit = r_n = p_hit = p_n = 0
-    for r in recent:
-        m = r.get("morning", {}).get("stats", {})
-        r_hit += m.get("range", {}).get("hit", 0)
-        r_n += m.get("range", {}).get("total", 0)
-        p_hit += m.get("prob", {}).get("hit", 0)
-        p_n += m.get("prob", {}).get("n", 0)
-    if r_n:
-        lines.append(f"預期區間命中率（實際漲跌落在你給的區間內）：{_rate(r_hit, r_n)}。")
-    if p_n:
-        lines.append(f"你標注概率的檔，實際方向命中率：{_rate(p_hit, p_n)}（若遠低於你標的平均概率，代表概率膨脹，請據實下修）。")
+    m = _merge_stats(recent)
+    lines = []
+    # 0. 總命中率
+    if m["dir_n"]:
+        rate = m["dir_hit"] / m["dir_n"] * 100
+        lines.append(f"你過去 {len(recent)} 天方向命中率 {m['dir_hit']}/{m['dir_n']}（{rate:.0f}%）。")
+        if rate < 50:
+            lines.append("命中率低於擲銅板 50%，代表方向判斷有系統性偏差，必須依下方檢討逐項修正。")
+    # 1. 方向偏差（偏多 vs 偏空）
+    bull = m["by_dir"].get("偏多", [0, 0])
+    bear = m["by_dir"].get("偏空", [0, 0])
+    if bull[1] and bear[1]:
+        br = bull[0] / bull[1] * 100
+        sr = bear[0] / bear[1] * 100
+        lines.append(f"偏多命中 {bull[0]}/{bull[1]}（{br:.0f}%）、偏空命中 {bear[0]}/{bear[1]}（{sr:.0f}%）。")
+        if br < 40 and sr >= 60:
+            lines.append("⚠ 嚴重過度看多：偏多幾乎全錯、偏空幾乎全對。修正＝大盤偏弱時偏多檔減半、偏空檔加倍；每檔偏多必須有逆勢抗跌的獨立依據，否則改列偏空或中性。")
+        elif br >= 60 and sr < 40:
+            lines.append("⚠ 過度看空：偏空幾乎全錯、偏多幾乎全對。修正＝大盤偏強時偏空檔減半、偏多檔加倍。")
+    # 2. 可靠度校準
+    rel = m["rel"]
+    if rel.get("高", [0, 0])[1] and rel.get("中", [0, 0])[1]:
+        hr = rel["高"][0] / rel["高"][1] * 100
+        mr = rel["中"][0] / rel["中"][1] * 100
+        if hr <= mr:
+            lines.append(f"⚠ 可靠度「高」命中 {hr:.0f}% 未優於「中」{mr:.0f}%，可靠度失真。修正＝只有多指標（資金＋法人＋籌碼）同步同向才標「高」，單一指標一律標中/低。")
+        else:
+            lines.append(f"可靠度「高」{hr:.0f}% >「中」{mr:.0f}%，區分力正常，維持。")
+    # 3. 規模偏差
+    sz = m["size"]
+    worst = None
+    for k, v in sz.items():
+        if v[1] >= 3 and (worst is None or v[0] / v[1] < worst[0][0] / worst[0][1]):
+            worst = (v, k)
+    if worst and worst[0][0] / worst[0][1] < 0.4:
+        lines.append(f"⚠ 規模「{worst[1]}」命中率 {worst[0][0]}/{worst[0][1]}（{worst[0][0] / worst[0][1] * 100:.0f}%）偏低。修正＝該規模沒把握就列中性或刪除，不要硬湊檔數。")
+    # 4. 區間命中
+    if m["range"]["total"]:
+        rr = m["range"]["hit"] / m["range"]["total"] * 100
+        if rr < 40:
+            lines.append(f"⚠ 價位區間命中率僅 {m['range']['hit']}/{m['range']['total']}（{rr:.0f}%）。修正＝區間改用技術位階 ±3%~5%，不要給 ±10% 的寬鬆區間。")
+    # 5. 概率膨脹
+    if m["prob"]["n"]:
+        pr = m["prob"]["hit"] / m["prob"]["n"] * 100
+        avg = m["prob_sum"] / m["prob"]["n"]
+        if avg - pr > 15:
+            lines.append(f"⚠ 你標的平均概率 {avg:.0f}% 但實際命中 {pr:.0f}%，概率膨脹。修正＝概率平均下修約 {avg - pr:.0f}pp，只有強訊號才標 ≥60%。")
+    if len(lines) <= 1 and m["dir_n"]:
+        lines.append("各維度無明顯系統性偏差，維持現有選股邏輯。")
     return "\n".join(lines)
 
 
