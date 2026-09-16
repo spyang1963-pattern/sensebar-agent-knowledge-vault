@@ -722,15 +722,20 @@ tr:hover td{background:#1c2438}
 .monitor-item.m-watch .m-status{color:#e0b34d}
 .monitor-item.m-break{background:rgba(214,69,65,.12);border-color:rgba(214,69,65,.4)}
 .monitor-item.m-break .m-status{color:#d64541}
+.monitor-legend{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:4px 0 8px;font-size:12px;color:var(--sub)}
+.monitor-legend .lg{display:inline-flex;align-items:center;gap:4px}
 .m-band{display:inline-flex;gap:2px;margin:0 6px;vertical-align:middle}
 .seg{width:10px;height:14px;border-radius:2px;display:inline-block;background:#2f3d63}
-.seg.hit{background:#46d88a}
-.seg.watch{background:#e0b34d}
-.seg.break{background:#d64541}
+.seg.up{background:#d64541}
+.seg.down{background:#2e9e5b}
+.seg.flat{background:#5a6370}
+.seg.next-up{background:transparent;border:1.5px dashed #d64541}
+.seg.next-down{background:transparent;border:1.5px dashed #2e9e5b}
+.seg.next-watch{background:transparent;border:1.5px dashed #e0b34d}
 .m-val{color:var(--sub);font-size:11.5px;margin-right:6px}
 .m-vq{padding:1px 6px;border-radius:6px;font-size:11px;font-weight:600;margin-right:4px}
-.vq-buy{color:#46d88a;background:rgba(70,216,138,.14)}
-.vq-sell{color:#d64541;background:rgba(214,69,65,.14)}
+.vq-buy{color:#d64541;background:rgba(214,69,65,.14)}
+.vq-sell{color:#2e9e5b;background:rgba(46,158,91,.14)}
 .vq-hold{color:#e0b34d;background:rgba(224,179,77,.14)}
 .vq-fade{color:#2e9e5b;background:rgba(46,158,91,.14)}
 .vq-flat{color:#9aa0a6;background:rgba(154,160,166,.14)}
@@ -1598,8 +1603,11 @@ function renderMonitor(m){
   var hits = m.items.filter(function(x){return x.latest==='hit';}).length;
   var breaks = m.items.filter(function(x){return x.latest==='break';}).length;
   var html = '<div class="card monitor-card"><div class="audit-head" style="display:flex;justify-content:space-between;align-items:center"><span>🎯 預測兌現監控 <span class="meta">（'+m.stamp.slice(4,6)+'/'+m.stamp.slice(6,8)+' '+m.stamp.slice(9,11)+':'+m.stamp.slice(11,13)+' · 兌現 '+hits+' · 破位 '+breaks+' · 每格=15分時段）</span></span><span><button class="copybtn" id="monitor-copy-btn" onclick="copyMonitor(false)">📋 輸出監控</button> <button class="copybtn" id="monitor-copy-t-btn" onclick="copyMonitor(true)">📋 輸出監控(轉置)</button></span></div>';
+  html += '<div class="monitor-legend"><span class="lg"><span class="seg up"></span>漲</span><span class="lg"><span class="seg down"></span>跌</span><span class="lg"><span class="seg flat"></span>平</span><span class="lg"><span class="seg next-up"></span>下一輪續漲</span><span class="lg"><span class="seg next-down"></span>下一輪續跌</span><span class="lg"><span class="seg next-watch"></span>下一輪觀望</span><span class="lg">量價 <b class="vq-buy">進貨</b>紅 <b class="vq-sell">出貨</b>綠</span></div>';
   html += '<div class="monitor-grid">';
-  m.items.forEach(function(it){
+  var order = {'偏多':0, '偏空':1, '中性':2};
+  var sorted = m.items.slice().sort(function(a,b){ return (order[a.dir]!==undefined?order[a.dir]:9) - (order[b.dir]!==undefined?order[b.dir]:9); });
+  sorted.forEach(function(it){
     html += '<div class="monitor-item '+st[it.latest].c+'"><span class="m-code">'+it.code+'</span> <span class="m-name">'+it.name+'</span><span class="m-dir">'+it.dir+'</span>';
     html += '<span class="m-px">現價 '+it.close.toFixed(1)+'（'+(it.dclose>=0?'+':'')+it.dclose.toFixed(1)+'）</span>';
     html += '<span class="m-val">成交值 '+it.val.toFixed(1)+'（'+(it.dval>=0?'+':'')+it.dval.toFixed(1)+'）</span>';
@@ -1611,7 +1619,9 @@ function renderMonitor(m){
     html += '<span class="m-io '+ioCls+'">內外盤 '+it.io.toFixed(0)+'%</span>';
     html += '<span class="m-next">→'+it.next+'</span>';
     html += '<span class="m-band">';
-    it.series.forEach(function(p){ html += '<span class="seg '+p.s+'" title="'+p.t+'"></span>'; });
+    it.series.forEach(function(p){ html += '<span class="seg '+p.d+'" title="'+p.t+'"></span>'; });
+    var nxtCls = it.next==='續漲'?'next-up':(it.next==='續跌'?'next-down':'next-watch');
+    html += '<span class="seg '+nxtCls+'" title="下一輪預測"></span>';
     html += '</span><span class="m-status">'+st[it.latest].t+'</span></div>';
   });
   html += '</div></div>';
@@ -2003,7 +2013,12 @@ def _pm_monitor():
             if got:
                 close, chg, val, turn, io = got
                 status = _monitor_status(s, close, chg)
-                series_by_code[key].append({"t": st[9:13], "s": status, "close": close, "chg": chg, "val": val, "turn": turn, "io": io})
+                if series_by_code[key]:
+                    dclose = close - series_by_code[key][-1]["close"]
+                else:
+                    dclose = chg
+                d = "up" if dclose > 0 else ("down" if dclose < 0 else "flat")
+                series_by_code[key].append({"t": st[9:13], "s": status, "close": close, "chg": chg, "val": val, "turn": turn, "io": io, "d": d})
     items = []
     for s in stocks:
         key = str(s["code"]).zfill(4)
