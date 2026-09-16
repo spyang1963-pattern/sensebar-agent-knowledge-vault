@@ -1589,7 +1589,7 @@ function renderMonitor(m){
   var st = {hit:{t:'🟢 兌現',c:'m-hit'}, watch:{t:'🟡 觀望',c:'m-watch'}, break:{t:'🔴 破位',c:'m-break'}};
   var hits = m.items.filter(function(x){return x.latest==='hit';}).length;
   var breaks = m.items.filter(function(x){return x.latest==='break';}).length;
-  var html = '<div class="card monitor-card"><div class="audit-head" style="display:flex;justify-content:space-between;align-items:center"><span>🎯 預測兌現監控 <span class="meta">（'+m.stamp.slice(4,6)+'/'+m.stamp.slice(6,8)+' · 兌現 '+hits+' · 破位 '+breaks+' · 每格=15分時段）</span></span><button class="copybtn" id="monitor-copy-btn" onclick="copyMonitor()">📋 輸出監控</button></div>';
+  var html = '<div class="card monitor-card"><div class="audit-head" style="display:flex;justify-content:space-between;align-items:center"><span>🎯 預測兌現監控 <span class="meta">（'+m.stamp.slice(4,6)+'/'+m.stamp.slice(6,8)+' '+m.stamp.slice(9,11)+':'+m.stamp.slice(11,13)+' · 兌現 '+hits+' · 破位 '+breaks+' · 每格=15分時段）</span></span><span><button class="copybtn" id="monitor-copy-btn" onclick="copyMonitor(false)">📋 輸出監控</button> <button class="copybtn" id="monitor-copy-t-btn" onclick="copyMonitor(true)">📋 輸出監控(轉置)</button></span></div>';
   html += '<div class="monitor-grid">';
   m.items.forEach(function(it){
     html += '<div class="monitor-item '+st[it.latest].c+'"><span class="m-code">'+it.code+'</span> <span class="m-name">'+it.name+'</span><span class="m-dir">'+it.dir+'</span>';
@@ -1604,14 +1604,36 @@ function renderMonitor(m){
   html += '</div></div>';
   return html;
 }
-function copyMonitor(){
-  if(!MONITOR.items || !MONITOR.items.length) return;
+function monitorMatrix(){
   var stTxt = {hit:'兌現', watch:'觀望', break:'破位'};
-  var lines = ['多空\t股號\t股名\t成交值\t成交值變化\t狀態\t量價關係\t下一輪傾向'];
-  MONITOR.items.forEach(function(it){
-    lines.push(it.dir+'\t'+it.code+'\t'+it.name+'\t'+it.val.toFixed(1)+'\t'+(it.dval>=0?'+':'')+it.dval.toFixed(1)+'\t'+stTxt[it.latest]+'\t'+it.vq+'\t'+it.next);
+  var rows = [['多空','股號','股名','成交值','成交值變化','狀態','量價關係','下一輪傾向']];
+  ['偏多','偏空','中性'].forEach(function(d){
+    var group = MONITOR.items.filter(function(x){ return (x.dir||'').indexOf(d)>=0; });
+    if(!group.length) return;
+    group.forEach(function(it){
+      rows.push([it.dir, it.code, it.name, it.val.toFixed(1), (it.dval>=0?'+':'')+it.dval.toFixed(1), stTxt[it.latest], it.vq, it.next]);
+    });
   });
-  _copyText(lines.join('\\n'), '已複製 '+MONITOR.items.length+' 檔監控', 'monitor-copy-btn');
+  return rows;
+}
+function transposeMx(mx){
+  var w = 0; mx.forEach(function(r){ w = Math.max(w, r.length); });
+  var out = [];
+  for(var c=0;c<w;c++){
+    var line = [];
+    for(var r=0;r<mx.length;r++){ line.push(mx[r][c]||''); }
+    out.push(line);
+  }
+  return out;
+}
+function copyMonitor(t){
+  if(!MONITOR.items || !MONITOR.items.length) return;
+  var mx = monitorMatrix();
+  var header = '預測兌現監控 ' + MONITOR.stamp.slice(4,6)+'/'+MONITOR.stamp.slice(6,8)+' '+MONITOR.stamp.slice(9,11)+':'+MONITOR.stamp.slice(11,13);
+  var lines = [header];
+  var data = t ? transposeMx(mx) : mx;
+  data.forEach(function(r){ lines.push(r.join('\\t')); });
+  _copyText(lines.join('\\n'), t?'已複製 '+MONITOR.items.length+' 檔監控（轉置）':'已複製 '+MONITOR.items.length+' 檔監控（橫排）', t?'monitor-copy-t-btn':'monitor-copy-btn');
 }
 function renderAudit(a){
   if(!a || !a.days) return '';
@@ -1761,6 +1783,7 @@ function _copyText(text,msg,id){
     if(id==='copy-page-btn'){return '📋 輸出本頁全部表';}
     if(id==='copy-all-v-btn'){return '📋 直排輸出全部頁籤';}
     if(id==='monitor-copy-btn'){return '📋 輸出監控';}
+    if(id==='monitor-copy-t-btn'){return '📋 輸出監控(轉置)';}
     return '📋 直排輸出本頁全部表';
   }
   function done(){var b=document.getElementById(id);if(b){b.classList.add('copied');b.textContent=msg;setTimeout(function(){b.classList.remove('copied');b.textContent=label();},1600);}}
