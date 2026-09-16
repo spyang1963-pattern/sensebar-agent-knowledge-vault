@@ -226,6 +226,11 @@
   - `_monitor_status` 比對邏輯（單元測試 8 case 全過）。
   - dashboard 盤後 tab 頂部「🎯 預測兌現監控」卡（`.monitor-grid` 每檔現價/漲跌/狀態）。
   - **盤中即時＝免費得到**：`xq_snapshot_loop.bat` 本來就每 15 分鐘 render+deploy，監控卡自動隨每次 render 更新，不需改架構。
+  - **監控卡後續擴充（2026-09-16，`5bd9388`→`32fc26b`）**：① 加換手率 Turn、內外盤 IO；② 量價四象限改用「這一輪價差 × 量差」（原先誤用當日漲跌幅）；③ 加現價/價位變化/距支撐壓力；④ 按偏多/偏空/中性分組、狀態帶改用漲跌配色（紅漲綠跌灰平）、最後一格虛框＝下一輪預測、圖例放框上、進貨紅出貨綠；⑤ 一鍵輸出 14 欄＋轉置選項。
+
+### ⚠️ 踩雷：Python 變數名撞 `import io`（2026-09-16，`f3313e6`）
+- 監控卡加「內外盤 IO」時，把解包變數取名 `io`（`close, chg, val, turn, io = got`），跟模組頂部 `import io` 撞名 → `io` 變成函式局部變數 → 函式內更早的 `io.open(...)` 拋 `UnboundLocalError: cannot access local variable 'io'` → render 整個崩 → 快照有但儀表板停在最後一輪。
+- **教訓：Python 函式內任何「賦值」會讓同名全域變數（含 import 的模組名）在該函式內變局部變數。變數名勿用標準庫模組名（io/json/os/re/sys...），改用 `io_ratio` 這類名稱。**
 
 ---
 
