@@ -736,6 +736,9 @@ tr:hover td{background:#1c2438}
 .seg.next-up{background:transparent;border:1.5px dashed #d64541}
 .seg.next-down{background:transparent;border:1.5px dashed #2e9e5b}
 .seg.next-watch{background:transparent;border:1.5px dashed #e0b34d}
+.seg.next-rev-up{background:#d64541;border:2px solid #ff9a94;box-shadow:0 0 5px rgba(255,138,133,.9);font-weight:700}
+.seg.next-rev-down{background:#2e9e5b;border:2px solid #9affc0;box-shadow:0 0 5px rgba(138,255,184,.9);font-weight:700}
+.m-signal{font-size:11px;font-weight:700;color:#ff9a94;background:rgba(214,69,65,.15);padding:1px 6px;border-radius:6px;margin-right:4px}
 .m-val{color:var(--sub);font-size:11.5px;margin-right:6px}
 .m-vq{padding:1px 6px;border-radius:6px;font-size:11px;font-weight:600;margin-right:4px}
 .vq-buy{color:#d64541;background:rgba(214,69,65,.14)}
@@ -1607,7 +1610,7 @@ function renderMonitor(m){
   var hits = m.items.filter(function(x){return x.latest==='hit';}).length;
   var breaks = m.items.filter(function(x){return x.latest==='break';}).length;
   var html = '<div class="card monitor-card"><div class="audit-head" style="display:flex;justify-content:space-between;align-items:center"><span>🎯 預測兌現監控 <span class="meta">（'+m.stamp.slice(4,6)+'/'+m.stamp.slice(6,8)+' '+m.stamp.slice(9,11)+':'+m.stamp.slice(11,13)+' · 兌現 '+hits+' · 破位 '+breaks+' · 每格=15分時段）</span></span><span><button class="copybtn" id="monitor-copy-btn" onclick="copyMonitor(false)">📋 輸出監控</button> <button class="copybtn" id="monitor-copy-t-btn" onclick="copyMonitor(true)">📋 輸出監控(轉置)</button></span></div>';
-  html += '<div class="monitor-legend"><span class="lg"><span class="seg up"></span>漲</span><span class="lg"><span class="seg down"></span>跌</span><span class="lg"><span class="seg flat"></span>平</span><span class="lg"><span class="seg next-up"></span>下一輪續漲</span><span class="lg"><span class="seg next-down"></span>下一輪續跌</span><span class="lg"><span class="seg next-watch"></span>下一輪觀望</span><span class="lg">量價 <b class="vq-buy">進貨</b>紅 <b class="vq-sell">出貨</b>綠</span></div>';
+  html += '<div class="monitor-legend"><span class="lg"><span class="seg up"></span>漲</span><span class="lg"><span class="seg down"></span>跌</span><span class="lg"><span class="seg flat"></span>平</span><span class="lg"><span class="seg next-up"></span>下一輪續漲</span><span class="lg"><span class="seg next-down"></span>下一輪續跌</span><span class="lg"><span class="seg next-watch"></span>下一輪觀望</span><span class="lg"><span class="seg next-rev-up"></span>⚡轉漲(竭盡反轉)</span><span class="lg"><span class="seg next-rev-down"></span>⚡轉跌(竭盡反轉)</span><span class="lg">量價 <b class="vq-buy">進貨</b>紅 <b class="vq-sell">出貨</b>綠</span></div>';
   html += '<div class="monitor-grid">';
   var order = {'偏多':0, '偏空':1, '中性':2};
   var sorted = m.items.slice().sort(function(a,b){ return (order[a.dir]!==undefined?order[a.dir]:9) - (order[b.dir]!==undefined?order[b.dir]:9); });
@@ -1621,11 +1624,13 @@ function renderMonitor(m){
     html += '<span class="m-turn">換手 '+it.turn.toFixed(1)+'%</span>';
     var ioCls = it.io>=50 ? 'io-buy' : 'io-sell';
     html += '<span class="m-io '+ioCls+'">內外盤 '+it.io.toFixed(0)+'%</span>';
+    if(it.climax || it.sweep){ var sig=[]; if(it.climax){sig.push('極限大量·'+(it.climax==='bull'?'轉多':'轉空'));} if(it.sweep){sig.push('掃流動性·'+(it.sweep==='bull'?'掃多':'掃空'));} html += '<span class="m-signal">⚡ '+sig.join('｜')+'</span>'; }
     html += '<span class="m-next">→'+it.next+'</span>';
     html += '<span class="m-band">';
     it.series.forEach(function(p){ html += '<span class="seg '+p.d+'" title="'+p.t+'"></span>'; });
-    var nxtCls = it.next==='續漲'?'next-up':(it.next==='續跌'?'next-down':'next-watch');
-    html += '<span class="seg '+nxtCls+'" title="下一輪預測"></span>';
+    var nxtCls = it.next==='續漲'?'next-up':(it.next==='續跌'?'next-down':(it.next==='轉漲'?'next-rev-up':(it.next==='轉跌'?'next-rev-down':'next-watch')));
+    var rev = (it.next==='轉漲'||it.next==='轉跌');
+    html += '<span class="seg '+nxtCls+'" title="'+(rev?'⚡下一輪反轉':'下一輪預測')+'">'+(rev?'⚡':'')+'</span>';
     html += '</span><span class="m-status">'+st[it.latest].t+'</span></div>';
   });
   html += '</div></div>';
@@ -1996,6 +2001,48 @@ def _next_trend(vq):
     return {"進貨": "續漲", "出貨": "續跌", "惜售": "觀望", "退潮": "續跌", "平": "觀望"}.get(vq, "觀望")
 
 
+def _detect_climax(series, sup, res):
+    """極限大量（Volume Climax）：最新一輪成交值爆量（>過去5輪均×2.5）且接近區間極限。
+    bear＝上漲到前高附近爆量（買盤竭盡轉空）、bull＝下跌到前低附近爆量（賣盤竭盡轉多）。"""
+    if len(series) < 3:
+        return ""
+    last = series[-1]
+    val = last.get("val", 0)
+    prev_vals = [p.get("val", 0) for p in series[-6:-1]]
+    if not prev_vals:
+        return ""
+    avg = sum(prev_vals) / len(prev_vals)
+    if avg <= 0 or val < avg * 2.5:
+        return ""
+    close = last.get("close", 0)
+    span = (res - sup) if (res and sup) else 0
+    if span > 0:
+        pos = (res - close) / span
+        if pos < 0.2:
+            return "bear"
+        if pos > 0.8:
+            return "bull"
+    elif res and close >= res * 0.99:
+        return "bear"
+    elif sup and close <= sup * 1.01:
+        return "bull"
+    return ""
+
+
+def _detect_sweep(series, sup, res):
+    """掃流動性（Liquidity Sweep）：跌破前低後收回（掃多頭停損＝bull）、突破前高後拉回（掃空頭停損＝bear）。"""
+    if len(series) < 2:
+        return ""
+    closes = [p.get("close", 0) for p in series]
+    if sup:
+        if any(c < sup for c in closes) and closes[-1] >= sup:
+            return "bull"
+    if res:
+        if any(c > res for c in closes) and closes[-1] <= res:
+            return "bear"
+    return ""
+
+
 def _pm_monitor():
     """預測兌現監控：比對今日預測榜 vs 今日所有盤中快照，產每檔狀態序列（時間帶）。"""
     try:
@@ -2052,12 +2099,22 @@ def _pm_monitor():
         dval = last["val"] - prev["val"]
         vq = _vq_label(dclose, dval)
         dist = _dist_sr(s, close)
+        sup = s.get("support")
+        res = s.get("resistance")
+        climax = _detect_climax(series, sup, res)
+        sweep = _detect_sweep(series, sup, res)
+        if climax == "bull" or sweep == "bull":
+            next_t = "轉漲"
+        elif climax == "bear" or sweep == "bear":
+            next_t = "轉跌"
+        else:
+            next_t = _next_trend(vq)
         items.append({"code": s["code"], "name": s["name"], "dir": s["dir"],
                       "close": close, "prev_close": prev["close"], "dclose": dclose,
                       "chg": last["chg"], "val": last["val"], "dval": dval,
                       "turn": last["turn"], "io": last["io"],
-                      "vq": vq, "dist": dist, "next": _next_trend(vq),
-                      "series": series, "latest": last["s"]})
+                      "vq": vq, "dist": dist, "climax": climax, "sweep": sweep,
+                      "next": next_t, "series": series, "latest": last["s"]})
     return {"stamp": today_snaps[-1][0], "items": items}
 
 
