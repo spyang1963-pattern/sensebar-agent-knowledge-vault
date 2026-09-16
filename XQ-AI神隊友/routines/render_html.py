@@ -722,6 +722,11 @@ tr:hover td{background:#1c2438}
 .monitor-item.m-watch .m-status{color:#e0b34d}
 .monitor-item.m-break{background:rgba(214,69,65,.12);border-color:rgba(214,69,65,.4)}
 .monitor-item.m-break .m-status{color:#d64541}
+.m-band{display:inline-flex;gap:2px;margin:0 6px;vertical-align:middle}
+.seg{width:10px;height:14px;border-radius:2px;display:inline-block;background:#2f3d63}
+.seg.hit{background:#46d88a}
+.seg.watch{background:#e0b34d}
+.seg.break{background:#d64541}
 .contra-card{background:#2a1a1d;border:1px solid #5a2530;border-left:5px solid var(--up);border-radius:10px;padding:12px 14px;margin:10px 0}
 .contra-card .t{font-weight:700;font-size:15px}
 .contra-card .w{color:#ff9f9a;font-size:12.5px;margin-top:3px}
@@ -1573,13 +1578,16 @@ function pmShort(d,s){ var dd=d.slice(4,6)+'/'+d.slice(6,8); return (s==='mornin
 function pmPickDate(){ return PMDATA.filter(function(r){return (r.date+'|'+r.slot)===PM_CUR_OVERRIDE;}); }
 function renderMonitor(m){
   if(!m || !m.items || !m.items.length) return '';
-  var st = {hit:{t:'🟢 兌現中',c:'m-hit'}, watch:{t:'🟡 觀望',c:'m-watch'}, break:{t:'🔴 破位',c:'m-break'}};
-  var hits = m.items.filter(function(x){return x.status==='hit';}).length;
-  var breaks = m.items.filter(function(x){return x.status==='break';}).length;
-  var html = '<div class="card monitor-card"><div class="audit-head">🎯 預測兌現監控 <span class="meta">（快照 '+m.stamp.slice(4,6)+'/'+m.stamp.slice(6,8)+' '+m.stamp.slice(9,11)+':'+m.stamp.slice(11,13)+' · 兌現 '+hits+' · 破位 '+breaks+'）</span></div>';
+  var st = {hit:{t:'🟢 兌現',c:'m-hit'}, watch:{t:'🟡 觀望',c:'m-watch'}, break:{t:'🔴 破位',c:'m-break'}};
+  var hits = m.items.filter(function(x){return x.latest==='hit';}).length;
+  var breaks = m.items.filter(function(x){return x.latest==='break';}).length;
+  var html = '<div class="card monitor-card"><div class="audit-head">🎯 預測兌現監控 <span class="meta">（'+m.stamp.slice(4,6)+'/'+m.stamp.slice(6,8)+' · 兌現 '+hits+' · 破位 '+breaks+' · 每格=15分時段）</span></div>';
   html += '<div class="monitor-grid">';
   m.items.forEach(function(it){
-    html += '<div class="monitor-item '+st[it.status].c+'"><span class="m-code">'+it.code+'</span> <span class="m-name">'+it.name+'</span><span class="m-dir">'+it.dir+'</span><span class="m-px">'+it.close.toFixed(1)+'（'+(it.chg>=0?'+':'')+it.chg.toFixed(1)+'%）</span><span class="m-status">'+st[it.status].t+'</span></div>';
+    html += '<div class="monitor-item '+st[it.latest].c+'"><span class="m-code">'+it.code+'</span> <span class="m-name">'+it.name+'</span><span class="m-dir">'+it.dir+'</span>';
+    html += '<span class="m-band">';
+    it.series.forEach(function(p){ html += '<span class="seg '+p.s+'" title="'+p.t+'"></span>'; });
+    html += '</span><span class="m-status">'+st[it.latest].t+'</span></div>';
   });
   html += '</div></div>';
   return html;
@@ -1870,7 +1878,7 @@ def _monitor_status(s, close, chg):
 
 
 def _pm_monitor():
-    """預測兌現監控：比對今日預測榜 vs 最新盤中快照，標 🟢兌現/🟡觀望/🔴破位。"""
+    """預測兌現監控：比對今日預測榜 vs 今日所有盤中快照，產每檔狀態序列（時間帶）。"""
     try:
         import predict_audit
     except Exception:
@@ -1885,20 +1893,35 @@ def _pm_monitor():
         stocks = predict_audit.parse_forecast(f.read())
     if not stocks:
         return {}
-    cmap, stamp = predict_audit.actual_close_map()
-    if not cmap:
+    snaps = list_snapshots("breadth")
+    today_snaps = [(st, p) for st, p in snaps.items() if st[:8] == today]
+    if not today_snaps:
         return {}
+    series_by_code = {str(s["code"]).zfill(4): [] for s in stocks}
+    for st, p in today_snaps:
+        cmap = {}
+        for r in load_csv(p):
+            c = str(r.get("Code")).zfill(4)
+            try:
+                cmap[c] = (float(r.get("Close", 0) or 0), float(r.get("Chg", 0) or 0))
+            except (TypeError, ValueError):
+                pass
+        for s in stocks:
+            key = str(s["code"]).zfill(4)
+            got = cmap.get(key)
+            if got:
+                close, chg = got
+                status = _monitor_status(s, close, chg)
+                series_by_code[key].append({"t": st[9:13], "s": status})
     items = []
     for s in stocks:
         key = str(s["code"]).zfill(4)
-        got = cmap.get(key)
-        if not got:
+        series = series_by_code[key]
+        if not series:
             continue
-        close, chg = got
-        status = _monitor_status(s, close, chg)
         items.append({"code": s["code"], "name": s["name"], "dir": s["dir"],
-                      "close": close, "chg": chg, "status": status})
-    return {"stamp": stamp, "items": items}
+                      "series": series, "latest": series[-1]["s"]})
+    return {"stamp": today_snaps[-1][0], "items": items}
 
 
 def render_dashboard(d):
