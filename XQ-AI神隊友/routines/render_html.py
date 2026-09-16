@@ -739,6 +739,10 @@ tr:hover td{background:#1c2438}
 .m-dist{font-size:11.5px;margin-right:4px}
 .m-dist.d-ok{color:#46d88a}
 .m-dist.d-bad{color:#d64541}
+.m-turn{color:var(--sub);font-size:11.5px;margin-right:6px}
+.m-io{font-size:11.5px;font-weight:600;margin-right:6px}
+.m-io.io-buy{color:#d64541}
+.m-io.io-sell{color:#2e9e5b}
 .contra-card{background:#2a1a1d;border:1px solid #5a2530;border-left:5px solid var(--up);border-radius:10px;padding:12px 14px;margin:10px 0}
 .contra-card .t{font-weight:700;font-size:15px}
 .contra-card .w{color:#ff9f9a;font-size:12.5px;margin-top:3px}
@@ -1602,6 +1606,9 @@ function renderMonitor(m){
     var vqCls = {'進貨':'vq-buy', '出貨':'vq-sell', '惜售':'vq-hold', '退潮':'vq-fade', '平':'vq-flat'}[it.vq] || 'vq-flat';
     html += '<span class="m-vq '+vqCls+'">'+it.vq+'</span>';
     if(it.dist!==null && it.dist!==undefined){ html += '<span class="m-dist '+(it.dist>=0?'d-ok':'d-bad')+'">距'+(it.dir.indexOf('偏多')>=0?'支撐':'壓力')+' '+(it.dist>=0?'+':'')+it.dist.toFixed(1)+'%</span>'; }
+    html += '<span class="m-turn">換手 '+it.turn.toFixed(1)+'%</span>';
+    var ioCls = it.io>=50 ? 'io-buy' : 'io-sell';
+    html += '<span class="m-io '+ioCls+'">內外盤 '+it.io.toFixed(0)+'%</span>';
     html += '<span class="m-next">→'+it.next+'</span>';
     html += '<span class="m-band">';
     it.series.forEach(function(p){ html += '<span class="seg '+p.s+'" title="'+p.t+'"></span>'; });
@@ -1612,13 +1619,13 @@ function renderMonitor(m){
 }
 function monitorMatrix(){
   var stTxt = {hit:'兌現', watch:'觀望', break:'破位'};
-  var rows = [['多空','股號','股名','現價','價位變化','漲跌幅','成交值','成交值變化','量價關係','距支撐壓力','下一輪傾向','狀態']];
+  var rows = [['多空','股號','股名','現價','價位變化','漲跌幅','成交值','成交值變化','量價關係','距支撐壓力','換手率','內外盤','下一輪傾向','狀態']];
   ['偏多','偏空','中性'].forEach(function(d){
     var group = MONITOR.items.filter(function(x){ return (x.dir||'').indexOf(d)>=0; });
     if(!group.length) return;
     group.forEach(function(it){
       var distTxt = (it.dist===null||it.dist===undefined) ? '' : (it.dist>=0?'+':'')+it.dist.toFixed(1)+'%';
-      rows.push([it.dir, it.code, it.name, it.close.toFixed(1), (it.dclose>=0?'+':'')+it.dclose.toFixed(1), (it.chg>=0?'+':'')+it.chg.toFixed(1)+'%', it.val.toFixed(1), (it.dval>=0?'+':'')+it.dval.toFixed(1), it.vq, distTxt, it.next, stTxt[it.latest]]);
+      rows.push([it.dir, it.code, it.name, it.close.toFixed(1), (it.dclose>=0?'+':'')+it.dclose.toFixed(1), (it.chg>=0?'+':'')+it.chg.toFixed(1)+'%', it.val.toFixed(1), (it.dval>=0?'+':'')+it.dval.toFixed(1), it.vq, distTxt, it.turn.toFixed(1)+'%', it.io.toFixed(0)+'%', it.next, stTxt[it.latest]]);
     });
   });
   return rows;
@@ -1986,16 +1993,17 @@ def _pm_monitor():
             c = str(r.get("Code")).zfill(4)
             try:
                 cmap[c] = (float(r.get("Close", 0) or 0), float(r.get("Chg", 0) or 0),
-                           float(r.get("Val", 0) or 0))
+                           float(r.get("Val", 0) or 0), float(r.get("Turn", 0) or 0),
+                           float(r.get("IO", 0) or 0))
             except (TypeError, ValueError):
                 pass
         for s in stocks:
             key = str(s["code"]).zfill(4)
             got = cmap.get(key)
             if got:
-                close, chg, val = got
+                close, chg, val, turn, io = got
                 status = _monitor_status(s, close, chg)
-                series_by_code[key].append({"t": st[9:13], "s": status, "close": close, "chg": chg, "val": val})
+                series_by_code[key].append({"t": st[9:13], "s": status, "close": close, "chg": chg, "val": val, "turn": turn, "io": io})
     items = []
     for s in stocks:
         key = str(s["code"]).zfill(4)
@@ -2012,6 +2020,7 @@ def _pm_monitor():
         items.append({"code": s["code"], "name": s["name"], "dir": s["dir"],
                       "close": close, "prev_close": prev["close"], "dclose": dclose,
                       "chg": last["chg"], "val": last["val"], "dval": dval,
+                      "turn": last["turn"], "io": last["io"],
                       "vq": vq, "dist": dist, "next": _next_trend(vq),
                       "series": series, "latest": last["s"]})
     return {"stamp": today_snaps[-1][0], "items": items}
