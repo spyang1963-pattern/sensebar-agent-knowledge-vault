@@ -2011,14 +2011,14 @@ def _pm_monitor():
             key = str(s["code"]).zfill(4)
             got = cmap.get(key)
             if got:
-                close, chg, val, turn, io = got
+                close, chg, val, turn, io_ratio = got
                 status = _monitor_status(s, close, chg)
                 if series_by_code[key]:
                     dclose = close - series_by_code[key][-1]["close"]
                 else:
                     dclose = chg
                 d = "up" if dclose > 0 else ("down" if dclose < 0 else "flat")
-                series_by_code[key].append({"t": st[9:13], "s": status, "close": close, "chg": chg, "val": val, "turn": turn, "io": io, "d": d})
+                series_by_code[key].append({"t": st[9:13], "s": status, "close": close, "chg": chg, "val": val, "turn": turn, "io": io_ratio, "d": d})
     items = []
     for s in stocks:
         key = str(s["code"]).zfill(4)
