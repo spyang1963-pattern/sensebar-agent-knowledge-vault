@@ -735,6 +735,10 @@ tr:hover td{background:#1c2438}
 .vq-fade{color:#2e9e5b;background:rgba(46,158,91,.14)}
 .vq-flat{color:#9aa0a6;background:rgba(154,160,166,.14)}
 .m-next{color:var(--sub);font-size:11.5px;margin-right:6px}
+.m-px{color:var(--txt);font-size:12px;margin-right:6px}
+.m-dist{font-size:11.5px;margin-right:4px}
+.m-dist.d-ok{color:#46d88a}
+.m-dist.d-bad{color:#d64541}
 .contra-card{background:#2a1a1d;border:1px solid #5a2530;border-left:5px solid var(--up);border-radius:10px;padding:12px 14px;margin:10px 0}
 .contra-card .t{font-weight:700;font-size:15px}
 .contra-card .w{color:#ff9f9a;font-size:12.5px;margin-top:3px}
@@ -1593,9 +1597,11 @@ function renderMonitor(m){
   html += '<div class="monitor-grid">';
   m.items.forEach(function(it){
     html += '<div class="monitor-item '+st[it.latest].c+'"><span class="m-code">'+it.code+'</span> <span class="m-name">'+it.name+'</span><span class="m-dir">'+it.dir+'</span>';
+    html += '<span class="m-px">現價 '+it.close.toFixed(1)+'（'+(it.dclose>=0?'+':'')+it.dclose.toFixed(1)+'）</span>';
     html += '<span class="m-val">成交值 '+it.val.toFixed(1)+'（'+(it.dval>=0?'+':'')+it.dval.toFixed(1)+'）</span>';
     var vqCls = {'進貨':'vq-buy', '出貨':'vq-sell', '惜售':'vq-hold', '退潮':'vq-fade', '平':'vq-flat'}[it.vq] || 'vq-flat';
     html += '<span class="m-vq '+vqCls+'">'+it.vq+'</span>';
+    if(it.dist!==null && it.dist!==undefined){ html += '<span class="m-dist '+(it.dist>=0?'d-ok':'d-bad')+'">距'+(it.dir.indexOf('偏多')>=0?'支撐':'壓力')+' '+(it.dist>=0?'+':'')+it.dist.toFixed(1)+'%</span>'; }
     html += '<span class="m-next">→'+it.next+'</span>';
     html += '<span class="m-band">';
     it.series.forEach(function(p){ html += '<span class="seg '+p.s+'" title="'+p.t+'"></span>'; });
@@ -1606,12 +1612,13 @@ function renderMonitor(m){
 }
 function monitorMatrix(){
   var stTxt = {hit:'兌現', watch:'觀望', break:'破位'};
-  var rows = [['多空','股號','股名','成交值','成交值變化','狀態','量價關係','下一輪傾向']];
+  var rows = [['多空','股號','股名','現價','價位變化','漲跌幅','成交值','成交值變化','量價關係','距支撐壓力','下一輪傾向','狀態']];
   ['偏多','偏空','中性'].forEach(function(d){
     var group = MONITOR.items.filter(function(x){ return (x.dir||'').indexOf(d)>=0; });
     if(!group.length) return;
     group.forEach(function(it){
-      rows.push([it.dir, it.code, it.name, it.val.toFixed(1), (it.dval>=0?'+':'')+it.dval.toFixed(1), stTxt[it.latest], it.vq, it.next]);
+      var distTxt = (it.dist===null||it.dist===undefined) ? '' : (it.dist>=0?'+':'')+it.dist.toFixed(1)+'%';
+      rows.push([it.dir, it.code, it.name, it.close.toFixed(1), (it.dclose>=0?'+':'')+it.dclose.toFixed(1), (it.chg>=0?'+':'')+it.chg.toFixed(1)+'%', it.val.toFixed(1), (it.dval>=0?'+':'')+it.dval.toFixed(1), it.vq, distTxt, it.next, stTxt[it.latest]]);
     });
   });
   return rows;
@@ -1922,17 +1929,29 @@ def _monitor_status(s, close, chg):
     return "watch"
 
 
-def _vq_label(chg, dval):
-    """量價四象限：進貨(量增價漲)/出貨(量增價跌)/惜售(量縮價漲)/退潮(量縮價跌)。"""
-    if dval > 0 and chg > 0:
+def _vq_label(dclose, dval):
+    """量價四象限（盤中即時：這一輪 vs 上一輪）：進貨(量增價漲)/出貨(量增價跌)/惜售(量縮價漲)/退潮(量縮價跌)。"""
+    if dval > 0 and dclose > 0:
         return "進貨"
-    if dval > 0 and chg < 0:
+    if dval > 0 and dclose < 0:
         return "出貨"
-    if dval < 0 and chg > 0:
+    if dval < 0 and dclose > 0:
         return "惜售"
-    if dval < 0 and chg < 0:
+    if dval < 0 and dclose < 0:
         return "退潮"
     return "平"
+
+
+def _dist_sr(s, close):
+    """距預測支撐/壓力的距離（%）：正＝尚未觸及、負＝已跌破/突破。"""
+    d = s.get("dir", "")
+    sup = s.get("support")
+    res = s.get("resistance")
+    if "偏多" in d and sup:
+        return (close - sup) / sup * 100
+    if "偏空" in d and res:
+        return (res - close) / close * 100
+    return None
 
 
 def _next_trend(vq):
@@ -1976,7 +1995,7 @@ def _pm_monitor():
             if got:
                 close, chg, val = got
                 status = _monitor_status(s, close, chg)
-                series_by_code[key].append({"t": st[9:13], "s": status, "chg": chg, "val": val})
+                series_by_code[key].append({"t": st[9:13], "s": status, "close": close, "chg": chg, "val": val})
     items = []
     for s in stocks:
         key = str(s["code"]).zfill(4)
@@ -1985,11 +2004,15 @@ def _pm_monitor():
             continue
         last = series[-1]
         prev = series[-2] if len(series) >= 2 else last
+        close = last["close"]
+        dclose = last["close"] - prev["close"]
         dval = last["val"] - prev["val"]
-        vq = _vq_label(last["chg"], dval)
+        vq = _vq_label(dclose, dval)
+        dist = _dist_sr(s, close)
         items.append({"code": s["code"], "name": s["name"], "dir": s["dir"],
-                      "val": last["val"], "dval": dval, "vq": vq,
-                      "next": _next_trend(vq),
+                      "close": close, "prev_close": prev["close"], "dclose": dclose,
+                      "chg": last["chg"], "val": last["val"], "dval": dval,
+                      "vq": vq, "dist": dist, "next": _next_trend(vq),
                       "series": series, "latest": last["s"]})
     return {"stamp": today_snaps[-1][0], "items": items}
 
