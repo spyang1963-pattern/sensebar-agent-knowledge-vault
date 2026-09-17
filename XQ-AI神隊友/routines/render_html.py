@@ -1625,7 +1625,6 @@ function renderMonitor(m){
   var AX = (m.items[0] && m.items[0].axis) || [];
   var unit = AX.length ? 12 : 0;
   html += '<div class="m-axisrow" style="width:'+(unit*AX.length-2)+'px">';
-  if(AX.length && AX[0] !== '0900'){ html += '<span class="m-axis-hour" style="left:0px">09:00</span>'; }
   AX.forEach(function(t,i){ if(t.slice(2,4)==='00'){ html += '<span class="m-axis-hour" style="left:'+(i*unit)+'px">'+t.slice(0,2)+':'+t.slice(2,4)+'</span>'; } });
   html += '</div>';
   sorted.forEach(function(it){
@@ -2102,6 +2101,8 @@ def _pm_monitor():
                 d = "up" if dclose > 0 else ("down" if dclose < 0 else "flat")
                 series_by_code[key].append({"t": st[9:13], "s": status, "close": close, "chg": chg, "val": val, "turn": turn, "io": io_ratio, "d": d})
     axis = [st[9:13] for st, _ in today_snaps]
+    if axis and axis[0] != "0900":
+        axis = ["0900"] + axis
     tmap = {t: i for i, t in enumerate(axis)}
     items = []
     for s in stocks:
