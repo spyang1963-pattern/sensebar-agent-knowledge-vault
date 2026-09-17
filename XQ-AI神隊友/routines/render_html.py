@@ -739,6 +739,7 @@ tr:hover td{background:#1c2438}
 .seg.next-rev-up{background:#d64541;border:2px solid #ff9a94;box-shadow:0 0 5px rgba(255,138,133,.9);font-weight:700}
 .seg.next-rev-down{background:#2e9e5b;border:2px solid #9affc0;box-shadow:0 0 5px rgba(138,255,184,.9);font-weight:700}
 .m-signal{font-size:11px;font-weight:700;color:#ff9a94;background:rgba(214,69,65,.15);padding:1px 6px;border-radius:6px;margin-right:4px}
+.m-sig-hr{color:#ffb37e;font-weight:700}
 .m-val{color:var(--sub);font-size:11.5px;margin-right:6px}
 .m-vq{padding:1px 6px;border-radius:6px;font-size:11px;font-weight:600;margin-right:4px}
 .vq-buy{color:#d64541;background:rgba(214,69,65,.14)}
@@ -1611,6 +1612,7 @@ function renderMonitor(m){
   var breaks = m.items.filter(function(x){return x.latest==='break';}).length;
   var html = '<div class="card monitor-card"><div class="audit-head" style="display:flex;justify-content:space-between;align-items:center"><span>🎯 預測兌現監控 <span class="meta">（'+m.stamp.slice(4,6)+'/'+m.stamp.slice(6,8)+' '+m.stamp.slice(9,11)+':'+m.stamp.slice(11,13)+' · 兌現 '+hits+' · 破位 '+breaks+' · 每格=15分時段）</span></span><span><button class="copybtn" id="monitor-copy-btn" onclick="copyMonitor(false)">📋 輸出監控</button> <button class="copybtn" id="monitor-copy-t-btn" onclick="copyMonitor(true)">📋 輸出監控(轉置)</button></span></div>';
   html += '<div class="monitor-legend"><span class="lg"><span class="seg up"></span>漲</span><span class="lg"><span class="seg down"></span>跌</span><span class="lg"><span class="seg flat"></span>平</span><span class="lg"><span class="seg next-up"></span>下一輪續漲</span><span class="lg"><span class="seg next-down"></span>下一輪續跌</span><span class="lg"><span class="seg next-watch"></span>下一輪觀望</span><span class="lg"><span class="seg next-rev-up"></span>⚡轉漲(竭盡反轉)</span><span class="lg"><span class="seg next-rev-down"></span>⚡轉跌(竭盡反轉)</span><span class="lg">量價 <b class="vq-buy">進貨</b>紅 <b class="vq-sell">出貨</b>綠</span></div>';
+    if(m.signals && m.signals.total>0){ html += '<span class="m-sig-hr">⚡訊號命中率 '+m.signals.hit+'/'+m.signals.total+'</span>'; }
   html += '<div class="monitor-grid">';
   var order = {'偏多':0, '偏空':1, '中性':2};
   var sorted = m.items.slice().sort(function(a,b){ return (order[a.dir]!==undefined?order[a.dir]:9) - (order[b.dir]!==undefined?order[b.dir]:9); });
@@ -2114,8 +2116,90 @@ def _pm_monitor():
                       "chg": last["chg"], "val": last["val"], "dval": dval,
                       "turn": last["turn"], "io": last["io"],
                       "vq": vq, "dist": dist, "climax": climax, "sweep": sweep,
-                      "next": next_t, "series": series, "latest": last["s"]})
-    return {"stamp": today_snaps[-1][0], "items": items}
+                      "next": next_t, "series": series, "latest": last["s"], "t": last.get("t", "")})
+    import json as _json
+    import os as _os
+    _sig_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "outputs", "monitor", "signals_log.json")
+    _sigs = []
+    if _os.path.isfile(_sig_path):
+        try:
+            with open(_sig_path, "r", encoding="utf-8") as _f:
+                _sigs = _json.load(_f)
+        except Exception:
+            _sigs = []
+    _today = today_snaps[-1][0][:8] if today_snaps else ""
+    _summary = {"total": 0, "hit": 0, "pending": 0,
+                "climax": {"total": 0, "hit": 0}, "sweep": {"total": 0, "hit": 0},
+                "bull": {"total": 0, "hit": 0}, "bear": {"total": 0, "hit": 0}}
+    if _today and items:
+        _last_t = items[0].get("series", [])[-1].get("t", "") if items and items[0].get("series") else ""
+        _latest_close = {str(_it["code"]).zfill(4): _it["close"] for _it in items}
+        _changed = False
+        for _sig in _sigs:
+            if _sig.get("date") != _today or _sig.get("hit") is not None:
+                continue
+            _cur = _latest_close.get(str(_sig.get("code", "")).zfill(4))
+            if _cur is None or not _last_t or _last_t <= _sig.get("t", ""):
+                continue
+            _sig["hit"] = bool((_sig["stance"] == "bull" and _cur > _sig.get("close", 0))
+                               or (_sig["stance"] == "bear" and _cur < _sig.get("close", 0)))
+            _sig["hit_t"] = _last_t
+            _sig["hit_close"] = _cur
+            _changed = True
+        if _changed:
+            try:
+                _os.makedirs(_os.path.dirname(_sig_path), exist_ok=True)
+                with open(_sig_path, "w", encoding="utf-8") as _f:
+                    _json.dump(_sigs, _f, ensure_ascii=False, indent=1)
+            except Exception:
+                pass
+        for _sig in _sigs:
+            if _sig.get("date") != _today:
+                continue
+            if _sig.get("hit") is None:
+                _summary["pending"] += 1
+                continue
+            _summary["total"] += 1
+            if _sig["hit"]:
+                _summary["hit"] += 1
+            _sk = _sig.get("sig", "")
+            if "climax" in _sk:
+                _summary["climax"]["total"] += 1
+                _summary["climax"]["hit"] += 1 if _sig["hit"] else 0
+            if "sweep" in _sk:
+                _summary["sweep"]["total"] += 1
+                _summary["sweep"]["hit"] += 1 if _sig["hit"] else 0
+            _ss = _sig.get("stance", "")
+            if _ss in ("bull", "bear"):
+                _summary[_ss]["total"] += 1
+                _summary[_ss]["hit"] += 1 if _sig["hit"] else 0
+        _seen = set((str(_s.get("code", "")).zfill(4), _s.get("t", "")) for _s in _sigs if _s.get("date") == _today)
+        _added = False
+        for _it in items:
+            if not (_it["climax"] or _it["sweep"]):
+                continue
+            _c = str(_it["code"]).zfill(4)
+            _tt = _it.get("t", "")
+            if (_c, _tt) in _seen:
+                continue
+            _kinds = []
+            if _it["climax"]:
+                _kinds.append("climax")
+            if _it["sweep"]:
+                _kinds.append("sweep")
+            _stance2 = "bull" if (_it["climax"] == "bull" or _it["sweep"] == "bull") else "bear"
+            _sigs.append({"date": _today, "t": _tt, "code": _c, "name": _it["name"], "dir": _it["dir"],
+                          "sig": "|".join(_kinds), "stance": _stance2, "close": _it["close"],
+                          "hit": None, "hit_t": None, "hit_close": None})
+            _added = True
+        if _added:
+            try:
+                _os.makedirs(_os.path.dirname(_sig_path), exist_ok=True)
+                with open(_sig_path, "w", encoding="utf-8") as _f:
+                    _json.dump(_sigs, _f, ensure_ascii=False, indent=1)
+            except Exception:
+                pass
+    return {"stamp": today_snaps[-1][0], "items": items, "signals": _summary}
 
 
 def render_dashboard(d):
