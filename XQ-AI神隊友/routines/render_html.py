@@ -2103,12 +2103,6 @@ def _pm_monitor():
     axis = [st[9:13] for st, _ in today_snaps]
     if axis and axis[0] != "0900":
         axis = ["0900"] + axis
-    tmp_axis = []
-    for _t in axis:
-        tmp_axis.append(_t)
-        if _t == "0945":
-            tmp_axis.extend(["gap-a", "gap-b"])
-    axis = tmp_axis
     tmap = {t: i for i, t in enumerate(axis)}
     items = []
     for s in stocks:
