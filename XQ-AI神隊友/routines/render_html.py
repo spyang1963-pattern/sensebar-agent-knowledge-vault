@@ -1625,6 +1625,7 @@ function renderMonitor(m){
   var AX = (m.items[0] && m.items[0].axis) || [];
   var unit = AX.length ? 12 : 0;
   html += '<div class="m-axisrow" style="width:'+(unit*AX.length-2)+'px">';
+  if(AX.length && AX[0] !== '0900'){ html += '<span class="m-axis-hour" style="left:0px">09:00</span>'; }
   AX.forEach(function(t,i){ if(t.slice(2,4)==='00'){ html += '<span class="m-axis-hour" style="left:'+(i*unit)+'px">'+t.slice(0,2)+':'+t.slice(2,4)+'</span>'; } });
   html += '</div>';
   sorted.forEach(function(it){
