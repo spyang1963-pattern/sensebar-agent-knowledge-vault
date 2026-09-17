@@ -724,7 +724,7 @@ tr:hover td{background:#1c2438}
 .monitor-item .m-status{font-weight:700}
 .m-bandrow{display:inline-flex;gap:2px;align-items:center}
 .m-axisrow{flex:0 0 100%;position:relative;height:16px;margin:0 0 4px 9px;color:var(--sub);font-size:10px;white-space:nowrap}
-.m-axis-hour{position:absolute;top:0;transform:translateX(-50%);padding:0 3px;line-height:16px;border-left:1px solid #3a4a7a}
+.m-axis-hour{position:absolute;top:0;padding:0 2px;line-height:16px;background:#14231a;border-left:1px solid #3a4a7a}
 .seg.blank{background:repeating-linear-gradient(45deg,#2f3d63 0 2px,rgba(0,0,0,0) 2px 4px);opacity:.55}
 .m-upd{color:#ffb37e;font-size:13px;font-weight:700}
 .monitor-item.m-hit{background:rgba(70,216,138,.10);border-color:rgba(70,216,138,.4)}
