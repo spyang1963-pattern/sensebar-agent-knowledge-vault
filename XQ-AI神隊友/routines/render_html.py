@@ -720,7 +720,13 @@ tr:hover td{background:#1c2438}
 .monitor-item .m-name{color:var(--txt);margin-right:6px}
 .monitor-item .m-dir{color:var(--sub);margin-right:6px}
 .monitor-item .m-px{color:#d8d2c0;margin-right:6px}
-.monitor-item .m-status{font-weight:600}
+.m-item-head{display:flex;flex-wrap:wrap;gap:2px 8px;align-items:center;padding-bottom:3px}
+.monitor-item .m-status{font-weight:700}
+.m-bandrow{display:inline-flex;gap:2px;align-items:center}
+.m-axisrow{display:inline-flex;gap:2px;margin:0 0 4px 9px;align-items:center;height:16px;color:var(--sub);font-size:10px;white-space:nowrap}
+.m-axis-hour{flex:0 0 46px;text-align:center;border-top:1px solid #3a4a7a;line-height:16px}
+.seg.blank{background:repeating-linear-gradient(45deg,#2f3d63 0 2px,rgba(0,0,0,0) 2px 4px);opacity:.55}
+.m-upd{color:#ffb37e;font-size:13px;font-weight:700}
 .monitor-item.m-hit{background:rgba(70,216,138,.10);border-color:rgba(70,216,138,.4)}
 .monitor-item.m-hit .m-status{color:#46d88a}
 .monitor-item.m-watch .m-status{color:#e0b34d}
@@ -1610,30 +1616,35 @@ function renderMonitor(m){
   var st = {hit:{t:'🟢 兌現',c:'m-hit'}, watch:{t:'🟡 觀望',c:'m-watch'}, break:{t:'🔴 破位',c:'m-break'}};
   var hits = m.items.filter(function(x){return x.latest==='hit';}).length;
   var breaks = m.items.filter(function(x){return x.latest==='break';}).length;
-  var html = '<div class="card monitor-card"><div class="audit-head" style="display:flex;justify-content:space-between;align-items:center"><span>🎯 預測兌現監控 <span class="meta">（'+m.stamp.slice(4,6)+'/'+m.stamp.slice(6,8)+' '+m.stamp.slice(9,11)+':'+m.stamp.slice(11,13)+' · 兌現 '+hits+' · 破位 '+breaks+' · 每格=15分時段）</span></span><span><button class="copybtn" id="monitor-copy-btn" onclick="copyMonitor(false)">📋 輸出監控</button> <button class="copybtn" id="monitor-copy-t-btn" onclick="copyMonitor(true)">📋 輸出監控(轉置)</button></span></div>';
+  var html = '<div class="card monitor-card"><div class="audit-head" style="display:flex;justify-content:space-between;align-items:center"><span>🎯 預測兌現監控 <span class="m-upd">'+m.stamp.slice(4,6)+'/'+m.stamp.slice(6,8)+' '+m.stamp.slice(9,11)+':'+m.stamp.slice(11,13)+'</span> <span class="meta">（兌現 '+hits+' · 破位 '+breaks+' · 每格=15分時段）</span></span><span><button class="copybtn" id="monitor-copy-btn" onclick="copyMonitor(false)">📋 輸出監控</button> <button class="copybtn" id="monitor-copy-t-btn" onclick="copyMonitor(true)">📋 輸出監控(轉置)</button></span></div>';
   html += '<div class="monitor-legend"><span class="lg"><span class="seg up"></span>漲</span><span class="lg"><span class="seg down"></span>跌</span><span class="lg"><span class="seg flat"></span>平</span><span class="lg"><span class="seg next-up"></span>下一輪續漲</span><span class="lg"><span class="seg next-down"></span>下一輪續跌</span><span class="lg"><span class="seg next-watch"></span>下一輪觀望</span><span class="lg"><span class="seg next-rev-up"></span>⚡轉漲(竭盡反轉)</span><span class="lg"><span class="seg next-rev-down"></span>⚡轉跌(竭盡反轉)</span><span class="lg">量價 <b class="vq-buy">進貨</b>紅 <b class="vq-sell">出貨</b>綠</span></div>';
     if(m.signals && m.signals.total>0){ html += '<span class="m-sig-hr">⚡訊號命中率 '+m.signals.hit+'/'+m.signals.total+'</span>'; }
   html += '<div class="monitor-grid">';
   var order = {'偏多':0, '偏空':1, '中性':2};
   var sorted = m.items.slice().sort(function(a,b){ return (order[a.dir]!==undefined?order[a.dir]:9) - (order[b.dir]!==undefined?order[b.dir]:9); });
+  var AX = (m.items[0] && m.items[0].axis) || [];
+  html += '<div class="m-axisrow"><span class="m-axis-hour" style="flex:0 0 auto;border:0;padding-right:4px">每格=15分</span>';
+  AX.forEach(function(t,i){ if(i%4===0){ html += '<span class="m-axis-hour">'+t+'</span>'; } });
+  html += '</div>';
   sorted.forEach(function(it){
-    html += '<div class="monitor-item '+st[it.latest].c+'"><span class="m-code">'+it.code+'</span> <span class="m-name">'+it.name+'</span><span class="m-dir">'+it.dir+'</span>';
+    html += '<div class="monitor-item '+st[it.latest].c+'"><div class="m-item-head"><span class="m-status">'+st[it.latest].t+'</span>';
+    html += '<span class="m-code">'+it.code+'</span> <span class="m-name">'+it.name+'</span><span class="m-dir">'+it.dir+'</span>';
     html += '<span class="m-px">現價 '+it.close.toFixed(1)+'（'+(it.dclose>=0?'+':'')+it.dclose.toFixed(1)+'）</span>';
     html += '<span class="m-val">成交值 '+it.val.toFixed(1)+'（'+(it.dval>=0?'+':'')+it.dval.toFixed(1)+'）</span>';
     var vqCls = {'進貨':'vq-buy', '出貨':'vq-sell', '惜售':'vq-hold', '退潮':'vq-fade', '平':'vq-flat'}[it.vq] || 'vq-flat';
     html += '<span class="m-vq '+vqCls+'">'+it.vq+'</span>';
-    if(it.dist!==null && it.dist!==undefined){ html += '<span class="m-dist '+(it.dist>=0?'d-ok':'d-bad')+'">距'+(it.dir.indexOf('偏多')>=0?'支撐':'壓力')+' '+(it.dist>=0?'+':'')+it.dist.toFixed(1)+'%</span>'; }
+    if(it.dist!==null && it.dist!==undefined){ var srTx=(it.dir.indexOf('偏多')>=0?'支撐':'壓力'); html += '<span class="m-dist '+(it.dist>=0?'d-ok':'d-bad')+'">距'+srTx+' '+(it.dist>=0?'+':'')+it.dist.toFixed(1)+'%</span>'; }
     html += '<span class="m-turn">換手 '+it.turn.toFixed(1)+'%</span>';
     var ioCls = it.io>=50 ? 'io-buy' : 'io-sell';
     html += '<span class="m-io '+ioCls+'">內外盤 '+it.io.toFixed(0)+'%</span>';
     if(it.climax || it.sweep){ var sig=[]; if(it.climax){sig.push('極限大量·'+(it.climax==='bull'?'轉多':'轉空'));} if(it.sweep){sig.push('掃流動性·'+(it.sweep==='bull'?'掃多':'掃空'));} html += '<span class="m-signal">⚡ '+sig.join('｜')+'</span>'; }
     html += '<span class="m-next">→'+it.next+'</span>';
-    html += '<span class="m-band">';
-    it.series.forEach(function(p){ html += '<span class="seg '+p.d+'" title="'+p.t+'"></span>'; });
+    html += '</div><div class="m-bandrow">';
+    ((it.band && it.band.length)?it.band:[]).forEach(function(p,i){ var tt=(AX[i]||''); html += '<span class="seg '+(p?p:'blank')+'" title="'+tt+(p?(' · '+p):' · 缺資料')+'"></span>'; });
     var nxtCls = it.next==='續漲'?'next-up':(it.next==='續跌'?'next-down':(it.next==='轉漲'?'next-rev-up':(it.next==='轉跌'?'next-rev-down':'next-watch')));
     var rev = (it.next==='轉漲'||it.next==='轉跌');
     html += '<span class="seg '+nxtCls+'" title="'+(rev?'⚡下一輪反轉':'下一輪預測')+'">'+(rev?'⚡':'')+'</span>';
-    html += '</span><span class="m-status">'+st[it.latest].t+'</span></div>';
+    html += '</div></div>';
   });
   html += '</div></div>';
   return html;
@@ -2088,12 +2099,18 @@ def _pm_monitor():
                     dclose = chg
                 d = "up" if dclose > 0 else ("down" if dclose < 0 else "flat")
                 series_by_code[key].append({"t": st[9:13], "s": status, "close": close, "chg": chg, "val": val, "turn": turn, "io": io_ratio, "d": d})
+    axis = [st[9:13] for st, _ in today_snaps]
+    tmap = {t: i for i, t in enumerate(axis)}
     items = []
     for s in stocks:
         key = str(s["code"]).zfill(4)
         series = series_by_code[key]
         if not series:
             continue
+        band = [None] * len(axis)
+        for p in series:
+            if p.get("t") in tmap:
+                band[tmap[p["t"]]] = p["d"]
         last = series[-1]
         prev = series[-2] if len(series) >= 2 else last
         close = last["close"]
@@ -2116,7 +2133,8 @@ def _pm_monitor():
                       "chg": last["chg"], "val": last["val"], "dval": dval,
                       "turn": last["turn"], "io": last["io"],
                       "vq": vq, "dist": dist, "climax": climax, "sweep": sweep,
-                      "next": next_t, "series": series, "latest": last["s"], "t": last.get("t", "")})
+                      "next": next_t, "series": series, "latest": last["s"], "t": last.get("t", ""),
+                      "axis": axis, "band": band})
     import json as _json
     import os as _os
     _sig_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "outputs", "monitor", "signals_log.json")
