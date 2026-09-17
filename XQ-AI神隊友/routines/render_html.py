@@ -723,8 +723,8 @@ tr:hover td{background:#1c2438}
 .m-item-head{display:flex;flex-wrap:wrap;gap:2px 8px;align-items:center;padding-bottom:3px}
 .monitor-item .m-status{font-weight:700}
 .m-bandrow{display:inline-flex;gap:2px;align-items:center}
-.m-axisrow{display:flex;flex:0 0 100%;gap:2px;margin:0 0 4px 9px;align-items:center;height:16px;color:var(--sub);font-size:10px;white-space:nowrap}
-.m-axis-hour{flex:0 0 46px;text-align:center;border-top:1px solid #3a4a7a;line-height:16px}
+.m-axisrow{flex:0 0 100%;position:relative;height:16px;margin:0 0 4px 9px;color:var(--sub);font-size:10px;white-space:nowrap}
+.m-axis-hour{position:absolute;top:0;transform:translateX(-50%);padding:0 3px;line-height:16px;border-left:1px solid #3a4a7a}
 .seg.blank{background:repeating-linear-gradient(45deg,#2f3d63 0 2px,rgba(0,0,0,0) 2px 4px);opacity:.55}
 .m-upd{color:#ffb37e;font-size:13px;font-weight:700}
 .monitor-item.m-hit{background:rgba(70,216,138,.10);border-color:rgba(70,216,138,.4)}
@@ -1623,8 +1623,9 @@ function renderMonitor(m){
   var order = {'偏多':0, '偏空':1, '中性':2};
   var sorted = m.items.slice().sort(function(a,b){ return (order[a.dir]!==undefined?order[a.dir]:9) - (order[b.dir]!==undefined?order[b.dir]:9); });
   var AX = (m.items[0] && m.items[0].axis) || [];
-  html += '<div class="m-axisrow"><span class="m-axis-hour" style="flex:0 0 auto;border:0;padding-right:4px">每格=15分</span>';
-  AX.forEach(function(t,i){ if(i%4===0){ html += '<span class="m-axis-hour">'+t+'</span>'; } });
+  var unit = AX.length ? 12 : 0;
+  html += '<div class="m-axisrow" style="width:'+(unit*AX.length-2)+'px">';
+  AX.forEach(function(t,i){ if(t.indexOf(':00')>=0){ html += '<span class="m-axis-hour" style="left:'+(i*unit)+'px">'+t+'</span>'; } });
   html += '</div>';
   sorted.forEach(function(it){
     html += '<div class="monitor-item '+st[it.latest].c+'"><div class="m-item-head"><span class="m-status">'+st[it.latest].t+'</span>';
