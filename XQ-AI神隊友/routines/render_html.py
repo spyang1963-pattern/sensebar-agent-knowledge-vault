@@ -1625,7 +1625,7 @@ function renderMonitor(m){
   var AX = (m.items[0] && m.items[0].axis) || [];
   var unit = AX.length ? 12 : 0;
   html += '<div class="m-axisrow" style="width:'+(unit*AX.length-2)+'px">';
-  AX.forEach(function(t,i){ if(t.slice(2,4)==='00'){ html += '<span class="m-axis-hour" style="left:'+(i*unit)+'px">'+t.slice(0,2)+':'+t.slice(2,4)+'</span>'; } });
+  AX.forEach(function(t,i){ if(t.slice(2,4)==='00'){ var hh=parseInt(t.slice(0,2),10); var lx=(hh===9?0:(48*(hh-9)+24)); html += '<span class="m-axis-hour" style="left:'+lx+'px">'+t.slice(0,2)+':'+t.slice(2,4)+'</span>'; } });
   html += '</div>';
   sorted.forEach(function(it){
     html += '<div class="monitor-item '+st[it.latest].c+'"><div class="m-item-head"><span class="m-status">'+st[it.latest].t+'</span>';
