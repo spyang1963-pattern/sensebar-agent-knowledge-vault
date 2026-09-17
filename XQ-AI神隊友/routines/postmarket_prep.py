@@ -605,6 +605,12 @@ def main():
     parts.append(f"## 0. 現價速查表（支撐/壓力必須以此為基準）\n{_price_table()}\n")
     parts.append(f"## 0b. 技術位階速查表（支撐/壓力必須引用這些位階）\n{_tech_levels()}\n")
     parts.append(f"## 1. XQ 盤中快照摘要\n{_xq_summary()}\n")
+    try:
+        import eight_quadrant
+        eq_block = eight_quadrant.build_md() or "（未取得量價判讀 feed）"
+    except Exception:
+        eq_block = "（量價判讀模組載入失敗）"
+    parts.append(f"## 1b. 量價結構判讀（v2 L0~L3，程式計算）\n{eq_block}\n")
     parts.append(f"## 2. 融資券\n{_margin_summary()}\n\n{_margin_triggers()}\n")
     parts.append(f"## 3. 三大法人\n{_institutional_summary()}\n")
     parts.append(f"## 4. 千張大戶\n{_tdcc_summary()}\n")
