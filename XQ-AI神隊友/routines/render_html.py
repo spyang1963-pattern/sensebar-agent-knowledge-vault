@@ -723,7 +723,7 @@ tr:hover td{background:#1c2438}
 .m-item-head{display:flex;flex-wrap:wrap;gap:2px 8px;align-items:center;padding-bottom:3px}
 .monitor-item .m-status{font-weight:700}
 .m-bandrow{display:inline-flex;gap:2px;align-items:center}
-.m-axisrow{flex:0 0 100%;position:relative;height:16px;margin:0 0 4px 9px;color:var(--sub);font-size:10px;white-space:nowrap}
+.m-axisrow{flex:0 0 100%;position:relative;height:16px;margin:0 0 4px 10px;color:var(--sub);font-size:10px;white-space:nowrap}
 .m-axis-hour{position:absolute;top:0;padding:0 2px;line-height:16px;background:#14231a;border-left:1px solid #3a4a7a}
 .seg.blank{background:repeating-linear-gradient(45deg,#2f3d63 0 2px,rgba(0,0,0,0) 2px 4px);opacity:.55}
 .m-upd{color:#ffb37e;font-size:13px;font-weight:700}
@@ -2103,6 +2103,12 @@ def _pm_monitor():
     axis = [st[9:13] for st, _ in today_snaps]
     if axis and axis[0] != "0900":
         axis = ["0900"] + axis
+    tmp_axis = []
+    for _t in axis:
+        tmp_axis.append(_t)
+        if _t == "0945":
+            tmp_axis.extend(["gap-a", "gap-b"])
+    axis = tmp_axis
     tmap = {t: i for i, t in enumerate(axis)}
     items = []
     for s in stocks:
