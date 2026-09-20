@@ -308,3 +308,37 @@
 - ⚠️ 陷阱：`deepseek-v4-flash-free`（免費）和 `deepseek-v4-flash`（付費）名稱極像，
   要切切務必選 `opencode-go/deepseek-v4-flash`（付費），選錯 free 版會爆共用免費池。
 - 本作業（把 rank 框架複製到 breadth/notes）是**機械性延續**，big-pickle 就夠，不需切付費。
+
+---
+
+## 八、量價結構判讀 v2（eight_quadrant，2026-09-17）
+
+### 背景
+- 整理「亮晶晶《供需法則基礎班》」逐字稿 → 量價結構八象限規則文件（v2 定稿）：
+  `D:\AI-Agent-Workspace\knowledge-base\金融交易\理周學院\亮晶晶\量價結構八象限分析.md`（十二節）。
+- 八象限＝量增/縮 × 價漲/跌 × 角度(異位對照)陡/緩 → 供需。疊加 **L0~L3 四層**：
+  L0 趨勢（15K 55MA↑＝日K ma8 等效，≒3 交易日 54 根）＋ L1 起漲（站上 8MA↑＋5MV 攻擊量）
+  + L2 供需（8 象限＋極限大量確認）＋ L3 互證（Gemini 方向 vs 結構）。
+- **Gemini「偏多」定義**＝籌碼/資金/情境的「明日預期」，不是當下技術結構（prompt 自註「進貨≠明日漲跌充分條件」）；故放在 L3 互證層，結構相左時給警示。
+
+### 實作（commit 3fd5a93，PC3 已 pull 生效）
+- `routines/eight_quadrant.py`：
+  - 抓 dashboard `https://spyang1963-pattern.github.io/xq-dashboard/` 的 `#monitordata`（當日 20 檔 15分K series，17 根）。
+  - 算每檔 Q1~Q8、A/B/VR/VX（13 根窗極限大量）、8MA 站/破、5MV 攻擊量、13MV；L3 警示
+    （⚠偏多vs空方大量／偏多破8MA／偏空vs多頭增量／大量後未過高→調節／Sweep 標籤／邊際K轉弱）。
+  - CLI：`python eight_quadrant.py [--out x.md] [--json]`；prep 呼叫 `build_md()`。
+  - **容錯**：feed 抓不到 → build_md 回 None → prep 輸出「（未取得量價判讀 feed）」**不中斷流程**。
+- `postmarket_prep.py`：input 加「## 1b 量價結構判讀」段（`## 1 XQ 盤中快照摘要`之後）。
+- `postmarket_report.py`：SYSTEM_PROMPT 加「量價結構互證鐵律」——結構警報與判的方向相左者，可靠度降「低」並列風險。
+
+### 驗證（2026-09-17 收盤 feed stamp 133004，20 檔）
+- 互證 ✓6／✗10／◦4。
+- ⚠「偏多 vs 空方大量」：南亞科、華邦電、強茂、鼎元（VX=1.0）；聯電、聯發科量增價跌（Q4）。
+- 偏多組 9 檔破 8MA（僅力積電站上↑）→ 證明「偏多≠短線結構」。
+- 偏空組智邦/世芯-KY/藥華藥呈現 Q8 縮量緩跌（多方整理）＝「偏空vs多頭增量」警示。
+
+### 資料缺口（重要）
+- **L0 的 55MA／34MV 需跨日 15K（≒3 交易日 54 根）**，dashboard series 只有當日 17 根 → 目前標 NA
+  （環境暫以「0b 技術位階」的日線 MA20 乖離＋前20日高低代用）。
+- 下一步選項：累積 snapshots 歷史 15K 補算，或直接以日線 MA8 等效（decision 由使用者訂）。
+- 陷阱：本機連 dashboard 有時 hang（urllib timeout 40s 未必生效）；console 印 UTF-8 亂碼但檔案內容正常。
