@@ -161,7 +161,7 @@ def check_requirements(bundle_key):
     for line in req_file.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if line and not line.startswith("#") and not line.startswith("-"):
-            pkg = line.split("==")[0].split(">=")[0].split("<=")[0].strip()
+            pkg = line.split("==")[0].split(">=")[0].split("<=")[0].split("[")[0].strip()
             required.append(pkg.lower().replace("-", "_"))
 
     # 檢查已安裝
@@ -194,7 +194,7 @@ def check_line_requirements(line_key):
     for ln in req_file.read_text(encoding="utf-8").splitlines():
         ln = ln.strip()
         if ln and not ln.startswith("#") and not ln.startswith("-"):
-            pkg = ln.split("==")[0].split(">=")[0].split("<=")[0].strip()
+            pkg = ln.split("==")[0].split(">=")[0].split("<=")[0].split("[")[0].strip()
             required.append(pkg.lower().replace("-", "_"))
     out, _ = run([sys.executable, "-m", "pip", "list", "--format=json"])
     try:
