@@ -61,8 +61,9 @@ def parse_forecast(md_text):
             cur = {
                 "code": m.group(1), "name": core_name,
                 "dir": dm.group(1).strip() if dm else "",
-                "strength": sm.group(1) if sm else "",
-                "size": szm.group(1) if szm else "",
+                "strength": sm.group(1).strip() if sm else "",
+                "size": szm.group(1).strip() if szm else "",
+                "stance": "", "lvl_conflict": False,
                 "rel": "", "support": None, "resistance": None,
                 "prob": None, "range_lo": None, "range_hi": None, "vs_market": "",
             }
@@ -128,8 +129,16 @@ def actual_close_map():
 
 
 def _dir_hit(stock, chg):
-    """方向命中：偏多→chg>0、偏空→chg<0、中性/無→None（不計）。"""
+    """方向命中：偏多→chg>0、偏空→chg<0、中性/無→None（不計）。
+
+    規則_08 層級鐵律（稽核閉環掛載 2026-09-20）：
+    - 層級一致（dir×stance 同向、可靠度≠低）才算 hit；
+    - 層級打架（Gemini 判方向與 15分K stance 相左 → prompt 巢已規定可靠度降為「低」）
+      → 不計 hit（層級打架剔除，避免 42.1% 假數字吃進榜單誤判）。
+    """
     d = stock.get("dir", "")
+    if stock.get("rel") == "低":
+        return None
     if "偏多" in d:
         return chg > 0
     if "偏空" in d:
