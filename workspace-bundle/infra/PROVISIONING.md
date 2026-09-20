@@ -2,7 +2,7 @@
 
 > 範圍：三條任務線（finance / video / stock）＋五項共同能力（視覺、生圖、通知、LLM 連線、GitHub 發佈）＋基礎（Tailscale 連線、外部工具）。
 > 依據：2026-09 對 `D:\AI-Agent-Workspace` 全部 `.py` import 掃描＋既有 `workspace-bundle` 檔案實地核對。
-> 角色：harvester（金融＋頻道監控＋KB）＝PC3（現役）；collector（純收集）＝NAS；開發/收成＝Notebook。三機（PC1/PC2/Notebook）＝影片處理管線。
+> 角色（2026-09-20 更新）：**每台機器各自具備執行「全部現有任務」的能力，非分工管線**——PC1/PC2/PC3/Notebook 皆為完整副本，任一台可獨立承接 finance / video / stock / XQ。多台共存＝容錯備援＋彈性（可同時跑不同任務）；受「單一寫入者」約束（同排程同時僅一台在跑，切換先停舊再啟新）。Notebook＝套件集中區／開發樣板。
 
 ## 一、三條任務線 ─ 各自需求
 
