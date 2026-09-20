@@ -16,8 +16,10 @@ from pathlib import Path
 from datetime import datetime
 
 # ── 路徑設定 ──
-WORKSPACE = Path(os.environ.get("WORKSPACE_ROOT", r"D:\AI-Agent-Workspace"))
-BUNDLE_DIR = WORKSPACE / "workspace-bundle"
+# WORKSPACE 可被 WORKSPACE_ROOT env 覆蓋；否則從本檔位置自動推導
+# （<repo>\workspace-bundle\infra\update.py → repo 根），本機/PC3 皆適用
+BUNDLE_DIR = Path(__file__).resolve().parents[1]
+WORKSPACE = Path(os.environ.get("WORKSPACE_ROOT") or BUNDLE_DIR.parent)
 INFRA_DIR = BUNDLE_DIR / "infra"
 
 
