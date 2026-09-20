@@ -1,0 +1,7 @@
+# 影片處理線（三機：下載/轉寫/字幕/OCR）專屬依賴
+# base 已含：yt-dlp / requests / PyYAML / watchdog / groq / pymupdf / python-docx / pillow / psutil / bs4 / pandas
+openai-whisper>=20231117
+auto-editor>=24.2.0
+openai>=1.30.0
+python-dotenv>=1.0.0
+pytesseract>=0.3.10

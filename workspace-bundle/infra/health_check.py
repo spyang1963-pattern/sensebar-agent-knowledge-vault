@@ -58,6 +58,37 @@ BUNDLES = {
     },
 }
 
+# ── 任務線定義（各線專屬 requirements + 能力檢查）──
+LINES = {
+    "finance": {
+        "name": "金融新聞線",
+        "dir": WORKSPACE / "financial_news",
+        "requirements": "requirements-finance.txt",
+    },
+    "video": {
+        "name": "影片處理線",
+        "dir": WORKSPACE,
+        "requirements": "requirements-video.txt",
+    },
+    "stock": {
+        "name": "股票線",
+        "dir": WORKSPACE / "stock-monitor",
+        "requirements": "requirements-stock.txt",
+    },
+    "xq": {
+        "name": "XQ 儀表板線",
+        "dir": WORKSPACE / "XQ-AI神隊友",
+        "requirements": None,
+    },
+}
+
+# 排程任務關鍵字（動態掃描 schtasks 比對）
+TASK_KEYWORDS = [
+    "FinanceNews_PC3_Pipeline", "XQ_Snapshot_Loop2", "XQ_Postmarket_Evening",
+    "XQ_Postmarket_Morning", "ChannelWatcherDaily", "StockMonitor_Fetch",
+    "Autonomy_Guard", "StockMonitor_Scheduler",
+]
+
 
 def run(cmd, timeout=30, cwd=None):
     """執行命令並回傳輸出"""
@@ -148,6 +179,115 @@ def check_requirements(bundle_key):
     return len(required), missing
 
 
+def check_line_requirements(line_key):
+    """檢查某任務線的專屬 requirements 是否安裝齊全"""
+    line = LINES[line_key]
+    if line["requirements"] is None:
+        return 0, []
+    req_file = BUNDLE_DIR / "infra" / line["requirements"]
+    if not req_file.exists():
+        return 0, []
+    required = []
+    for ln in req_file.read_text(encoding="utf-8").splitlines():
+        ln = ln.strip()
+        if ln and not ln.startswith("#") and not ln.startswith("-"):
+            pkg = ln.split("==")[0].split(">=")[0].split("<=")[0].strip()
+            required.append(pkg.lower().replace("-", "_"))
+    out, _ = run([sys.executable, "-m", "pip", "list", "--format=json"])
+    try:
+        installed = {p["name"].lower().replace("-", "_"): p["version"]
+                     for p in json.loads(out)}
+    except:
+        installed = {}
+    missing = [p for p in required if p not in installed]
+    return len(required), missing
+
+
+def _imports_ok(*names):
+    """Try importing all names; returns (ok, first_missing)."""
+    import importlib
+    for n in names:
+        try:
+            importlib.import_module(n)
+        except ImportError:
+            return False, n
+    return True, None
+
+
+def check_finance_line():
+    """金融新聞線：db / 金鑰 / publisher remote / 關鍵模組"""
+    fn = WORKSPACE / "financial_news"
+    info = {
+        "finance_db": (fn / "finance.db").exists(),
+        "gemini_key": (Path.home() / ".gemini_api_key").exists() or bool(os.environ.get("GEMINI_API_KEY")),
+        "telegram_env": (Path.home() / ".telegram_env").exists()
+                        or bool(os.environ.get("TELEGRAM_BOT_TOKEN")),
+        "publisher_repo": (fn / "publisher" / "repo").is_dir(),
+        "google_genai": _imports_ok("google.genai")[0],
+    }
+    return info
+
+
+def check_video_line():
+    """影片處理線：下載/轉寫/字幕/OCR"""
+    vlc_path = Path(r"C:\Program Files\VideoLAN\VLC\vlc.exe")
+    tess_path = Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
+    ok, _ = _imports_ok("yt_dlp", "whisper", "pytesseract", "auto_editor", "psutil", "plyer", "PIL", "bs4")
+    info = {
+        "yt_dlp": _imports_ok("yt_dlp")[0],
+        "whisper": _imports_ok("whisper")[0],
+        "pytesseract": _imports_ok("pytesseract")[0],
+        "tesseract_binary": tess_path.exists() or (run(["where.exe", "tesseract"], timeout=10)[1] == 0),
+        "auto_editor": _imports_ok("auto_editor")[0],
+        "ffmpeg": run(["where.exe", "ffmpeg"], timeout=10)[1] == 0,
+        "vlc": vlc_path.exists(),
+        "psutil_plyer": _imports_ok("psutil", "plyer")[0],
+        "bs4_pil": _imports_ok("bs4", "PIL")[0],
+    }
+    return info
+
+
+def check_stock_line():
+    """股票線：套件 + config + cache"""
+    sm = WORKSPACE / "stock-monitor"
+    ok, _ = _imports_ok("pandas", "bs4", "yaml")
+    info = {
+        "config_yaml": (sm / "config.yaml").exists(),
+        "cache_dir": (sm / "output" / "cache").is_dir(),
+        "pandas_bs4_yaml": ok,
+    }
+    return info
+
+
+def check_xq_line():
+    """XQ 儀表板線：Excel COM 前置 + 快照新鮮度 + 模組"""
+    xq = WORKSPACE / "XQ-AI神隊友"
+    excel_up = run(["tasklist", "/FI", "IMAGENAME eq EXCEL.EXE", "/FO", "CSV"], timeout=10)[0]
+    latest_snap = None
+    snap_dir = xq / "routines" / "snapshots"
+    if snap_dir.is_dir():
+        csvs = sorted(snap_dir.glob("*_*.csv"))
+        if csvs:
+            latest_snap = csvs[-1]
+    info = {
+        "excel_running": "EXCEL.EXE" in excel_up,
+        "snapshots_exist": latest_snap is not None,
+        "snapshots_fresh": latest_snap is not None and
+                           (datetime.now() - datetime.fromtimestamp(latest_snap.stat().st_mtime)).days <= 2,
+        "gemini_key": (Path.home() / ".gemini_api_key").exists() or bool(os.environ.get("GEMINI_API_KEY")),
+        "render_html": (xq / "routines" / "render_html.py").exists(),
+    }
+    return info
+
+
+LINE_CHECKERS = {
+    "finance": check_finance_line,
+    "video": check_video_line,
+    "stock": check_stock_line,
+    "xq": check_xq_line,
+}
+
+
 def check_config_files():
     """檢查必要的設定檔"""
     checks = []
@@ -167,14 +307,17 @@ def check_config_files():
 
 
 def check_services():
-    """檢查排程任務是否存在"""
-    tasks = []
-    # 檢查 Windows 排程
+    """檢查排程任務是否存在（動態掃描 schtasks 比對關鍵字）"""
+    all_names = []
     if sys.platform == "win32":
-        out, _ = run(["schtasks", "/Query", "/TN", "ChannelWatcherDaily", "/FO", "CSV"], timeout=10)
-        tasks.append({"name": "ChannelWatcherDaily", "exists": out.find("ChannelWatcherDaily") >= 0})
-        out, _ = run(["schtasks", "/Query", "/TN", "FinanceNews_PC3_Pipeline", "/FO", "CSV"], timeout=10)
-        tasks.append({"name": "FinanceNews_PC3_Pipeline", "exists": out.find("FinanceNews_PC3_Pipeline") >= 0})
+        out, _ = run(["schtasks", "/Query", "/FO", "CSV"], timeout=20)
+        for row in out.splitlines()[1:]:
+            parts = row.strip().split('","')
+            if parts and parts[0].startswith('"'):
+                all_names.append(parts[0].strip('"'))
+    tasks = []
+    for kw in TASK_KEYWORDS:
+        tasks.append({"name": kw, "exists": any(kw in n for n in all_names)})
     return tasks
 
 
@@ -293,6 +436,11 @@ def build_report(as_json=False):
         "vision": check_vision_capability(),
         "draw": check_draw_capability(),
         "kb": check_kb_capability(),
+        "lines": {k: {"name": LINES[k]["name"], **LINE_CHECKERS[k]()}
+                  for k in LINES},
+        "line_packages": {k: {"total": t, "missing": m}
+                          for k, (t, m) in [(kk, check_line_requirements(kk))
+                                            for kk in LINES]},
     }
 
     for key in BUNDLES:
@@ -374,6 +522,20 @@ def build_report(as_json=False):
     for desc, ok in checks:
         status = "✅" if ok else "❌"
         print(f"    {status} {desc}")
+
+    print(f"\n  {'─'*46}")
+    print(f"  任務線能力：")
+    for lk, linfo in report["lines"].items():
+        print(f"    ● {linfo['name']}（{lk}）:")
+        for key, ok in linfo.items():
+            if key == "name":
+                continue
+            status = "✅" if ok else "❌"
+            print(f"      {status} {key}")
+        lp = report["line_packages"].get(lk, {})
+        if lp.get("total"):
+            miss = lp["missing"]
+            print(f"      套件：{lp['total']} 個要裝，缺 {len(miss)}{(' → ' + ', '.join(miss)) if miss else ''}")
 
     print(f"\n{'='*50}\n")
     return report

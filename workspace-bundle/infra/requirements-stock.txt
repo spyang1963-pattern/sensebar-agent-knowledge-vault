@@ -1,0 +1,3 @@
+# 股票線（stock-monitor）專屬依賴
+# base 已含：requests / PyYAML / pandas / beautifulsoup4
+# 無額外專屬套件；本檔保留以便 health_check 對應線別讀取。stock-monitor/requirements.txt 仍為該專案原始清單。

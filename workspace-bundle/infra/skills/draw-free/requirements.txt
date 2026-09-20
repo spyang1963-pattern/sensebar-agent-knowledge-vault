@@ -1,0 +1,2 @@
+# draw-free 生圖能力依賴（Pollinations.ai 生圖 + PIL 疊字）
+pillow>=10.0.0

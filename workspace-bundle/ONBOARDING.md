@@ -21,18 +21,24 @@ git clone https://github.com/spyang1963-pattern/sensebar-agent-knowledge-vault.g
 ```
 （已 clone 過則 `git pull`。之後所有路徑以 `<REPO>` 代表 repo 根目錄）
 
-## 第 2 步：Python 套件一鍵安裝
+## 第 2 步：Python 套件安裝（依任務線）
 
 ```powershell
 $env:WORKSPACE_ROOT = "<REPO>"
 python <REPO>\workspace-bundle\infra\update.py
 ```
-（安裝 requirements-base.txt：requests/PyYAML/feedparser/watchdog/paramiko/groq/pymupdf/python-pptx/python-docx/pillow/openpyxl/markitdown/reportlab/matplotlib/qrcode/youtube-transcript-api/yt-dlp 等）
+（安裝 requirements-base.txt：requests/PyYAML/feedparser/watchdog/paramiko/groq/pymupdf/python-pptx/python-docx/pillow/openpyxl/markitdown/reportlab/matplotlib/qrcode/youtube-transcript-api/yt-dlp＋跨線共用 google-genai/markdown/pandas/bs4/psutil/flask）
 
-金融/KB 管線額外需要（部分已含於 base）：
-```powershell
-python -m pip install google-genai markdown yt-dlp pyyaml
-```
+**再依你要跑的任務線裝專屬檔**（`workspace-bundle\infra\requirements-<線>.txt`）：
+
+| 任務線 | 專屬檔 | 內容 | 裝法 |
+|---|---|---|---|
+| Finance | `requirements-finance.txt` | pywin32（deep_report 用 win32com） | `python -m pip install -r <REPO>\workspace-bundle\infra\requirements-finance.txt` |
+| Video（三機） | `requirements-video.txt` | openai-whisper／auto-editor／openai／python-dotenv／pytesseract | 同上，換檔名 |
+| Stock | `requirements-stock.txt` | 無額外（base 已含 pandas/bs4） | 略，直接 `-r stock-monitor\requirements.txt` |
+| XQ 儀表板 | 無專屬 | 依賴 finance 環境＋google-genai（base 已含） | 不需另裝 |
+
+一次裝多條線可逐條 `pip install -r`。**裝完必須重開終端**讓 PATH 生效（多 Python 假象陷阱）。
 
 ## 第 3 步：外部工具一鍵安裝
 
@@ -46,7 +52,9 @@ powershell -ExecutionPolicy Bypass -File <REPO>\workspace-bundle\infra\setup\ext
 | Key | 位置 | 策略 |
 |---|---|---|
 | Gemini | `C:\Users\<user>\.gemini_api_key` | **每台獨立**（Google AI Studio 另建專案，各自 500 次/天/模型額度池，避免互搶） |
-| Groq | `C:\Users\<user>\.groq_api_key` | 共用（轉錄用量低） |
+| Groq | `C:\Users\<user>\.groq_api_key` | 共用（轉錄/verify/vision 用量低） |
+| Telegram（告警） | `C:\Users\<user>\.telegram_env`（`TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`） | 共用 |
+| OpenRouter（選用） | `C:\Users\<user>\.openrouter_api_key` | 共用；finance analyze 第三 provider，沒 key 自動跳過 |
 
 ## 第 5 步：資料同步（人工，AnyDesk，來源＝現役主力機）
 
@@ -73,6 +81,11 @@ python -X utf8 -c "import sys; sys.path.insert(0, r'<REPO>'); import config; pri
 ```powershell
 python <REPO>\workspace-bundle\infra\health_check.py
 ```
+輸出含基礎層套件、設定檔、排程任務、視覺/生圖/KB 能力，以及 **四條任務線能力**（finance / video / stock / xq）——每線列出 `finance.db`、`~/.telegram_env`、whisper、tesseract、Excel 進程、snapshots 新鮮度等關鍵項，❌ 的項就是要補的。可 `--json` 輸出供腳本讀。
+
+## 第 7.5 步：XQ 線人工前置（無法腳本，機器上手後做一次）
+1. 安裝並登入 **XQ 看盤軟體**；開權限報價表（`輸出欄位 → DDE` 貼進 Excel，不用存檔）
+2. 確認 **Excel 開著**＋PC 不待機；健檢中 `excel_running` 應為 ✅
 
 ## 第 8 步：排程（切換日才啟用！）
 

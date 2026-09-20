@@ -7,7 +7,8 @@ $ErrorActionPreference = "Continue"
 $tools = @(
     @{ Id = "Gyan.FFmpeg";       Name = "ffmpeg (media processing / yt-dlp merge)" },
     @{ Id = "VideoLAN.VLC";      Name = "VLC (subtitle burning; must be default path)" },
-    @{ Id = "Obsidian.Obsidian"; Name = "Obsidian (knowledge base browsing)" }
+    @{ Id = "Obsidian.Obsidian"; Name = "Obsidian (knowledge base browsing)" },
+    @{ Id = "UB-Mannheim.TesseractOCR"; Name = "Tesseract OCR (file_processors.py pytesseract)" }
 )
 
 foreach ($t in $tools) {
@@ -19,4 +20,5 @@ foreach ($t in $tools) {
 Write-Host ""
 Write-Host "=== Verify (in a NEW terminal) ==="
 Write-Host "  ffmpeg -version"
+Write-Host "  tesseract --version"
 Write-Host "  Test-Path 'C:\Program Files\VideoLAN\VLC\vlc.exe'   # run_pipeline.py hardcodes this path"
