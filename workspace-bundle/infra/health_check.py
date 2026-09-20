@@ -212,7 +212,7 @@ def _imports_ok(*names):
     for n in names:
         try:
             importlib.import_module(n)
-        except ImportError:
+        except Exception:
             return False, n
     return True, None
 
