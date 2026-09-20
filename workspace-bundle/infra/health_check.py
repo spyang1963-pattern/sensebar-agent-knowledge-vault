@@ -14,8 +14,10 @@ from pathlib import Path
 from datetime import datetime
 
 # ── 路徑設定 ──
-WORKSPACE = Path(os.environ.get("WORKSPACE_ROOT", r"D:\AI-Agent-Workspace"))
-BUNDLE_DIR = WORKSPACE / "workspace-bundle"
+# WORKSPACE 可被 WORKSPACE_ROOT env 覆蓋；否則從本檔位置自動推導
+# （<repo>\workspace-bundle\infra\health_check.py → repo 根），本機/PC3 皆適用
+BUNDLE_DIR = Path(__file__).resolve().parents[1]
+WORKSPACE = Path(os.environ.get("WORKSPACE_ROOT") or BUNDLE_DIR.parent)
 
 # ── 機器定義 ──
 MACHINES = {
@@ -82,11 +84,12 @@ LINES = {
     },
 }
 
-# 排程任務關鍵字（動態掃描 schtasks 比對）
+# 排程任務關鍵字（動態掃描 schtasks 比對；PC3 現役＝Autonomy_* 系列）
 TASK_KEYWORDS = [
-    "FinanceNews_PC3_Pipeline", "XQ_Snapshot_Loop2", "XQ_Postmarket_Evening",
-    "XQ_Postmarket_Morning", "ChannelWatcherDaily", "StockMonitor_Fetch",
-    "Autonomy_Guard", "StockMonitor_Scheduler",
+    "Autonomy_finance-pipeline", "Autonomy_finance-morning",
+    "Autonomy_finance-evening", "Autonomy_Guard", "ChannelWatcherDaily",
+    "XQ_Snapshot_Loop2", "XQ_Postmarket_Evening", "XQ_Postmarket_Morning",
+    "StockMonitor_Fetch", "StockMonitor_Scheduler",
 ]
 
 
