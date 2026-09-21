@@ -1833,10 +1833,10 @@ function copyDirStocks(btn, dir){
     var b=els[i].querySelector('b[data-code]');
     if(!b) continue;
     var c=b.getAttribute('data-code')||'';
-    if(c&&!seen[c]){seen[c]=1;out.push(c+'\t'+b.getAttribute('data-name'));}
+    if(c&&!seen[c]){seen[c]=1;out.push(c+'\\t'+b.getAttribute('data-name'));}
   }
   if(!out.length){return;}
-  var text=out.join('\n');
+  var text=out.join('\\n');
   function done(){btn.classList.add('copied');btn.textContent='已複製 '+out.length+' 檔';setTimeout(function(){btn.classList.remove('copied');btn.textContent=(dir==='偏多'?'📋 多方股號股名':'📋 空方股號股名');},1600);}
   function fb(){var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);done();}
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,fb);}else{fb();}
@@ -1846,7 +1846,7 @@ function copyPmReport(btn){
   var recs=window.PM_CUR_RECS||[];
   if(!recs.length){return;}
   var html=recs.map(function(r){return r.wh||'';}).join('<div style="page-break-after:always">&nbsp;</div>');
-  var txt=recs.map(function(r){return r.txt||'';}).join('\n\n'+Array(20).join('=')+'\n');
+  var txt=recs.map(function(r){return r.txt||'';}).join('\\n\\n'+Array(20).join('=')+'\\n');
   function done(){btn.classList.add('copied');btn.textContent='已複製 '+recs.length+' 份';setTimeout(function(){btn.classList.remove('copied');btn.textContent='📋 複製整份報告(貼Word)';},1600);}
   function fb(){var ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);done();}
   try{
