@@ -187,7 +187,9 @@ def build_md(feed=None):
 
     L = []
     L.append("### 量價結構判讀（v2 L0~L3）")
-    L.append(f"- 資料：dashboard feed stamp `{feed.get('stamp', '?')}`，成交值累計換算當根量；A=異位(涨段/跌段力道)、B=同位(本波/前波涨)、VR、VX=極限大量。")
+    _pts = max((len(it.get("series") or []) for it in items), default=0)
+    _warn = "" if _pts >= 3 else f" ⚠ 本日僅 {_pts} 個 15分K 時間點（需 ≥3 才可判讀）——盤中快照捕捉可能中斷，以下象限一律無法計算。"
+    L.append(f"- 資料：dashboard feed stamp `{feed.get('stamp', '?')}`，成交值累計換算當根量；A=異位(涨段/跌段力道)、B=同位(本波/前波涨)、VR、VX=極限大量。{_warn}")
     L.append("- **L0 趨勢層**：55MA／34MV 需跨日 15K（≒3 交易日）當日 feed 不足，暫列 NA；環境請對照「0b 技術位階」（MA20 乖離＋前20日高低）。")
     L.append("| 名稱 | 預測 | 象限 | A | B | VR | VX | 8MA(15K) | 5MV | 13MV | 互證 | 警示 |")
     L.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
