@@ -642,8 +642,8 @@ def main():
     try:
         import eight_quadrant
         eq_block = eight_quadrant.build_md() or "（未取得量價判讀 feed）"
-    except Exception:
-        eq_block = "（量價判讀模組載入失敗）"
+    except Exception as e:
+        eq_block = f"（量價判讀模組載入失敗：{type(e).__name__}: {e}）"
     parts.append(f"## 1b. 量價結構判讀（v2 L0~L3，程式計算）\n{eq_block}\n")
     parts.append(f"## 2. 融資券\n{_margin_summary()}\n\n{_margin_triggers()}\n")
     parts.append(f"## 3. 三大法人\n{_institutional_summary()}\n")

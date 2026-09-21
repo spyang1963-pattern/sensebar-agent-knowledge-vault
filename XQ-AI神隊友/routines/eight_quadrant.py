@@ -178,7 +178,7 @@ def build_md(feed=None):
     for it in items:
         q = quadrant(it)
         if q is None:
-            rows.append((it.get("name", "?"), f"（series 過短，無法判讀）", [], it.get("dir", "")))
+            rows.append((it.get("name", "?"), "（series 過短，無法判讀）", None, "", None, "", ""))
             continue
         m, tag = _dir_bias(q)
         f = lambda v: f"{v:.2f}" if isinstance(v, float) else ("-" if v is None else v)
