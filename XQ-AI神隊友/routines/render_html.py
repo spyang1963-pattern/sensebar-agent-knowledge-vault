@@ -2526,7 +2526,9 @@ def _pm_fold_basis(lines):
                 if not nx.strip():
                     j += 1
                     continue
-                if nx[0] in " \t" and not re.match(r"^\s*\d+[.、)]", nx):
+                # 續行＝有縮排（Gemini 用 ① ② 或 1. 2. 編號皆可能），
+                # 但排除真正的股票列（代碼＋名稱），避免把下一檔吃進來。
+                if nx[0] in " \t" and not _PM_STOCK_RE.match(nx.strip()):
                     parts.append(nx.strip())
                     j += 1
                 else:
