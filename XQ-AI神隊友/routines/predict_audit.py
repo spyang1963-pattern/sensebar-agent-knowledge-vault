@@ -64,6 +64,7 @@ def parse_forecast(md_text):
                 "strength": sm.group(1).strip() if sm else "",
                 "size": szm.group(1).strip() if szm else "",
                 "stance": "", "lvl_conflict": False,
+                "basis": None,
                 "rel": "", "support": None, "resistance": None,
                 "prob": None, "range_lo": None, "range_hi": None, "vs_market": "",
             }
@@ -71,10 +72,14 @@ def parse_forecast(md_text):
             raw = s.lstrip("-· ").strip()
             mm = re.match(r"^([^：]+)：\s*(.*)$", raw, re.S)
             if not mm:
+                if cur.get("basis") is not None:
+                    cur["basis"].append(raw)
                 continue
             lab = mm.group(1).strip().replace("**", "")
             val = mm.group(2).strip()
-            if "可靠度" in lab:
+            if "出榜依據" in lab:
+                cur["basis"] = [val] if val else []
+            elif "可靠度" in lab:
                 mrel = re.match(r"^([高中低])", val)
                 cur["rel"] = mrel.group(1) if mrel else ""
             elif "預期" in lab:
@@ -95,6 +100,10 @@ def parse_forecast(md_text):
                     cur["support"] = float(ms.group(1).replace(",", ""))
                 if mr:
                     cur["resistance"] = float(mr.group(1).replace(",", ""))
+            elif cur.get("basis") is not None and (re.match(r"^\d+[.、)]", lab) or lab[:1] in "①②③④⑤⑥⑦⑧⑨⑩"):
+                cur["basis"].append(raw)
+        elif cur and cur.get("basis") is not None and (re.match(r"^\d+[.、)]", s) or s[:1] in "①②③④⑤⑥⑦⑧⑨⑩" or ln[:1] in (" ", "\t")):
+            cur["basis"].append(s.strip())
     if cur:
         stocks.append(cur)
     return stocks

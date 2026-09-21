@@ -722,6 +722,8 @@ tr:hover td{background:#1c2438}
 .monitor-item .m-px{color:#d8d2c0;margin-right:6px}
 .m-item-head{display:flex;flex-wrap:wrap;gap:2px 8px;align-items:center;padding-bottom:3px}
 .monitor-item .m-status{font-weight:700}
+.m-octant{display:inline-block;padding:1px 6px;border-radius:10px;font-size:11px;font-weight:700;background:#1b2a4a;color:#9db8ff;border:1px solid #3a4a7a;margin-right:6px}
+.m-oct-none{background:#222;color:#889;border-color:#333}
 .m-bandrow{display:inline-flex;gap:2px;align-items:center}
 .m-axisrow{flex:0 0 100%;position:relative;height:16px;margin:0 0 4px 10px;color:var(--sub);font-size:10px;white-space:nowrap}
 .m-axis-hour{position:absolute;top:0;padding:0 2px;line-height:16px;background:#14231a;border-left:1px solid #3a4a7a}
@@ -1634,6 +1636,8 @@ function renderMonitor(m){
     html += '<span class="m-val">成交值 '+it.val.toFixed(1)+'（'+(it.dval>=0?'+':'')+it.dval.toFixed(1)+'）</span>';
     var vqCls = {'進貨':'vq-buy', '出貨':'vq-sell', '惜售':'vq-hold', '退潮':'vq-fade', '平':'vq-flat'}[it.vq] || 'vq-flat';
     html += '<span class="m-vq '+vqCls+'">'+it.vq+'</span>';
+    if(it.octant){ html += '<span class="m-octant" title="'+it.octant.vol+'·'+(it.octant.above8?'站':'破')+'8MA'+it.octant.slope8+(it.octant.flag?' · '+it.octant.flag:'')+(it.octant.mb?' · '+it.octant.mb:'')+'">'+it.octant.Q+'</span>'; }
+    else { html += '<span class="m-octant m-oct-none" title="當日 15分K 不足 3 點，暫無象限">象限待料</span>'; }
     if(it.dist!==null && it.dist!==undefined){ var srTx=(it.dir.indexOf('偏多')>=0?'支撐':'壓力'); html += '<span class="m-dist '+(it.dist>=0?'d-ok':'d-bad')+'">距'+srTx+' '+(it.dist>=0?'+':'')+it.dist.toFixed(1)+'%</span>'; }
     html += '<span class="m-turn">換手 '+it.turn.toFixed(1)+'%</span>';
     var ioCls = it.io>=50 ? 'io-buy' : 'io-sell';
@@ -1652,13 +1656,13 @@ function renderMonitor(m){
 }
 function monitorMatrix(){
   var stTxt = {hit:'兌現', watch:'觀望', break:'破位'};
-  var rows = [['多空','股號','股名','現價','價位變化','漲跌幅','成交值','成交值變化','量價關係','距支撐壓力','換手率','內外盤','下一輪傾向','狀態']];
+  var rows = [['多空','股號','股名','現價','價位變化','漲跌幅','成交值','成交值變化','量價關係','八象限','距支撐壓力','換手率','內外盤','下一輪傾向','狀態']];
   ['偏多','偏空','中性'].forEach(function(d){
     var group = MONITOR.items.filter(function(x){ return (x.dir||'').indexOf(d)>=0; });
     if(!group.length) return;
     group.forEach(function(it){
       var distTxt = (it.dist===null||it.dist===undefined) ? '' : (it.dist>=0?'+':'')+it.dist.toFixed(1)+'%';
-      rows.push([it.dir, it.code, it.name, it.close.toFixed(1), (it.dclose>=0?'+':'')+it.dclose.toFixed(1), (it.chg>=0?'+':'')+it.chg.toFixed(1)+'%', it.val.toFixed(1), (it.dval>=0?'+':'')+it.dval.toFixed(1), it.vq, distTxt, it.turn.toFixed(1)+'%', it.io.toFixed(0)+'%', it.next, stTxt[it.latest]]);
+      rows.push([it.dir, it.code, it.name, it.close.toFixed(1), (it.dclose>=0?'+':'')+it.dclose.toFixed(1), (it.chg>=0?'+':'')+it.chg.toFixed(1)+'%', it.val.toFixed(1), (it.dval>=0?'+':'')+it.dval.toFixed(1), it.vq, (it.octant?it.octant.Q:'—'), distTxt, it.turn.toFixed(1)+'%', it.io.toFixed(0)+'%', it.next, stTxt[it.latest]]);
     });
   });
   return rows;
@@ -2131,13 +2135,23 @@ def _pm_monitor():
             next_t = "轉跌"
         else:
             next_t = _next_trend(vq)
+        octant = None
+        try:
+            import eight_quadrant
+            _oq = eight_quadrant.quadrant({"code": s["code"], "name": s["name"], "dir": s["dir"], "series": series})
+            if _oq:
+                octant = {"Q": _oq["Q"], "bias": _oq["bias"], "above8": _oq["above8"],
+                          "slope8": _oq["slope8"], "vol": _oq["vol"],
+                          "flag": (_oq["flag"] or ""), "mb": (_oq["mb"] or "")}
+        except Exception:
+            octant = None
         items.append({"code": s["code"], "name": s["name"], "dir": s["dir"],
                       "close": close, "prev_close": prev["close"], "dclose": dclose,
                       "chg": last["chg"], "val": last["val"], "dval": dval,
                       "turn": last["turn"], "io": last["io"],
                       "vq": vq, "dist": dist, "climax": climax, "sweep": sweep,
                       "next": next_t, "series": series, "latest": last["s"], "t": last.get("t", ""),
-                      "axis": axis, "band": band})
+                      "octant": octant, "axis": axis, "band": band})
     import json as _json
     import os as _os
     _sig_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "outputs", "monitor", "signals_log.json")

@@ -175,10 +175,13 @@ def build_md(feed=None):
         return None
     items = feed["items"]
     rows = []
+    n_short = 0
     for it in items:
+        ser = it.get("series") or []
         q = quadrant(it)
         if q is None:
-            rows.append((it.get("name", "?"), f"（series 過短，無法判讀）", [], it.get("dir", "")))
+            n_short += 1
+            rows.append((it.get("name", "?"), f"（series 過短（{len(ser)} 點），無法判讀）", None, "", "-", "", ""))
             continue
         m, tag = _dir_bias(q)
         f = lambda v: f"{v:.2f}" if isinstance(v, float) else ("-" if v is None else v)
@@ -188,6 +191,11 @@ def build_md(feed=None):
     L = []
     L.append("### 量價結構判讀（v2 L0~L3）")
     L.append(f"- 資料：dashboard feed stamp `{feed.get('stamp', '?')}`，成交值累計換算當根量；A=異位(涨段/跌段力道)、B=同位(本波/前波涨)、VR、VX=極限大量。")
+    pts_all = [len(it.get("series") or []) for it in items]
+    if pts_all:
+        L.append(f"- 點數統計：{len(items)} 檔，每檔當日 15分K 點數 min={min(pts_all)} / max={max(pts_all)}（八象限需 ≥3 點才有值）。")
+    if n_short:
+        L.append(f"- ⚠️ 有 {n_short} 檔點數不足（<3）無法判讀象限：出榜時請改以「0b 技術位階」補強，並註記「（1b 資料不足）」。")
     L.append("- **L0 趨勢層**：55MA／34MV 需跨日 15K（≒3 交易日）當日 feed 不足，暫列 NA；環境請對照「0b 技術位階」（MA20 乖離＋前20日高低）。")
     L.append("| 名稱 | 預測 | 象限 | A | B | VR | VX | 8MA(15K) | 5MV | 13MV | 互證 | 警示 |")
     L.append("|---|---|---|---|---|---|---|---|---|---|---|---|")

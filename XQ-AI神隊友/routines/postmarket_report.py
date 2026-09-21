@@ -48,7 +48,11 @@ SYSTEM_PROMPT = """你是一名資深的台股機構操盤手兼盤後分析總�
 N. 代碼 名稱｜方向：偏多/偏空｜強度：強/中/弱｜規模：大型/中型/小型｜滿足條件：X/5
 - 候選條件：列出滿足哪幾個（從 ①資金位移 ②法人買賣超 ③融資券/三大觸發 ④千張大戶 ⑤催化劑 五個中勾選，寫明條件名）
 - 預期：上漲概率 X%（偏空則寫下跌概率）、區間 +X%~+Y%（預期隔日漲跌幅）、vs大盤 跑贏/跑輸/同步
-- 出榜依據：條列 2~4 條具體實數，**第一條必須寫資金位移**（verdict=進貨/疑似出貨/惜售/退潮 ＋ 成交值增減 ＋ 股價收紅/收黑），**第二條必須寫另一類籌碼指標**（三大法人買賣超張數／融資券增減或三大觸發／千張大戶增減 pp，至少擇一）。每條都要有數字，**禁止**寫「法人看好」「資金流入」這種無數字空話，**禁止只寫資金位移單一指標**（必須資金位移＋籌碼兩類並陳）
+- 出榜依據：條列 **3~4 條**具體實數，**每條都要有數字**，**禁止**寫「法人看好」「資金流入」這種無數字空話，**禁止只寫單一指標**：
+  - ①資金位移（verdict=進貨/疑似出貨/惜售/退潮 ＋ 成交值增減 ＋ 股價收紅/收黑）
+  - ②籌碼指標（三大法人買賣超張數／融資券增減或三大觸發／千張大戶增減 pp，至少擇一）
+  - ③量價結構八象限（寫 Q1~Q8 象限＋8MA 站/破＋量增/量縮＋邊際K；**若 input「## 1b」顯示「資料不足」或「無法判讀」，改寫「0b 技術位階」的 MA20 乖離率＋前20日高/低，並註記「（1b 資料不足）」**）
+  - ④技術/供需（MA5/MA20 乖離、前高/前低、三盤突破/跌破、大量關鍵K 守住/跌破、上漲角度陡/緩、扣抵）
 - 可靠度：高/中/低＋一句話理由（多個指標同步同向者「高」，僅單一指標或訊號互斥者「中/低」）。理由**禁止重複出現「高/中/低」評級字**（例如不可寫「高＋中...」，評級只在最前面標一次）
 - 操盤邏輯：一句話（為什麼是這檔、法人明天可能怎麼做）
 - 關鍵價位：支撐/壓力（見下方鐵律）
@@ -72,6 +76,11 @@ N. 代碼 名稱｜方向：偏多/偏空｜強度：強/中/弱｜規模：大�
 - 若某檔結構警示與你判的方向**相左**（例：判偏多但顯示「⚠偏多vs空方大量（量增價跌+極限大量）」「偏多破8MA」，或判偏空但「偏空vs多頭增量」）→ 該檔「可靠度」一律降為「低」並在「風險與不確定性」點出，**禁止無視結構警報**。
 - 「Q8縮量緩跌（多方整理）」屬健康整理，不必然抵觸偏空，可說明為「結構整理待量」。
 - 若「## 1b」段不存在或為空，忽略本鐵律。
+
+⚠️ 出榜必含技術/結構依據鐵律（不可違反）：
+- 每一檔「出榜依據」**至少要含「量價結構八象限」或「技術位階/供需」其中一類的具體數據**（Q1~Q8 象限、8MA 站/破、MA20 乖離率、前高/前低、三盤突破/跌破、大量關鍵K）。
+- 若「## 1b」整段顯示「資料不足」或「無法判讀」，第 ③ 條自動改用「0b 技術位階」並加註「（1b 資料不足）」，不得留空。
+- 產出後自我核對：20 檔每一檔第 ③④ 條是否都寫了實數；缺了就重寫該檔，不可跳過。
 
 ⚠️ 關鍵價位的鐵律（最重要，不可違反）：
 - input 有「## 0b. 技術位階速查表」，列出各股 前收/前高/前低/MA5/MA20/前20日高/前20日低。
@@ -161,6 +170,29 @@ def _audit_feedback():
         return ""
 
 
+_TECH_MARKERS = ("Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Q8", "8MA", "MA5", "MA20", "MA10",
+                 "乖離", "前20日", "前高", "前低", "量增", "量縮", "均線", "三盤", "大量關鍵K",
+                 "角度", "扣抵", "象限")
+
+
+def _validate_board(text):
+    """檢查預測榜每檔出榜依據是否含八象限/技術位階依據；回傳問題清單 [(code,name,reason)]。"""
+    try:
+        import predict_audit
+        stocks = predict_audit.parse_forecast(text)
+    except Exception as e:
+        return [("", "", f"無法解析預測榜：{type(e).__name__}")]
+    issues = []
+    for s in stocks:
+        basis = " ".join(s.get("basis") or [])
+        if not basis.strip():
+            issues.append((s["code"], s["name"], "出榜依據留空"))
+            continue
+        if not any(k in basis for k in _TECH_MARKERS):
+            issues.append((s["code"], s["name"], "出榜依據缺八象限/技術位階依據"))
+    return issues
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--slot", choices=["evening", "morning"], default="evening")
@@ -181,6 +213,25 @@ def main():
 
     print(f"[report] 呼叫 Gemini（{args.slot}）…")
     text, model = call_gemini(input_text, args.slot)
+
+    MAX_RETRY = 3
+    issues = _validate_board(text)
+    for attempt in range(1, MAX_RETRY):
+        if not issues:
+            break
+        fix_lines = "\n".join(f"- {c} {n}：{r}" for c, n, r in issues)
+        input_text = (input_text
+                      + "\n\n## 你上一版的預測榜不合格，必須整份重寫\n"
+                      + "以下各檔未達標，請逐檔補上「出榜依據」的 ③量價結構八象限 或 ④技術/供需 實數（Q1~Q8／MA20 乖離／前高前低／三盤／大量關鍵K）後，重新輸出完整報告：\n"
+                      + fix_lines)
+        print(f"[report] 驗證未過（{len(issues)} 檔缺技術/結構依據），重跑第 {attempt + 1} 次…")
+        text, model = call_gemini(input_text, args.slot)
+        issues = _validate_board(text)
+
+    if issues:
+        print(f"[report] ⚠ 重試 {MAX_RETRY} 次後仍有 {len(issues)} 檔未填完整：")
+        for c, n, r in issues:
+            print(f"    - {c} {n}：{r}")
 
     os.makedirs(OUT_DIR, exist_ok=True)
     out_path = os.path.join(OUT_DIR, f"postmarket_{stamp}_{args.slot}.md")
