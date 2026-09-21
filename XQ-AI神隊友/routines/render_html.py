@@ -1725,11 +1725,14 @@ function renderPostmarket(stamp){
     var r=PMDATA[i]; var sel=(PM_CUR_OVERRIDE===(r.date+'|'+r.slot))?' selected':'';
     opts += '<option value="'+r.date+'|'+r.slot+'"'+sel+'>'+pmShort(r.date,r.slot)+'</option>';
   }
-  body += '<div class="card pc" style="margin-bottom:8px"><select id="pm-sel" style="width:100%;padding:6px;border:1px solid var(--line);border-radius:6px;background:#0f1626;color:var(--txt)" onchange="pmOverride(this.value)">'+opts+'</select></div>';
+  body += '<div class="card pc" style="margin-bottom:8px"><select id="pm-sel" style="width:100%;padding:6px;border:1px solid var(--line);border-radius:6px;background:#0f1626;color:var(--txt)" onchange="pmOverride(this.value)">'+opts+'</select>'
+       + '<div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"><button class="copybtn" onclick="copyPmReport(this)">📋 複製整份報告(貼Word)</button>'
+       + '<span style="color:var(--sub);font-size:11px">以所選報告（含晨報/初版）轉成 Word 文件格式</span></div></div>';
   body += '<div class="postmarket">' + list.map(function(r){
     var tag = (r.slot==='morning'?'開盤前更新版':'前一晚初版');
     return '<div class="card"><div style="margin-bottom:8px;color:var(--sub);font-size:12px">盤後綜合分析 · '+r.date.slice(4,6)+'/'+r.date.slice(6,8)+' '+tag+' · <code>postmarket_'+r.date+'_'+r.slot+'.md</code></div>' + r.html + '</div>';
   }).join('') + '</div>';
+  window.PM_CUR_RECS = list;
   body += '<div class="card"><div class="trend-empty">數字/漲幅/價位＝淡黃色標示；股名＝藍色；方向<strong>偏多/偏空</strong>用紅/綠標籤。內容由 Gemini 依當日 XQ 快照＋融資券＋三大法人＋千張大戶＋美股＋行事曆＋金融報告生成，僅供解讀盤面與機構可能路徑，不構成買賣建議。</div></div>';
   el.innerHTML = body;
 }
@@ -1824,6 +1827,39 @@ function copyStocks(btn, transpose){
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,fb);}else{fb();}
 }
 var PAGE_LABELS={rank:'資金排行', breadth:'齊漲分歧', notes:'盤中三段', postmarket:'盤後綜合分析'};
+function copyDirStocks(btn, dir){
+  var card=btn.closest('.card');
+  var out=[], seen={};
+  var els=card.querySelectorAll('.pm-stock');
+  for(var i=0;i<els.length;i++){
+    var d=els[i].getAttribute('data-dir')||'';
+    if(d.indexOf(dir)<0) continue;
+    var b=els[i].querySelector('b[data-code]');
+    if(!b) continue;
+    var c=b.getAttribute('data-code')||'';
+    if(c&&!seen[c]){seen[c]=1;out.push(c+'\\t'+b.getAttribute('data-name'));}
+  }
+  if(!out.length){return;}
+  var text=out.join('\\n');
+  function done(){btn.classList.add('copied');btn.textContent='已複製 '+out.length+' 檔';setTimeout(function(){btn.classList.remove('copied');btn.textContent=(dir==='偏多'?'📋 多方股號股名':'📋 空方股號股名');},1600);}
+  function fb(){var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);done();}
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,fb);}else{fb();}
+}
+function copyPmReport(btn){
+  /* 複製目前顯示的所有盤後報告為 Word 用 HTML（含純文字備援）。 */
+  var recs=window.PM_CUR_RECS||[];
+  if(!recs.length){return;}
+  var html=recs.map(function(r){return r.wh||'';}).join('<div style="page-break-after:always">&nbsp;</div>');
+  var txt=recs.map(function(r){return r.txt||'';}).join('\\n\\n'+Array(20).join('=')+'\\n');
+  function done(){btn.classList.add('copied');btn.textContent='已複製 '+recs.length+' 份';setTimeout(function(){btn.classList.remove('copied');btn.textContent='📋 複製整份報告(貼Word)';},1600);}
+  function fb(){var ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);done();}
+  try{
+    if(navigator.clipboard&&navigator.clipboard.write&&window.ClipboardItem){
+      var item=new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([txt],{type:'text/plain'})});
+      navigator.clipboard.write([item]).then(done,fb);
+    }else{fb();}
+  }catch(e){fb();}
+}
 function _cardGrid(card){
   var seen={},rows=[],els=card.querySelectorAll('[data-code]');
   for(var i=0;i<els.length;i++){
@@ -2559,10 +2595,12 @@ def _pm_forecast_section(body, note=""):
     bull = [x for x in stocks if "偏多" in x["dir"]]
     bear = [x for x in stocks if "偏空" in x["dir"]]
 
-    parts = ['<div class="card" id="pm-forecast"><div style="display:flex;align-items:center;justify-content:space-between">'
+    parts = ['<div class="card" id="pm-forecast"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px">'
              '<h2 style="margin:0">明日個股預測榜{note}</h2>'
              '<span><button class="copybtn" id="forecast-copy-btn" onclick="copyStocks(this,false)">📋 一鍵複製</button> '
-             '<button class="copybtn" id="forecast-copy-t-btn" onclick="copyStocks(this,true)">📋 一鍵複製(轉置)</button></span></div>'.format(note=note_html)]
+             '<button class="copybtn" id="forecast-copy-t-btn" onclick="copyStocks(this,true)">📋 一鍵複製(轉置)</button></span> '
+             '<span><button class="copybtn" onclick="copyDirStocks(this,\'偏多\')">📋 多方股號股名</button> '
+             '<button class="copybtn" onclick="copyDirStocks(this,\'偏空\')">📋 空方股號股名</button></span></div>'.format(note=note_html)]
     for label, group in (("偏多", bull), ("偏空", bear)):
         if not group:
             continue
@@ -2685,10 +2723,75 @@ def _pm_render_md(text):
     return "".join(out)
 
 
+def _pm_word_inline(md):
+    """md 純文字行內標記 → Word 用 HTML：先跳脫再處理 **粗體**。"""
+    t = _pm_esc(md)
+    t = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", t)
+    return t
+
+
+def _pm_word_html(md_text):
+    """把 postmarket md 轉成 Word 好閱讀（白底）HTML：h3/h4 標題、ul 列表、p 段落。"""
+    lines = [ln.rstrip() for ln in md_text.splitlines()]
+    out, in_ul = [], False
+
+    def close_ul():
+        nonlocal in_ul
+        if in_ul:
+            out.append("</ul>")
+            in_ul = False
+
+    for ln in lines:
+        s = ln.strip()
+        if not s or s == "---":
+            close_ul()
+            continue
+        if s.startswith("### "):
+            close_ul()
+            out.append("<h4>" + _pm_esc(s[4:].strip()) + "</h4>")
+        elif s.startswith("## "):
+            close_ul()
+            out.append("<h3>" + _pm_esc(s[3:].strip()) + "</h3>")
+        elif s.startswith("- ") or s.startswith("· ") or re.match(r"^\d+[.、]\s*", s):
+            if not in_ul:
+                out.append("<ul>")
+                in_ul = True
+            item = re.sub(r"^[-·\d+、.]+\s*", "", s)
+            out.append("<li>" + _pm_word_inline(item) + "</li>")
+        else:
+            close_ul()
+            t = s.lstrip("> ").strip()
+            if t:
+                out.append("<p>" + _pm_word_inline(t) + "</p>")
+    close_ul()
+    return ("<html><body style='font-family:\"Microsoft JhengHei\",Arial,sans-serif;font-size:11pt;color:#111'>"
+            + "".join(out) + "</body></html>")
+
+
+def _pm_plain(md_text):
+    """把 postmarket md 轉成純文字（Word 純文字貼上備援）：標題【】、項目•、去 **。"""
+    out = []
+    for ln in md_text.splitlines():
+        s = ln.strip()
+        if not s:
+            out.append("")
+            continue
+        if s.startswith("### "):
+            out.append("◆ " + s[4:].strip().replace("**", ""))
+        elif s.startswith("## "):
+            out.append("【" + s[3:].strip().replace("**", "") + "】")
+        elif s.startswith("- ") or s.startswith("· "):
+            out.append("• " + s[2:].strip().replace("**", ""))
+        else:
+            out.append(s.replace("**", ""))
+    return "\n".join(out)
+
+
 def pm_records():
-    """把 routines/outputs/postmarket/*.md 全部轉成 [{date, slot, html}]，塞進 pmdata JSON。
+    """把 routines/outputs/postmarket/*.md 全部轉成 [{date, slot, html, wh, txt}]，塞進 pmdata JSON。
 
     date = yyyyMMdd，slot = morning/evening。輸出依日期舊→新排序（JS 端自行挑當天）。
+    wh＝Word 用白底 HTML；txt＝純文字版（一鍵輸出報告，貼 Word）。
     """
     if not os.path.isdir(POSTMARKET_OUT):
         return []
@@ -2707,7 +2810,8 @@ def pm_records():
                 text = f.read()
         except IOError:
             continue
-        recs.append({"date": date, "slot": slot, "html": _pm_render_md(text)})
+        recs.append({"date": date, "slot": slot, "html": _pm_render_md(text),
+                     "wh": _pm_word_html(text), "txt": _pm_plain(text)})
     recs.sort(key=lambda r: (r["date"], 0 if r["slot"] == "morning" else 1))
     return recs
 
