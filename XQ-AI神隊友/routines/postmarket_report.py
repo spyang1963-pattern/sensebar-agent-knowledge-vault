@@ -15,6 +15,7 @@ import os
 import sys
 import argparse
 import io
+import time
 from datetime import date
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -140,24 +141,36 @@ def _read_key():
     return api_key
 
 
-def call_gemini(input_text, slot):
+def call_gemini(input_text, slot, max_tries=3):
+    """呼叫 Gemini 產生預測榜；API 層錯誤重試 max_tries 次，避免一時故障直接弄掛排程。
+
+    內容驗證（出榜依據等）由 main() 的 MAX_RETRY 迴圈負責；這裡只擋 API 層異常。
+    """
     from google import genai
     from google.genai import types
     client = genai.Client(api_key=_read_key())
     model = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
-    resp = client.models.generate_content(
-        model=model,
-        contents="【今日盤後綜合分析 input】\n" + input_text,
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            temperature=0.4,
-        ),
-    )
-    text = (resp.text or "").strip()
-    import re
-    text = re.sub(r"^```(?:markdown)?\s*\n?", "", text, flags=re.M)
-    text = re.sub(r"\n?```\s*$", "", text)
-    return text, model
+    last_err = None
+    for attempt in range(1, max_tries + 1):
+        try:
+            resp = client.models.generate_content(
+                model=model,
+                contents="【今日盤後綜合分析 input】\n" + input_text,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    temperature=0.4,
+                ),
+            )
+            text = (resp.text or "").strip()
+            import re
+            text = re.sub(r"^```(?:markdown)?\s*\n?", "", text, flags=re.M)
+            text = re.sub(r"\n?```\s*$", "", text)
+            return text, model
+        except Exception as e:
+            last_err = e
+            print(f"[report] Gemini API 呼叫失敗（第 {attempt} 次）：{type(e).__name__}: {e}")
+            time.sleep(2 * attempt)
+    raise RuntimeError(f"Gemini API 連續 {max_tries} 次失敗：{last_err}") from last_err
 
 
 def _audit_feedback():

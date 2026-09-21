@@ -2502,6 +2502,44 @@ def _pm_stk_cls(name):
     return "pm-stk"
 
 
+def _pm_fold_basis(lines):
+    """把 Gemini 分離式「出榜依據」摺回單行，供各解析端共用。
+
+    Gemini 有時輸出：
+        - 出榜依據：
+          ① 資金位移 verdict=進貨，成交值…
+          ② 三大法人買超…
+    （標頭行空值、內容在縮排續行）。各解析器只認「- 出榜依據：內容」同行格式，
+    續行①地因此被丟棄 → 顯示空白、驗證誤判留空。本函式把續行併回標頭行：
+        - 出榜依據：① … ② …
+    """
+    out = []
+    i, n = 0, len(lines)
+    while i < n:
+        ln = lines[i]
+        s = ln.strip()
+        if re.match(r"^[-·]\s*\**出榜依據\**：\s*$", s):
+            j = i + 1
+            parts = []
+            while j < n:
+                nx = lines[j]
+                if not nx.strip():
+                    j += 1
+                    continue
+                if nx[0] in " \t" and not re.match(r"^\s*\d+[.、)]", nx):
+                    parts.append(nx.strip())
+                    j += 1
+                else:
+                    break
+            if parts:
+                out.append(ln.rstrip() + " " + " ".join(parts))
+                i = j
+                continue
+        out.append(ln)
+        i += 1
+    return out
+
+
 def _pm_forecast_section(body, note=""):
     """「明日個股預測榜」：解析後按偏多/偏空分組渲染，每組各自編號。
 
@@ -2513,7 +2551,7 @@ def _pm_forecast_section(body, note=""):
     # 第一遍：解析成 list of stock dict
     stocks = []
     cur = None
-    for ln in body:
+    for ln in _pm_fold_basis(body):
         s = ln.strip()
         if not s or s == "---":
             continue

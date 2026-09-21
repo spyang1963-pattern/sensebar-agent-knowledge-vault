@@ -48,7 +48,7 @@ def parse_forecast(md_text):
     """
     stocks = []
     cur = None
-    for ln in md_text.splitlines():
+    for ln in rh._pm_fold_basis(md_text.splitlines()):
         s = ln.strip()
         if not s:
             continue
