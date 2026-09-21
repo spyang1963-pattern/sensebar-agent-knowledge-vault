@@ -15,7 +15,6 @@ import os
 import sys
 import argparse
 import io
-import time
 from datetime import date
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -49,13 +48,7 @@ SYSTEM_PROMPT = """你是一名資深的台股機構操盤手兼盤後分析總�
 N. 代碼 名稱｜方向：偏多/偏空｜強度：強/中/弱｜規模：大型/中型/小型｜滿足條件：X/5
 - 候選條件：列出滿足哪幾個（從 ①資金位移 ②法人買賣超 ③融資券/三大觸發 ④千張大戶 ⑤催化劑 五個中勾選，寫明條件名）
 - 預期：上漲概率 X%（偏空則寫下跌概率）、區間 +X%~+Y%（預期隔日漲跌幅）、vs大盤 跑贏/跑輸/同步
-- 出榜依據：條列 3~4 條具體實數，**依序必含下列四類**：
-    1. **第一條＝資金位移**：verdict=進貨/疑似出貨/惜售/退潮 ＋ 成交值增減 ＋ 股價收紅/收黑。
-    2. **第二條＝另一類籌碼指標**：三大法人買賣超張數／融資券增減或三大觸發／千張大戶增減 pp，至少擇一。
-    3. **第三條＝量價結構八象限**：引用 input「## 1b」該檔的象限與結構（例：「Q1量增價漲·陡、站上8MA↑、VX=0.9」）。**若該檔在 1b 標示「series 過短」或 1b 整段無資料**，第三條改寫「技術位階」：取 input「## 0b」的 MA20 乖離率與相對前20日高低的位置（例：「MA20 乖離 +5.2%、現價距前20日高 1.1%」），並在句首註明「（1b 資料不足）」。**此條仍須有數字，禁止留空。**
-    4. **第四條＝技術位階**：引用 input「## 0b」的 MA20 乖離率或前20日高/低相對現價位置（例：「乖離 -3.1%（跌低於均線，有反彈空間）、距前20日低 2.0%」）。若第 3 條已用技術位階替代，此條可省略（故為 3~4 條）。
-    每條都要有數字，**禁止**寫「法人看好」「資金流入」這種無數字空話，**禁止只寫資金位移單一指標**（必須資金位移＋籌碼兩類並陳）
-- **出榜依據為必填欄位，嚴禁留空**：20 檔每一檔都要寫「- 出榜依據：…」，若某檔寫不出具體實數依據，就是該檔不該上榜，直接移除該檔並換一檔，**不得留空**。
+- 出榜依據：條列 2~4 條具體實數，**第一條必須寫資金位移**（verdict=進貨/疑似出貨/惜售/退潮 ＋ 成交值增減 ＋ 股價收紅/收黑），**第二條必須寫另一類籌碼指標**（三大法人買賣超張數／融資券增減或三大觸發／千張大戶增減 pp，至少擇一）。每條都要有數字，**禁止**寫「法人看好」「資金流入」這種無數字空話，**禁止只寫資金位移單一指標**（必須資金位移＋籌碼兩類並陳）
 - 可靠度：高/中/低＋一句話理由（多個指標同步同向者「高」，僅單一指標或訊號互斥者「中/低」）。理由**禁止重複出現「高/中/低」評級字**（例如不可寫「高＋中...」，評級只在最前面標一次）
 - 操盤邏輯：一句話（為什麼是這檔、法人明天可能怎麼做）
 - 關鍵價位：支撐/壓力（見下方鐵律）
@@ -78,7 +71,7 @@ N. 代碼 名稱｜方向：偏多/偏空｜強度：強/中/弱｜規模：大�
 - input「## 1b 量價結構判讀」是程式以當日 15分K 算出的供需象限（Q1~Q8）＋量價結構警示（極限大量、大量後未過高→調節、破8MA、邊際K轉弱、Sweep 標籤等），與你的方向互證。
 - 若某檔結構警示與你判的方向**相左**（例：判偏多但顯示「⚠偏多vs空方大量（量增價跌+極限大量）」「偏多破8MA」，或判偏空但「偏空vs多頭增量」）→ 該檔「可靠度」一律降為「低」並在「風險與不確定性」點出，**禁止無視結構警報**。
 - 「Q8縮量緩跌（多方整理）」屬健康整理，不必然抵觸偏空，可說明為「結構整理待量」。
-- 若「## 1b」段不存在、為空，或該檔顯示「series 過短」，則該檔第三條「出榜依據」改以「## 0b 技術位階」的 MA20 乖離／前20日高低位置替代（仍須有數字），並在句中註明「（1b 資料不足）」。**禁止因為 1b 缺料就把第三條留空或整條略去。**
+- 若「## 1b」段不存在或為空，忽略本鐵律。
 
 ⚠️ 關鍵價位的鐵律（最重要，不可違反）：
 - input 有「## 0b. 技術位階速查表」，列出各股 前收/前高/前低/MA5/MA20/前20日高/前20日低。
@@ -120,13 +113,6 @@ N. 代碼 名稱｜方向：偏多/偏空｜強度：強/中/弱｜規模：大�
 - 列出本報告所用各類資料之時間點與可信度
 - 註明這是初版（前一晚）或更新版（開盤前），更新版標註更新重點
 
-## 前一晚初稿 → 定稿 增刪理由（僅 morning 開盤前更新版必須寫）
-- 若 input 有「## 前一晚初稿預測榜」段落，morning 定稿必須在報告開頭（標題下一段）以「### 初稿→定稿變動」小節，條列本次增刪：
-  - 每檔新增：`+ 代碼 名稱：一句話理由（資金位移/籌碼/催化劑哪個數據變了，讓它新上榜）`
-  - 每檔移除：`- 代碼 名稱：一句話理由（前一晚資料誤判/訊號退潮/出現反向警報，具體指哪個數據）`
-  - 沒變動就寫「無增刪」。
-  - **禁止只寫「調整目標/新增看多」這類空泛敘述，理由必須對應具體數據變化。**
-
 # 寫作鐵則
 - 每句話都要有數字/事實支撐，禁止「表現強勁」「動能充沛」這類空話。
 - 只許預測，不許給買賣指令（不寫「建議買」「建議賣」；可以寫「法人若續買，價位區間…」）。
@@ -146,36 +132,24 @@ def _read_key():
     return api_key
 
 
-def call_gemini(input_text, slot, max_tries=3):
-    """呼叫 Gemini 產生預測榜；API 層錯誤重試 max_tries 次，避免一時故障直接弄掛排程。
-
-    內容驗證（出榜依據等）由 main() 的 MAX_RETRY 迴圈負責；這裡只擋 API 層異常。
-    """
+def call_gemini(input_text, slot):
     from google import genai
     from google.genai import types
     client = genai.Client(api_key=_read_key())
     model = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
-    last_err = None
-    for attempt in range(1, max_tries + 1):
-        try:
-            resp = client.models.generate_content(
-                model=model,
-                contents="【今日盤後綜合分析 input】\n" + input_text,
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_PROMPT,
-                    temperature=0.4,
-                ),
-            )
-            text = (resp.text or "").strip()
-            import re
-            text = re.sub(r"^```(?:markdown)?\s*\n?", "", text, flags=re.M)
-            text = re.sub(r"\n?```\s*$", "", text)
-            return text, model
-        except Exception as e:
-            last_err = e
-            print(f"[report] Gemini API 呼叫失敗（第 {attempt} 次）：{type(e).__name__}: {e}")
-            time.sleep(2 * attempt)
-    raise RuntimeError(f"Gemini API 連續 {max_tries} 次失敗：{last_err}") from last_err
+    resp = client.models.generate_content(
+        model=model,
+        contents="【今日盤後綜合分析 input】\n" + input_text,
+        config=types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            temperature=0.4,
+        ),
+    )
+    text = (resp.text or "").strip()
+    import re
+    text = re.sub(r"^```(?:markdown)?\s*\n?", "", text, flags=re.M)
+    text = re.sub(r"\n?```\s*$", "", text)
+    return text, model
 
 
 def _audit_feedback():
@@ -185,36 +159,6 @@ def _audit_feedback():
         return predict_audit.recent_summary(5)
     except Exception:
         return ""
-
-
-_TECH_MARKERS = ("Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Q8",
-                 "8MA", "MA8", "MA20", "MA5", "乖離", "前20日", "前高", "前低",
-                 "量增", "量縮", "均線", "季線", "月線", "年線")
-
-
-def _validate_board(text):
-    """強制檢查預測榜：每檔「出榜依據」不可留空、每檔細節行格式完整。
-
-    回傳 (pass, problems)。problems = list of (code, name, reason)。
-    """
-    import predict_audit
-    problems = []
-    try:
-        stocks = predict_audit.parse_forecast(text)
-    except Exception:
-        stocks = []
-    if not stocks:
-        return False, [("", "", f"無法解析預測榜（共解析 {len(stocks)} 檔）")]
-    for s in stocks:
-        if not (s.get("basis") or "").strip():
-            problems.append((s.get("code", ""), s.get("name", ""), "出榜依據留空"))
-        elif not any(mk in s["basis"] for mk in _TECH_MARKERS):
-            problems.append((s.get("code", ""), s.get("name", ""), "出榜依據缺八象限/技術位階（第三或第四條）"))
-        if not s.get("prob"):
-            problems.append((s.get("code", ""), s.get("name", ""), "缺「預期」概率"))
-        if not s.get("support") and not s.get("resistance"):
-            problems.append((s.get("code", ""), s.get("name", ""), "缺「關鍵價位」支撐/壓力"))
-    return (not problems), problems
 
 
 def main():
@@ -235,29 +179,8 @@ def main():
     if fb and "尚無" not in fb:
         input_text = "【歷史預測績效檢討（供你修正本次預測）】\n" + fb + "\n\n" + input_text
 
-    # 產出後強制驗證：出榜依據/預期/關鍵價位不可留空，缺則帶瑕疵清單重跑（最多 3 次）
-    MAX_RETRY = 3
-    text, model = "", ""
-    for attempt in range(1, MAX_RETRY + 1):
-        print(f"[report] 呼叫 Gemini（{args.slot}）（第 {attempt} 次）…")
-        text, model = call_gemini(input_text, args.slot)
-        ok, problems = _validate_board(text)
-        if ok:
-            print(f"[report] 預測榜檢查通過（20 檔皆填出榜依據）")
-            break
-        if attempt >= MAX_RETRY:
-            print(f"[report] ⚠ 重試 {MAX_RETRY} 次後仍有 {len(problems)} 檔未填完整，強制收下並印出問題：")
-            for code, name, why in problems:
-                print(f"  [report]  {code} {name}：{why}")
-            break
-        fix_lines = "\n".join(f"- {c} {n}：{why}" for c, n, why in problems)
-        print(f"[report] 預測榜有問題（{len(problems)} 檔），重跑並要求修正：\n" + "\n".join(f"  {c} {n}：{why}" for c, n, why in problems))
-        input_text = (input_text
-                      + f"\n\n【系統強制修正要求】（你上一版輸出未達標準，必須重寫）\n"
-                      + "請重寫整份「## 明日個股預測榜」段落，以下各檔欄位不合格，必須補齊：\n"
-                      + fix_lines
-                      + "\n- 「出榜依據」必須條列 3~4 條具體實數：①資金位移 ②籌碼指標 ③量價結構八象限（1b 缺料時改寫 0b 技術位階並註明「1b 資料不足」）④技術位階（0b），不可留空。"
-                      + "\n- 其餘段落維持不變，只重寫預測榜。")
+    print(f"[report] 呼叫 Gemini（{args.slot}）…")
+    text, model = call_gemini(input_text, args.slot)
 
     os.makedirs(OUT_DIR, exist_ok=True)
     out_path = os.path.join(OUT_DIR, f"postmarket_{stamp}_{args.slot}.md")

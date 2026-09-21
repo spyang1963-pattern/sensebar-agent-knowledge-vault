@@ -42,13 +42,10 @@ _SIZE_RE = rh._PM_SIZE_RE
 
 
 def parse_forecast(md_text):
-    """解析預測榜每檔 → list of dict(code,name,dir,strength,size,rel,support,resistance,basis)。
-
-    `basis`＝該檔「出榜依據」欄位文字（可能為空字串）。空＝Gemini 漏寫，供強制檢查用。
-    """
+    """解析預測榜每檔 → list of dict(code,name,dir,strength,size,rel,support,resistance)。"""
     stocks = []
     cur = None
-    for ln in rh._pm_fold_basis(md_text.splitlines()):
+    for ln in md_text.splitlines():
         s = ln.strip()
         if not s:
             continue
@@ -69,7 +66,6 @@ def parse_forecast(md_text):
                 "stance": "", "lvl_conflict": False,
                 "rel": "", "support": None, "resistance": None,
                 "prob": None, "range_lo": None, "range_hi": None, "vs_market": "",
-                "basis": "",
             }
         elif cur and (s.startswith("-") or s.startswith("·")):
             raw = s.lstrip("-· ").strip()
@@ -99,8 +95,6 @@ def parse_forecast(md_text):
                     cur["support"] = float(ms.group(1).replace(",", ""))
                 if mr:
                     cur["resistance"] = float(mr.group(1).replace(",", ""))
-            elif "出榜依據" in lab:
-                cur["basis"] = val
     if cur:
         stocks.append(cur)
     return stocks
