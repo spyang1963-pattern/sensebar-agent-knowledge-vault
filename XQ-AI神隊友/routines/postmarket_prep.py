@@ -586,6 +586,40 @@ def _news_sentiment_summary():
         return f"（新聞情緒讀取失敗：{e}）"
 
 
+OUT_DIR = os.path.join(ROUTINES, "outputs", "postmarket")
+
+
+def _prev_evening_board():
+    """找最新一份前一晚 evening 初稿的預測榜清單（供 morning 定稿比對增刪、寫理由）。"""
+    if not os.path.isdir(OUT_DIR):
+        return ""
+    cands = []
+    for p in glob.glob(os.path.join(OUT_DIR, "postmarket_*_evening.md")):
+        m = re.search(r"postmarket_(\d{8})_evening\.md$", p)
+        if m:
+            cands.append((m.group(1), p))
+    if not cands:
+        return ""
+    cands.sort()
+    latest = cands[-1][1]
+    with io.open(latest, "r", encoding="utf-8") as f:
+        text = f.read()
+    out = []
+    for ln in text.splitlines():
+        s = ln.strip().replace("**", "")
+        if not s:
+            continue
+        mm = re.match(r"^\s*(?:[-*]|\d+[.、])?\s*(\d{4,5})\s+([^\s｜|，,。]+)", s)
+        if mm and not re.match(r"\d", mm.group(2)):
+            dm = re.search(r"方向[：:]\s*([^｜|，,。]*)", s)
+            out.append(f"- {mm.group(1)} {mm.group(2)}" + (f"｜方向：{dm.group(1).strip()}" if dm else ""))
+    if not out:
+        return ""
+    head = f"（來源：{os.path.basename(latest)}）"
+    return ("## 前一晚初稿預測榜（僅供 morning 定稿比對，增刪該檔時必須明確寫出增刪理由）\n"
+            + head + "\n" + "\n".join(out) + "\n")
+
+
 # ============================================================
 #  主流程
 # ============================================================
@@ -618,6 +652,10 @@ def main():
     parts.append(f"## 6. 行事曆排期事件\n{_calendar_summary(today)}\n")
     parts.append(f"## 7. 金融報告摘錄\n{_report_summary()}\n")
     parts.append(f"## 7b. 當日新聞情緒（severity≥2 重要新聞）\n{_news_sentiment_summary()}\n")
+    if args.slot == "morning":
+        prev_board = _prev_evening_board()
+        if prev_board:
+            parts.append(prev_board)
 
     body = "\n".join(parts)
     out_path = os.path.join(POSTMARKET_DIR, f"input_{stamp}_{args.slot}.md")

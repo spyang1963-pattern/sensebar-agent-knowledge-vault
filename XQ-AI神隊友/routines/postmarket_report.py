@@ -49,6 +49,7 @@ N. 代碼 名稱｜方向：偏多/偏空｜強度：強/中/弱｜規模：大�
 - 候選條件：列出滿足哪幾個（從 ①資金位移 ②法人買賣超 ③融資券/三大觸發 ④千張大戶 ⑤催化劑 五個中勾選，寫明條件名）
 - 預期：上漲概率 X%（偏空則寫下跌概率）、區間 +X%~+Y%（預期隔日漲跌幅）、vs大盤 跑贏/跑輸/同步
 - 出榜依據：條列 2~4 條具體實數，**第一條必須寫資金位移**（verdict=進貨/疑似出貨/惜售/退潮 ＋ 成交值增減 ＋ 股價收紅/收黑），**第二條必須寫另一類籌碼指標**（三大法人買賣超張數／融資券增減或三大觸發／千張大戶增減 pp，至少擇一）。每條都要有數字，**禁止**寫「法人看好」「資金流入」這種無數字空話，**禁止只寫資金位移單一指標**（必須資金位移＋籌碼兩類並陳）
+- **出榜依據為必填欄位，嚴禁留空**：20 檔每一檔都要寫「- 出榜依據：…」，若某檔寫不出具體實數依據，就是該檔不該上榜，直接移除該檔並換一檔，**不得留空**。
 - 可靠度：高/中/低＋一句話理由（多個指標同步同向者「高」，僅單一指標或訊號互斥者「中/低」）。理由**禁止重複出現「高/中/低」評級字**（例如不可寫「高＋中...」，評級只在最前面標一次）
 - 操盤邏輯：一句話（為什麼是這檔、法人明天可能怎麼做）
 - 關鍵價位：支撐/壓力（見下方鐵律）
@@ -113,6 +114,13 @@ N. 代碼 名稱｜方向：偏多/偏空｜強度：強/中/弱｜規模：大�
 - 列出本報告所用各類資料之時間點與可信度
 - 註明這是初版（前一晚）或更新版（開盤前），更新版標註更新重點
 
+## 前一晚初稿 → 定稿 增刪理由（僅 morning 開盤前更新版必須寫）
+- 若 input 有「## 前一晚初稿預測榜」段落，morning 定稿必須在報告開頭（標題下一段）以「### 初稿→定稿變動」小節，條列本次增刪：
+  - 每檔新增：`+ 代碼 名稱：一句話理由（資金位移/籌碼/催化劑哪個數據變了，讓它新上榜）`
+  - 每檔移除：`- 代碼 名稱：一句話理由（前一晚資料誤判/訊號退潮/出現反向警報，具體指哪個數據）`
+  - 沒變動就寫「無增刪」。
+  - **禁止只寫「調整目標/新增看多」這類空泛敘述，理由必須對應具體數據變化。**
+
 # 寫作鐵則
 - 每句話都要有數字/事實支撐，禁止「表現強勁」「動能充沛」這類空話。
 - 只許預測，不許給買賣指令（不寫「建議買」「建議賣」；可以寫「法人若續買，價位區間…」）。
@@ -161,6 +169,29 @@ def _audit_feedback():
         return ""
 
 
+def _validate_board(text):
+    """強制檢查預測榜：每檔「出榜依據」不可留空、每檔細節行格式完整。
+
+    回傳 (pass, problems)。problems = list of (code, name, reason)。
+    """
+    import predict_audit
+    problems = []
+    try:
+        stocks = predict_audit.parse_forecast(text)
+    except Exception:
+        stocks = []
+    if not stocks:
+        return False, [("", "", f"無法解析預測榜（共解析 {len(stocks)} 檔）")]
+    for s in stocks:
+        if not (s.get("basis") or "").strip():
+            problems.append((s.get("code", ""), s.get("name", ""), "出榜依據留空"))
+        if not s.get("prob"):
+            problems.append((s.get("code", ""), s.get("name", ""), "缺「預期」概率"))
+        if not s.get("support") and not s.get("resistance"):
+            problems.append((s.get("code", ""), s.get("name", ""), "缺「關鍵價位」支撐/壓力"))
+    return (not problems), problems
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--slot", choices=["evening", "morning"], default="evening")
@@ -179,8 +210,29 @@ def main():
     if fb and "尚無" not in fb:
         input_text = "【歷史預測績效檢討（供你修正本次預測）】\n" + fb + "\n\n" + input_text
 
-    print(f"[report] 呼叫 Gemini（{args.slot}）…")
-    text, model = call_gemini(input_text, args.slot)
+    # 產出後強制驗證：出榜依據/預期/關鍵價位不可留空，缺則帶瑕疵清單重跑（最多 3 次）
+    MAX_RETRY = 3
+    text, model = "", ""
+    for attempt in range(1, MAX_RETRY + 1):
+        print(f"[report] 呼叫 Gemini（{args.slot}）（第 {attempt} 次）…")
+        text, model = call_gemini(input_text, args.slot)
+        ok, problems = _validate_board(text)
+        if ok:
+            print(f"[report] 預測榜檢查通過（20 檔皆填出榜依據）")
+            break
+        if attempt >= MAX_RETRY:
+            print(f"[report] ⚠ 重試 {MAX_RETRY} 次後仍有 {len(problems)} 檔未填完整，強制收下並印出問題：")
+            for code, name, why in problems:
+                print(f"  [report]  {code} {name}：{why}")
+            break
+        fix_lines = "\n".join(f"- {c} {n}：{why}" for c, n, why in problems)
+        print(f"[report] 預測榜有問題（{len(problems)} 檔），重跑並要求修正：\n" + "\n".join(f"  {c} {n}：{why}" for c, n, why in problems))
+        input_text = (input_text
+                      + f"\n\n【系統強制修正要求】（你上一版輸出未達標準，必須重寫）\n"
+                      + "請重寫整份「## 明日個股預測榜」段落，以下各檔欄位不合格，必須補齊：\n"
+                      + fix_lines
+                      + "\n- 「出榜依據」必須條列 2~4 條具體實數、第一條資金位移＋第二條籌碼指標，不可留空。"
+                      + "\n- 其餘段落維持不變，只重寫預測榜。")
 
     os.makedirs(OUT_DIR, exist_ok=True)
     out_path = os.path.join(OUT_DIR, f"postmarket_{stamp}_{args.slot}.md")
