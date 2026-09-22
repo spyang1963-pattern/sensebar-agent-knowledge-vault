@@ -750,6 +750,11 @@ tr:hover td{background:#1c2438}
 .m-bandrow15{margin-top:2px}
 .m-lv{color:#9db8ff;font-size:10px;font-weight:700;margin-right:6px}
 .seg15{width:14px;height:10px}
+.m-predrow{margin-top:2px}
+.pred-mark{display:inline-block;width:10px;height:14px;border-radius:2px;font-size:11px;text-align:center;line-height:14px;font-weight:700}
+.pred-ok{background:#0f2e1d;color:#46d88a;border:1px solid #2e9e5b}
+.pred-bad{background:#3a1414;color:#ff7a7a;border:1px solid #d64541}
+.pred-blank{background:transparent;border:1px solid #2f3d63}
 .seg{width:10px;height:14px;border-radius:2px;display:inline-block;background:#2f3d63}
 .seg.up{background:#d64541}
 .seg.down{background:#2e9e5b}
@@ -1666,6 +1671,8 @@ function renderMonitor(m){
     if(it.octant15){ html += '<span class="m-octant" title="'+it.octant15.vol+'·'+(it.octant15.above8?'站':'破')+'8MA'+it.octant15.slope8+(it.octant15.flag?' · '+it.octant15.flag:'')+'">'+it.octant15.Q+'</span> <span class="m-next">→'+it.next15+'</span>'; }
     else { html += '<span class="m-octant m-oct-none">15分待料</span>'; }
     ((it.band15 && it.band15.length)?it.band15:[]).forEach(function(p,i){ var tt=(it.axis15&&it.axis15[i])||''; html += '<span class="seg seg15 '+(p?p:'blank')+'" title="'+tt+(p?(' · '+p):' · 缺資料')+'"></span>'; });
+    html += '</div><div class="m-bandrow m-predrow"><span class="m-lv">預判</span>';
+    ((it.pred_marks && it.pred_marks.length)?it.pred_marks:[]).forEach(function(p,i){ var tt=(AX[i]||''); if(p==='ok'){ html += '<span class="pred-mark pred-ok" title="'+tt+' 預判正確">✓</span>'; } else if(p==='bad'){ html += '<span class="pred-mark pred-bad" title="'+tt+' 預判錯誤">✗</span>'; } else { html += '<span class="pred-mark pred-blank" title="'+tt+'"></span>'; } });
     html += '</div></div>';
   });
   html += '</div></div>';
@@ -2358,6 +2365,14 @@ def _pm_monitor():
                 next15, _ = eight_quadrant.next_direction(_oq15, climax, sweep)
         except Exception:
             octant15 = None
+        # 預判正確性標記：逐輪比對預判 vs 實際，對齊 5 分軸 → 帶狀畫 ✓/✗
+        pred_marks = [None] * len(axis)
+        for rec in build_prediction_records(series, sup, res):
+            if rec["t"] in tmap:
+                if rec["correct"] is True:
+                    pred_marks[tmap[rec["t"]]] = "ok"
+                elif rec["correct"] is False:
+                    pred_marks[tmap[rec["t"]]] = "bad"
         items.append({"code": s["code"], "name": s["name"], "dir": s["dir"],
                       "close": close, "prev_close": prev["close"], "dclose": dclose,
                       "chg": last["chg"], "val": last["val"], "dval": dval,
@@ -2366,7 +2381,7 @@ def _pm_monitor():
                       "vq": vq, "dist": dist, "climax": climax, "sweep": sweep,
                       "next": next_t, "next_conf": next_conf, "series": series, "series15": series15, "latest": last["s"], "t": last.get("t", ""),
                       "octant": octant, "octant15": octant15, "next15": next15, "axis": axis, "band": band,
-                      "axis15": [p["t"] for p in series15], "band15": [p["d"] for p in series15]})
+                      "axis15": [p["t"] for p in series15], "band15": [p["d"] for p in series15], "pred_marks": pred_marks})
     import json as _json
     import os as _os
     _sig_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "outputs", "monitor", "signals_log.json")
