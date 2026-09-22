@@ -2133,6 +2133,32 @@ def build_prediction_records(series, sup, res):
     return records
 
 
+def aggregate_series(series, period_min=15):
+    """把 5 分 series 聚合為 period_min 分鐘 series（period_min 須為 5 的倍數）。
+
+    series 每點 {open, high, low, close, vol, val, t, d, ...}。
+    vol/val 為「當下累計值」，聚合後保留「時段末的累計值」，供 _deltas 算時段增量。
+    15分 = 3 個 5 分；日K = 全天（period_min 給超大值或手動聚合）。
+    """
+    if not series:
+        return []
+    n = max(1, round(period_min / 5))
+    out = []
+    for i in range(0, len(series), n):
+        chunk = series[i:i + n]
+        out.append({
+            "t": chunk[-1].get("t", ""),
+            "open": chunk[0].get("open", chunk[0].get("close", 0)),
+            "high": max(p.get("high", p.get("close", 0)) for p in chunk),
+            "low": min(p.get("low", p.get("close", 0)) for p in chunk),
+            "close": chunk[-1].get("close", 0),
+            "vol": chunk[-1].get("vol", 0),
+            "val": chunk[-1].get("val", 0),
+            "d": chunk[-1].get("d", ""),
+        })
+    return out
+
+
 def _pm_monitor():
     """預測兌現監控：比對今日預測榜 vs 今日所有盤中快照，產每檔狀態序列（時間帶）。"""
     try:
@@ -2231,7 +2257,7 @@ def _pm_monitor():
                       "turn": last["turn"], "io": last["io"],
                       "support": sup, "resistance": res,
                       "vq": vq, "dist": dist, "climax": climax, "sweep": sweep,
-                      "next": next_t, "next_conf": next_conf, "series": series, "latest": last["s"], "t": last.get("t", ""),
+                      "next": next_t, "next_conf": next_conf, "series": series, "series15": aggregate_series(series, 15), "latest": last["s"], "t": last.get("t", ""),
                       "octant": octant, "axis": axis, "band": band})
     import json as _json
     import os as _os
