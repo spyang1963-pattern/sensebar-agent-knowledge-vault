@@ -1638,7 +1638,8 @@ function renderMonitor(m){
     html += '<span class="m-vq '+vqCls+'">'+it.vq+'</span>';
     if(it.octant){ html += '<span class="m-octant" title="'+it.octant.vol+'·'+(it.octant.above8?'站':'破')+'8MA'+it.octant.slope8+(it.octant.flag?' · '+it.octant.flag:'')+(it.octant.mb?' · '+it.octant.mb:'')+'">'+it.octant.Q+'</span>'; }
     else { html += '<span class="m-octant m-oct-none" title="當日 15分K 不足 3 點，暫無象限">象限待料</span>'; }
-    if(it.dist!==null && it.dist!==undefined){ var srTx=(it.dir.indexOf('偏多')>=0?'支撐':'壓力'); html += '<span class="m-dist '+(it.dist>=0?'d-ok':'d-bad')+'">距'+srTx+' '+(it.dist>=0?'+':'')+it.dist.toFixed(1)+'%</span>'; }
+    if(it.support!==null && it.support!==undefined){ html += '<span class="m-dist">支撐 '+it.support.toFixed(1)+'</span>'; }
+    if(it.resistance!==null && it.resistance!==undefined){ html += '<span class="m-dist">壓力 '+it.resistance.toFixed(1)+'</span>'; }
     if(it.climax || it.sweep){ var sig=[]; if(it.climax){sig.push('極限大量·'+(it.climax==='bull'?'轉多':'轉空'));} if(it.sweep){sig.push('掃流動性·'+(it.sweep==='bull'?'掃多':'掃空'));} html += '<span class="m-signal">⚡ '+sig.join('｜')+'</span>'; }
     html += '<span class="m-next">→'+it.next+'</span>';
     html += '</div><div class="m-bandrow">';
@@ -1653,13 +1654,15 @@ function renderMonitor(m){
 }
 function monitorMatrix(){
   var stTxt = {hit:'兌現', watch:'觀望', break:'破位'};
-  var rows = [['多空','股號','股名','現價','價位變化','成交值變化','量價關係','八象限','距支撐壓力','下一輪傾向','狀態']];
+  var rows = [['多空','股號','股名','現價','價位變化','成交值變化','量價關係','八象限','支撐/壓力','下一輪傾向','狀態']];
   ['偏多','偏空','中性'].forEach(function(d){
     var group = MONITOR.items.filter(function(x){ return (x.dir||'').indexOf(d)>=0; });
     if(!group.length) return;
     group.forEach(function(it){
-      var distTxt = (it.dist===null||it.dist===undefined) ? '' : (it.dist>=0?'+':'')+it.dist.toFixed(1)+'%';
-      rows.push([it.dir, it.code, it.name, it.close.toFixed(1), (it.dclose>=0?'+':'')+it.dclose.toFixed(1), (it.dval>=0?'+':'')+it.dval.toFixed(1), it.vq, (it.octant?it.octant.Q:'—'), distTxt, it.next, stTxt[it.latest]]);
+      var srTxt = '';
+      if(it.support!==null && it.support!==undefined) srTxt += it.support.toFixed(1);
+      if(it.resistance!==null && it.resistance!==undefined) srTxt += (srTxt?'/':'')+it.resistance.toFixed(1);
+      rows.push([it.dir, it.code, it.name, it.close.toFixed(1), (it.dclose>=0?'+':'')+it.dclose.toFixed(1), (it.dval>=0?'+':'')+it.dval.toFixed(1), it.vq, (it.octant?it.octant.Q:'—'), srTxt, it.next, stTxt[it.latest]]);
     });
   });
   return rows;
