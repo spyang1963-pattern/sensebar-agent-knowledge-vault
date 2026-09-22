@@ -404,6 +404,56 @@ def recent_summary(days=5):
     return "\n".join(lines)
 
 
+def intraday_summary(days=2):
+    """讀 monitor_log.json，歸納盤中 15 分兌現軌跡的失敗模式，回饋 Gemini 修正。
+
+    monitor_log 每輪每檔存 {t, open, high, low, close, vol, val, s(兌現/觀望/破位)}，
+    另每檔帶 support/resistance 實際價位。這裡只挑「有問題」的檔回饋：
+    早破位（前 3 輪就破）＝支撐/壓力價位錯；終日觀望＝方向訊號不足。
+    """
+    p = os.path.join(ROUTINES, "outputs", "monitor", "monitor_log.json")
+    if not os.path.isfile(p):
+        return ""
+    try:
+        with io.open(p, "r", encoding="utf-8") as f:
+            log = json.load(f)
+    except Exception:
+        return ""
+    if not log:
+        return ""
+    prob, good = [], 0
+    for dkey in sorted(log.keys())[-days:]:
+        rec = log[dkey]
+        for st in rec.get("stocks", []):
+            series = st.get("series", [])
+            if len(series) < 2:
+                continue
+            d = st.get("dir", "")
+            sup = st.get("support")
+            res = st.get("resistance")
+            sr = sup if "偏多" in d else res
+            sr_label = "支撐" if "偏多" in d else "壓力"
+            statuses = [p.get("s", "") for p in series]
+            first_break = next((i for i, s in enumerate(statuses) if s == "break"), None)
+            hit_n = statuses.count("hit")
+            if first_break is not None:
+                bp = series[first_break]
+                tag = "早破位" if first_break <= 3 else "盤中才破位"
+                if sr is not None:
+                    reason = f"{sr_label} {sr} 設{'太高' if '偏多' in d else '太低'}或方向判錯"
+                else:
+                    reason = "方向判錯"
+                prob.append(f"{st.get('code')} {st.get('name')}（{d}）：{bp.get('t')} {tag}，收 {bp.get('close')}（當輪高 {bp.get('high')}/低 {bp.get('low')}）→ {reason}")
+            elif hit_n == 0:
+                prob.append(f"{st.get('code')} {st.get('name')}（{d}）：終日觀望從未兌現 → 方向訊號不足或未標支撐壓力")
+            else:
+                good += 1
+    if not prob:
+        return ""
+    tail = f"\n（另有 {good} 檔全日兌現）" if good else ""
+    return "【盤中 15 分兌現檢討】（依 monitor_log 軌跡）\n" + "\n".join("- " + l for l in prob[:15]) + tail
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", help="稽核交易日 YYYYMMDD（預設＝今天）")

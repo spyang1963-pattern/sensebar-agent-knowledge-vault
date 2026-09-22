@@ -2125,21 +2125,23 @@ def _pm_monitor():
             try:
                 cmap[c] = (float(r.get("Close", 0) or 0), float(r.get("Chg", 0) or 0),
                            float(r.get("Val", 0) or 0), float(r.get("Turn", 0) or 0),
-                           float(r.get("IO", 0) or 0))
+                           float(r.get("IO", 0) or 0), float(r.get("Vol", 0) or 0))
             except (TypeError, ValueError):
                 pass
         for s in stocks:
             key = str(s["code"]).zfill(4)
             got = cmap.get(key)
             if got:
-                close, chg, val, turn, io_ratio = got
+                close, chg, val, turn, io_ratio, vol = got
                 status = _monitor_status(s, close, chg)
-                if series_by_code[key]:
-                    dclose = close - series_by_code[key][-1]["close"]
-                else:
-                    dclose = chg
+                prev_close = series_by_code[key][-1]["close"] if series_by_code[key] else close
+                dclose = close - prev_close if series_by_code[key] else chg
                 d = "up" if dclose > 0 else ("down" if dclose < 0 else "flat")
-                series_by_code[key].append({"t": st[9:13], "s": status, "close": close, "chg": chg, "val": val, "turn": turn, "io": io_ratio, "d": d})
+                series_by_code[key].append({"t": st[9:13], "s": status,
+                                            "open": prev_close, "high": max(prev_close, close),
+                                            "low": min(prev_close, close), "close": close,
+                                            "chg": chg, "vol": vol, "val": val,
+                                            "turn": turn, "io": io_ratio, "d": d})
     axis = [st[9:13] for st, _ in today_snaps]
     if axis and axis[0] != "0900":
         axis = ["0900"] + axis
@@ -2185,6 +2187,7 @@ def _pm_monitor():
                       "close": close, "prev_close": prev["close"], "dclose": dclose,
                       "chg": last["chg"], "val": last["val"], "dval": dval,
                       "turn": last["turn"], "io": last["io"],
+                      "support": sup, "resistance": res,
                       "vq": vq, "dist": dist, "climax": climax, "sweep": sweep,
                       "next": next_t, "series": series, "latest": last["s"], "t": last.get("t", ""),
                       "octant": octant, "axis": axis, "band": band})
@@ -2270,6 +2273,29 @@ def _pm_monitor():
                     _json.dump(_sigs, _f, ensure_ascii=False, indent=1)
             except Exception:
                 pass
+    _mlog_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "outputs", "monitor", "monitor_log.json")
+    _mlog = {}
+    if _os.path.isfile(_mlog_path):
+        try:
+            with open(_mlog_path, "r", encoding="utf-8") as _f:
+                _mlog = _json.load(_f)
+        except Exception:
+            _mlog = {}
+    _mlog[_today] = {
+        "date": _today, "stamp": today_snaps[-1][0],
+        "stocks": [
+            {"code": _it["code"], "name": _it["name"], "dir": _it["dir"],
+             "support": _it.get("support"), "resistance": _it.get("resistance"),
+             "series": _it["series"]}
+            for _it in items
+        ],
+    }
+    try:
+        _os.makedirs(_os.path.dirname(_mlog_path), exist_ok=True)
+        with open(_mlog_path, "w", encoding="utf-8") as _f:
+            _json.dump(_mlog, _f, ensure_ascii=False, indent=1)
+    except Exception:
+        pass
     return {"stamp": today_snaps[-1][0], "items": items, "signals": _summary}
 
 

@@ -162,10 +162,14 @@ def call_gemini(input_text, slot):
 
 
 def _audit_feedback():
-    """讀預測績效稽核歷史，回饋給 Gemini 修正本次預測。"""
+    """讀預測績效稽核歷史＋盤中 15 分兌現軌跡，回饋給 Gemini 修正本次預測。"""
     try:
         import predict_audit
-        return predict_audit.recent_summary(5)
+        fb = predict_audit.recent_summary(5)
+        intra = predict_audit.intraday_summary(2)
+        if intra:
+            fb = intra if (not fb or "尚無" in fb) else fb + "\n\n" + intra
+        return fb
     except Exception:
         return ""
 
