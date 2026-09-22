@@ -2097,6 +2097,42 @@ def _detect_sweep(series, sup, res):
     return ""
 
 
+def build_prediction_records(series, sup, res):
+    """逐輪重算「下一方向預判」並比對實際下一輪結果，回 list of records。
+
+    每筆：{t, Q, above8, slope8, deduct, b_decline, attack, climax, sweep,
+           pred, conf, actual, correct}。correct ∈ {True, False, None(觀望/平不計)}。
+    供稽核統計「每輪 15 分漲跌預判正確率＋誤判狀態分布＋狀態轉換」。
+    """
+    import eight_quadrant
+    records = []
+    for t in range(len(series) - 1):
+        prefix = series[:t + 1]
+        if len(prefix) < 3:
+            continue
+        q = eight_quadrant.quadrant({"series": prefix})
+        if not q:
+            continue
+        climax = _detect_climax(prefix, sup, res)
+        sweep = _detect_sweep(prefix, sup, res)
+        pred, conf = eight_quadrant.next_direction(q, climax, sweep)
+        dclose_next = series[t + 1]["close"] - series[t]["close"]
+        actual = "up" if dclose_next > 0 else ("down" if dclose_next < 0 else "flat")
+        if actual == "flat" or pred == "觀望":
+            correct = None
+        elif (pred in ("續漲", "轉漲") and actual == "up") or (pred in ("續跌", "轉跌") and actual == "down"):
+            correct = True
+        else:
+            correct = False
+        records.append({
+            "t": series[t].get("t", ""), "Q": q["Q"], "above8": q["above8"], "slope8": q["slope8"],
+            "deduct": q["deduct"], "b_decline": q["b_decline"], "attack": q["attack"],
+            "climax": climax, "sweep": sweep,
+            "pred": pred, "conf": conf, "actual": actual, "correct": correct,
+        })
+    return records
+
+
 def _pm_monitor():
     """預測兌現監控：比對今日預測榜 vs 今日所有盤中快照，產每檔狀態序列（時間帶）。"""
     try:
@@ -2300,6 +2336,28 @@ def _pm_monitor():
         _os.makedirs(_os.path.dirname(_mlog_path), exist_ok=True)
         with open(_mlog_path, "w", encoding="utf-8") as _f:
             _json.dump(_mlog, _f, ensure_ascii=False, indent=1)
+    except Exception:
+        pass
+    _plog_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "outputs", "monitor", "prediction_log.json")
+    _plog = {}
+    if _os.path.isfile(_plog_path):
+        try:
+            with open(_plog_path, "r", encoding="utf-8") as _f:
+                _plog = _json.load(_f)
+        except Exception:
+            _plog = {}
+    _plog[_today] = {
+        "date": _today, "stamp": today_snaps[-1][0],
+        "stocks": [
+            {"code": _it["code"], "name": _it["name"], "dir": _it["dir"],
+             "records": build_prediction_records(_it["series"], _it.get("support"), _it.get("resistance"))}
+            for _it in items
+        ],
+    }
+    try:
+        _os.makedirs(_os.path.dirname(_plog_path), exist_ok=True)
+        with open(_plog_path, "w", encoding="utf-8") as _f:
+            _json.dump(_plog, _f, ensure_ascii=False, indent=1)
     except Exception:
         pass
     return {"stamp": today_snaps[-1][0], "items": items, "signals": _summary}

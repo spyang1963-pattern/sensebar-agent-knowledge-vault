@@ -454,6 +454,77 @@ def intraday_summary(days=2):
     return "【盤中 15 分兌現檢討】（依 monitor_log 軌跡）\n" + "\n".join("- " + l for l in prob[:15]) + tail
 
 
+def intraday_direction_accuracy(days=2):
+    """讀 prediction_log.json，統計「15分K 下一方向預判」正確率＋誤判狀態分布。
+
+    回 (summary_str, stats_dict)。stats：
+      overall: {total, correct}
+      by_pred: {續漲:[c,t], ...}
+      by_Q:    {Q: {n, up, down, pc}}  ← 狀態轉換分布（量化可靠度）
+    """
+    p = os.path.join(ROUTINES, "outputs", "monitor", "prediction_log.json")
+    if not os.path.isfile(p):
+        return "", {}
+    try:
+        with io.open(p, "r", encoding="utf-8") as f:
+            log = json.load(f)
+    except Exception:
+        return "", {}
+    if not log:
+        return "", {}
+
+    by_pred = {}
+    by_Q = {}
+    total = correct = 0
+    for dkey in sorted(log.keys())[-days:]:
+        for st in log[dkey].get("stocks", []):
+            for r in st.get("records", []):
+                if r.get("correct") is None:
+                    continue
+                total += 1
+                if r["correct"]:
+                    correct += 1
+                bp = by_pred.setdefault(r["pred"], [0, 0])
+                bp[1] += 1
+                if r["correct"]:
+                    bp[0] += 1
+                Q = r.get("Q", "?")
+                bq = by_Q.setdefault(Q, {"n": 0, "up": 0, "down": 0, "pc": 0})
+                bq["n"] += 1
+                if r["actual"] == "up":
+                    bq["up"] += 1
+                elif r["actual"] == "down":
+                    bq["down"] += 1
+                if r["correct"]:
+                    bq["pc"] += 1
+
+    stats = {"overall": {"total": total, "correct": correct},
+             "by_pred": by_pred, "by_Q": by_Q}
+    if not total:
+        return "", stats
+
+    lines = []
+    lines.append(f"15分K 下一方向預判正確率：{correct}/{total}（{correct / total * 100:.0f}%）")
+    for pred in ("續漲", "續跌", "轉漲", "轉跌"):
+        if pred in by_pred:
+            c, t = by_pred[pred]
+            lines.append(f"  {pred}：{c}/{t}（{c / t * 100:.0f}%）")
+    bad = []
+    for Q, bq in sorted(by_Q.items(), key=lambda kv: -kv[1]["n"]):
+        if bq["n"] >= 3:
+            up_pct = bq["up"] / bq["n"] * 100
+            dn_pct = bq["down"] / bq["n"] * 100
+            acc = bq["pc"] / bq["n"] * 100
+            if acc < 50:
+                bad.append(f"    {Q}：樣本 {bq['n']}，實際 漲 {up_pct:.0f}%/跌 {dn_pct:.0f}%，預判正確 {acc:.0f}% ← 誤判高發")
+    if bad:
+        lines.append("  誤判高發狀態（正確率<50%，供修正八象限 _Q_DIR 權重）：")
+        lines.extend(bad)
+    else:
+        lines.append("  （樣本仍少，暫無誤判高發象限）")
+    return "【15分K 預判稽核】\n" + "\n".join(lines), stats
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", help="稽核交易日 YYYYMMDD（預設＝今天）")
