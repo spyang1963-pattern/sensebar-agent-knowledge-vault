@@ -539,18 +539,27 @@ def main():
     rec, err = audit_day(day)
     if err:
         print(f"[audit] {err}")
-        return
-    append_history(rec)
+    else:
+        append_history(rec)
+        m = rec.get("morning", {}).get("stats", {})
+        print(f"[audit] {day} 稽核完成（快照 {rec['snapshot']}）")
+        print(f"  morning 方向命中率：{_rate(m.get('dir_hit', 0), m.get('dir_n', 0))}（{m.get('dir_n', 0)} 檔可判）")
+        ch = rec.get("changes", [])
+        if ch:
+            print(f"  初稿→定稿變動 {len(ch)} 檔：")
+            for c in ch[:10]:
+                print(f"    {c['code']} {c['name']}：{c['change']}")
+        print(f"  已累積 {len(load_history())} 天稽核紀錄")
 
-    m = rec.get("morning", {}).get("stats", {})
-    print(f"[audit] {day} 稽核完成（快照 {rec['snapshot']}）")
-    print(f"  morning 方向命中率：{_rate(m.get('dir_hit', 0), m.get('dir_n', 0))}（{m.get('dir_n', 0)} 檔可判）")
-    ch = rec.get("changes", [])
-    if ch:
-        print(f"  初稿→定稿變動 {len(ch)} 檔：")
-        for c in ch[:10]:
-            print(f"    {c['code']} {c['name']}：{c['change']}")
-    print(f"  已累積 {len(load_history())} 天稽核紀錄")
+    # 盤中 15 分預判稽核（獨立於日層級；prediction_log/monitor_log 盤中每 15 分累積，收盤後即有）
+    acc, _stats = intraday_direction_accuracy(2)
+    if acc:
+        print("")
+        print(acc)
+    isum = intraday_summary(2)
+    if isum:
+        print("")
+        print(isum)
 
 
 if __name__ == "__main__":
