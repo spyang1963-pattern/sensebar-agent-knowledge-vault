@@ -131,10 +131,97 @@ def quadrant(item):
         mv13_s = "↑" if a13 > b13 else ("↓" if a13 < b13 else "→")
     mv55 = None  # 需跨日 15K（≒3 個交易日），當日 feed 不足 → 標 NA
 
+    # 扣抵（MA8 向前看）：扣抵價 = 8 根前收盤；現價 > 扣抵價 → MA 準備上揚（助漲）
+    deduct = "NA"
+    if len(ser) >= 8:
+        ded_price = ser[-8]["close"]
+        if last["close"] > ded_price:
+            deduct = "助漲"
+        elif last["close"] < ded_price:
+            deduct = "助跌"
+        else:
+            deduct = "平"
+
+    # 力道衰竭：同位對照 B < 1 → 本波力道 < 前波（攻擊動能衰）
+    b_decline = (B is not None and B < 1)
+
     return dict(code=item.get("code", ""), name=item.get("name", ""), close=last["close"],
                 dirx=item.get("dir", ""), climax=bool(item.get("climax")), sweep=bool(item.get("sweep")),
                 Q=Q, bias=bias, A=A, B=B, VR=VR, VX=VX, vol=vol, mb=mb, flag=flag or review,
-                above8=above8, slope8=slope8, attack=attack, mv5_s=mv5_s, mv13_s=mv13_s, mv55=mv55)
+                above8=above8, slope8=slope8, attack=attack, mv5_s=mv5_s, mv13_s=mv13_s, mv55=mv55,
+                price_up=price_up, deduct=deduct, b_decline=b_decline)
+
+
+_DEFAULT_WEIGHTS = {"Q": 2, "MA": 2, "deduct": 2, "B": 2, "attack": 1}
+
+# 量價象限 → 下一方向（Q 是「量×價×陡緩」，直接映射即時方向；bias 是結構立場，不適用）
+_Q_DIR = {"Q1": 1.0, "Q2": 0.5, "Q3": -1.0, "Q4": -0.5, "Q5": 0.0, "Q6": 0.5, "Q7": 0.0, "Q8": 0.0}
+
+
+def next_direction(q, climax="", sweep=""):
+    """下一方向引擎（加權投票＋反轉覆寫）。
+
+    吃 quadrant() 結果（可為 None＝點數不足）＋反轉方向 climax/sweep（'bull'/'bear'，
+    由監控層用 sup/res 判斷）。回 (方向, 信心 0~1)。
+    方向 ∈ {續漲, 續跌, 觀望, 轉漲, 轉跌}。
+    """
+    if climax == "bull" or sweep == "bull":
+        return "轉漲", 1.0
+    if climax == "bear" or sweep == "bear":
+        return "轉跌", 1.0
+    if not q:
+        return "觀望", 0.0
+
+    w = _DEFAULT_WEIGHTS
+    bull = bear = 0.0
+
+    # 1) 量價象限（直接方向映射）
+    qd = _Q_DIR.get(q.get("Q", ""), 0.0)
+    if qd > 0:
+        bull += w["Q"] * qd
+    elif qd < 0:
+        bear += w["Q"] * abs(qd)
+
+    # 2) MA 站破＋斜率
+    above = q.get("above8")
+    slope = q.get("slope8")
+    if slope in ("↑", "↓") and above is not None:
+        if above and slope == "↑":
+            bull += w["MA"]
+        elif not above and slope == "↓":
+            bear += w["MA"]
+        elif above and slope == "↓":
+            bear += w["MA"] * 0.5
+        elif not above and slope == "↑":
+            bull += w["MA"] * 0.5
+
+    # 3) 扣抵（向前看：助漲/助跌）
+    d = q.get("deduct", "")
+    if d == "助漲":
+        bull += w["deduct"]
+    elif d == "助跌":
+        bear += w["deduct"]
+
+    # 4) 力道衰竭 B<1（多頭動能衰 → 偏空；僅價漲時有意義）
+    if q.get("b_decline") and q.get("price_up"):
+        bear += w["B"]
+
+    # 5) 5MV 攻擊
+    if q.get("attack"):
+        if q.get("price_up"):
+            bull += w["attack"]
+        else:
+            bear += w["attack"]
+
+    if bull + bear == 0:
+        return "觀望", 0.0
+    ratio = bull / (bull + bear)
+    conf = round(abs(ratio - 0.5) * 2, 2)
+    if ratio >= 0.6:
+        return "續漲", conf
+    if ratio <= 0.4:
+        return "續跌", conf
+    return "觀望", conf
 
 
 def _dir_bias(q):

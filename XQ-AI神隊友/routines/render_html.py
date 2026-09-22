@@ -2164,13 +2164,8 @@ def _pm_monitor():
         res = s.get("resistance")
         climax = _detect_climax(series, sup, res)
         sweep = _detect_sweep(series, sup, res)
-        if climax == "bull" or sweep == "bull":
-            next_t = "轉漲"
-        elif climax == "bear" or sweep == "bear":
-            next_t = "轉跌"
-        else:
-            next_t = _next_trend(vq)
         octant = None
+        _oq = None
         try:
             import eight_quadrant
             _oq = eight_quadrant.quadrant({"code": s["code"], "name": s["name"], "dir": s["dir"], "series": series})
@@ -2180,13 +2175,24 @@ def _pm_monitor():
                           "flag": (_oq["flag"] or ""), "mb": (_oq["mb"] or "")}
         except Exception:
             octant = None
+        # 下一方向：八象限引擎（含反轉覆寫）；點數不足(<3)才退回四象限 vq 粗判
+        if _oq:
+            next_t, next_conf = eight_quadrant.next_direction(_oq, climax, sweep)
+        else:
+            if climax == "bull" or sweep == "bull":
+                next_t = "轉漲"
+            elif climax == "bear" or sweep == "bear":
+                next_t = "轉跌"
+            else:
+                next_t = _next_trend(vq)
+            next_conf = 0.0
         items.append({"code": s["code"], "name": s["name"], "dir": s["dir"],
                       "close": close, "prev_close": prev["close"], "dclose": dclose,
                       "chg": last["chg"], "val": last["val"], "dval": dval,
                       "turn": last["turn"], "io": last["io"],
                       "support": sup, "resistance": res,
                       "vq": vq, "dist": dist, "climax": climax, "sweep": sweep,
-                      "next": next_t, "series": series, "latest": last["s"], "t": last.get("t", ""),
+                      "next": next_t, "next_conf": next_conf, "series": series, "latest": last["s"], "t": last.get("t", ""),
                       "octant": octant, "axis": axis, "band": band})
     import json as _json
     import os as _os
