@@ -704,6 +704,16 @@ tr:hover td{background:#1c2438}
 .pm-vs.vs-lose{color:#2e9e5b;background:rgba(46,158,91,.14)}
 .pm-vs.vs-flat{color:#9aa0a6;background:rgba(154,160,166,.14)}
 .audit-card{background:#16202f;border:1px solid #2f3d63;border-left:4px solid #e0b34d}
+.radar-card{background:#141c2c;border:1px solid #2f3d63;border-left:4px solid #9db8ff}
+.radar-list{display:flex;flex-direction:column;gap:3px}
+.radar-row{display:flex;flex-wrap:wrap;gap:2px 10px;align-items:center;padding:3px 6px;background:#0f1626;border-radius:6px;font-size:13px}
+.radar-row .r-code{color:#7fa8dd;font-weight:700}
+.radar-row .r-name{color:var(--txt)}
+.radar-row .r-px{color:#d8d2c0}
+.radar-row .r-amp{color:var(--sub)}
+.radar-row .r-val{color:var(--sub)}
+.radar-row .r-q{color:#9db8ff;font-weight:700}
+.radar-row .r-next{color:#ffb37e;font-weight:700}
 .audit-head{font-weight:700;font-size:15px;margin-bottom:8px}
 .audit-rate{font-size:16px;color:var(--txt);margin:4px 0}
 .audit-rate b{color:#46d88a;font-size:24px}
@@ -1598,6 +1608,7 @@ DASH_HEAD = """<!DOCTYPE html>
 <script type="application/json" id="pmdata">{pmdata}</script>
 <script type="application/json" id="auditdata">{auditdata}</script>
 <script type="application/json" id="monitordata">{monitordata}</script>
+<script type="application/json" id="radardata">{radardata}</script>
 <script>{js}</script>
 </div></body></html>"""
 
@@ -1610,6 +1621,7 @@ function emptyMsg(k){ return '<div class="card"><div class="trend-empty">這一�
 var PMDATA = []; try { PMDATA = JSON.parse(document.getElementById('pmdata').textContent || '[]'); } catch(e){}
 var AUDIT = {}; try { AUDIT = JSON.parse(document.getElementById('auditdata').textContent || '{}'); } catch(e){}
 var MONITOR = {}; try { MONITOR = JSON.parse(document.getElementById('monitordata').textContent || '{}'); } catch(e){}
+var RADAR = []; try { RADAR = JSON.parse(document.getElementById('radardata').textContent || '[]'); } catch(e){}
 var PM_CUR_OVERRIDE = ''; // 非空＝用下拉選單手動指定某一份（date|slot），有時間軸互動才清除
 function pmShort(d,s){ var dd=d.slice(4,6)+'/'+d.slice(6,8); return (s==='morning'?'盤後分析 開盤前更新版':'盤後分析 前一晚初版')+'（'+dd+'）'; }
 function pmPickDate(){ return PMDATA.filter(function(r){return (r.date+'|'+r.slot)===PM_CUR_OVERRIDE;}); }
@@ -1700,9 +1712,23 @@ function renderAudit(a){
   html += '</div>';
   return html;
 }
+function renderRadar(r){
+  if(!r || !r.length) return '';
+  var html = '<div class="card radar-card"><div class="audit-head">⚡ 當沖選股雷達 <span class="meta">（有量＋有波動＋有力道訊號，依力道分數排序）</span></div>';
+  html += '<div class="radar-list">';
+  r.forEach(function(x){
+    var dirCls = (x.chg>0)?'key-red':((x.chg<0)?'key-green':'');
+    html += '<div class="radar-row"><span class="r-code">'+x.code+'</span> <span class="r-name">'+x.name+'</span>';
+    html += '<span class="r-px '+dirCls+'">'+x.close.toFixed(1)+'（'+(x.chg>=0?'+':'')+x.chg.toFixed(2)+'%）</span>';
+    html += '<span class="r-amp">振幅 '+x.amp+'%</span> <span class="r-val">成交值 '+x.val.toFixed(1)+'億</span>';
+    html += '<span class="r-q">'+x.Q+'</span> <span class="r-next">→'+x.next+'（'+(x.conf*100|0)+'%）</span></div>';
+  });
+  html += '</div></div>';
+  return html;
+}
 function renderPostmarket(stamp){
   var el = document.getElementById('page-postmarket');
-  var body = renderAudit(AUDIT) + renderMonitor(MONITOR);
+  var body = renderAudit(AUDIT) + renderRadar(RADAR) + renderMonitor(MONITOR);
   if(!PMDATA.length){
     el.innerHTML = '<div class="card"><div class="trend-empty">尚無盤後綜合分析報告。排程會在前一晚 22:00（初版）與開盤前 06:30（更新版）自動產生。</div></div>';
     return;
@@ -2159,6 +2185,66 @@ def aggregate_series(series, period_min=15):
     return out
 
 
+def _intraday_radar(top_n=20, min_val=0.5, min_amp=2.0):
+    """當沖選股雷達：盤中即時篩選「有量、有波動、有力道訊號」的個股並排序。
+
+    對今日所有 breadth 快照逐檔建 5 分 series → 八象限/下一方向 → 力道+波動+流動性評分。
+    回 [{code, name, close, chg, amp%, val億, Q, next, conf, score}] 依 score 降序。
+    """
+    import eight_quadrant
+    today = datetime.now().strftime("%Y%m%d")
+    snaps = list_snapshots("breadth")
+    today_snaps = [(st, p) for st, p in snaps.items() if st[:8] == today]
+    if not today_snaps:
+        return []
+    series_by_code = {}
+    name_by_code = {}
+    for st, p in today_snaps:
+        for r in load_csv(p):
+            c = str(r.get("Code")).zfill(4)
+            if not c or c == "0000":
+                continue
+            name_by_code.setdefault(c, r.get("Name", ""))
+            try:
+                close = float(r.get("Close", 0) or 0)
+                val = float(r.get("Val", 0) or 0)
+                chg = float(r.get("Chg", 0) or 0)
+            except (TypeError, ValueError):
+                continue
+            if close <= 0:
+                continue
+            s = series_by_code.setdefault(c, [])
+            prev_close = s[-1]["close"] if s else close
+            s.append({"t": st[9:13], "open": prev_close, "high": max(prev_close, close),
+                      "low": min(prev_close, close), "close": close, "val": val, "chg": chg})
+    out = []
+    for c, series in series_by_code.items():
+        if len(series) < 3:
+            continue
+        val = series[-1]["val"]
+        if val < min_val:
+            continue
+        hi = max(p["high"] for p in series)
+        lo = min(p["low"] for p in series)
+        amp = (hi - lo) / lo * 100 if lo else 0
+        if amp < min_amp:
+            continue
+        q = eight_quadrant.quadrant({"code": c, "name": name_by_code.get(c, ""), "series": series})
+        if not q:
+            continue
+        pred, conf = eight_quadrant.next_direction(q)
+        score = conf + min(amp, 10) / 20
+        if q.get("attack"):
+            score += 0.2
+        if q.get("climax") or q.get("sweep"):
+            score += 0.3
+        out.append({"code": c, "name": name_by_code.get(c, ""), "close": series[-1]["close"],
+                    "chg": series[-1].get("chg", 0), "amp": round(amp, 1), "val": val,
+                    "Q": q["Q"], "next": pred, "conf": conf, "score": round(score, 2)})
+    out.sort(key=lambda x: -x["score"])
+    return out[:top_n]
+
+
 def _pm_monitor():
     """預測兌現監控：比對今日預測榜 vs 今日所有盤中快照，產每檔狀態序列（時間帶）。"""
     try:
@@ -2404,6 +2490,7 @@ def render_dashboard(d):
         pmdata=json.dumps(pm_records(), ensure_ascii=False).replace("</", "<\\/"),
         auditdata=json.dumps(_audit_block(), ensure_ascii=False).replace("</", "<\\/"),
         monitordata=json.dumps(_pm_monitor(), ensure_ascii=False).replace("</", "<\\/"),
+        radardata=json.dumps(_intraday_radar(), ensure_ascii=False).replace("</", "<\\/"),
     )
 
 
