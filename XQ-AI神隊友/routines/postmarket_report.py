@@ -144,21 +144,31 @@ def _read_key():
 def call_gemini(input_text, slot):
     from google import genai
     from google.genai import types
+    import time as _time
     client = genai.Client(api_key=_read_key())
     model = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
-    resp = client.models.generate_content(
-        model=model,
-        contents="【今日盤後綜合分析 input】\n" + input_text,
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            temperature=0.4,
-        ),
-    )
-    text = (resp.text or "").strip()
-    import re
-    text = re.sub(r"^```(?:markdown)?\s*\n?", "", text, flags=re.M)
-    text = re.sub(r"\n?```\s*$", "", text)
-    return text, model
+    last_err = None
+    for attempt in range(1, 4):
+        try:
+            resp = client.models.generate_content(
+                model=model,
+                contents="【今日盤後綜合分析 input】\n" + input_text,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    temperature=0.4,
+                ),
+            )
+            text = (resp.text or "").strip()
+            import re
+            text = re.sub(r"^```(?:markdown)?\s*\n?", "", text, flags=re.M)
+            text = re.sub(r"\n?```\s*$", "", text)
+            return text, model
+        except Exception as e:
+            last_err = e
+            print(f"[report] Gemini 呼叫失敗（第 {attempt}/3 次）：{type(e).__name__} {e}")
+            if attempt < 3:
+                _time.sleep(20 * attempt)
+    raise RuntimeError(f"Gemini 呼叫 3 次皆失敗：{last_err}")
 
 
 def _audit_feedback():
