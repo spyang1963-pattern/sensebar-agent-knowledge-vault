@@ -455,12 +455,10 @@ def intraday_summary(days=2):
 
 
 def intraday_direction_accuracy(days=2):
-    """讀 prediction_log.json，統計「15分K 下一方向預判」正確率＋誤判狀態分布。
+    """讀 prediction_log.json，分層統計 5分/15分 下一方向預判正確率＋誤判狀態分布。
 
     回 (summary_str, stats_dict)。stats：
-      overall: {total, correct}
-      by_pred: {續漲:[c,t], ...}
-      by_Q:    {Q: {n, up, down, pc}}  ← 狀態轉換分布（量化可靠度）
+      by_level: {"5分": {total, correct, by_pred, by_Q}, "15分": {...}}
     """
     p = os.path.join(ROUTINES, "outputs", "monitor", "prediction_log.json")
     if not os.path.isfile(p):
@@ -473,44 +471,56 @@ def intraday_direction_accuracy(days=2):
     if not log:
         return "", {}
 
-    by_pred = {}
-    by_Q = {}
-    total = correct = 0
+    def agg(records):
+        by_pred = {}
+        by_Q = {}
+        total = correct = 0
+        for r in records:
+            if r.get("correct") is None:
+                continue
+            total += 1
+            if r["correct"]:
+                correct += 1
+            bp = by_pred.setdefault(r["pred"], [0, 0])
+            bp[1] += 1
+            if r["correct"]:
+                bp[0] += 1
+            Q = r.get("Q", "?")
+            bq = by_Q.setdefault(Q, {"n": 0, "up": 0, "down": 0, "pc": 0})
+            bq["n"] += 1
+            if r["actual"] == "up":
+                bq["up"] += 1
+            elif r["actual"] == "down":
+                bq["down"] += 1
+            if r["correct"]:
+                bq["pc"] += 1
+        return {"total": total, "correct": correct, "by_pred": by_pred, "by_Q": by_Q}
+
+    levels = {"5分": [], "15分": []}
     for dkey in sorted(log.keys())[-days:]:
         for st in log[dkey].get("stocks", []):
-            for r in st.get("records", []):
-                if r.get("correct") is None:
-                    continue
-                total += 1
-                if r["correct"]:
-                    correct += 1
-                bp = by_pred.setdefault(r["pred"], [0, 0])
-                bp[1] += 1
-                if r["correct"]:
-                    bp[0] += 1
-                Q = r.get("Q", "?")
-                bq = by_Q.setdefault(Q, {"n": 0, "up": 0, "down": 0, "pc": 0})
-                bq["n"] += 1
-                if r["actual"] == "up":
-                    bq["up"] += 1
-                elif r["actual"] == "down":
-                    bq["down"] += 1
-                if r["correct"]:
-                    bq["pc"] += 1
-
-    stats = {"overall": {"total": total, "correct": correct},
-             "by_pred": by_pred, "by_Q": by_Q}
-    if not total:
-        return "", stats
-
-    lines = []
-    lines.append(f"15分K 下一方向預判正確率：{correct}/{total}（{correct / total * 100:.0f}%）")
-    for pred in ("續漲", "續跌", "轉漲", "轉跌"):
-        if pred in by_pred:
-            c, t = by_pred[pred]
-            lines.append(f"  {pred}：{c}/{t}（{c / t * 100:.0f}%）")
+            levels["5分"].extend(st.get("records", []))
+            levels["15分"].extend(st.get("records15", []))
+    stats = {"by_level": {}}
+    lines = ["分層 5分/15分 下一方向預判正確率："]
+    for lv in ("15分", "5分"):
+        a = agg(levels[lv])
+        stats["by_level"][lv] = a
+        if a["total"]:
+            lines.append(f"  {lv}：{a['correct']}/{a['total']}（{a['correct'] / a['total'] * 100:.0f}%）")
+        else:
+            lines.append(f"  {lv}：（樣本不足）")
+    a15 = stats["by_level"].get("15分", {})
+    a5 = stats["by_level"].get("5分", {})
+    if a15.get("total") and a5.get("total"):
+        r15 = a15["correct"] / a15["total"]
+        r5 = a5["correct"] / a5["total"]
+        if r15 >= r5:
+            lines.append(f"  → 15分較準（{r15:.0%} vs 5分 {r5:.0%}），出榜/控盤以 15分 為主。")
+        else:
+            lines.append(f"  → 5分較準（{r5:.0%} vs 15分 {r15:.0%}），雜訊比預期低，可提高 5分 權重。")
     bad = []
-    for Q, bq in sorted(by_Q.items(), key=lambda kv: -kv[1]["n"]):
+    for Q, bq in sorted(a15.get("by_Q", {}).items(), key=lambda kv: -kv[1]["n"]):
         if bq["n"] >= 3:
             up_pct = bq["up"] / bq["n"] * 100
             dn_pct = bq["down"] / bq["n"] * 100
@@ -518,11 +528,11 @@ def intraday_direction_accuracy(days=2):
             if acc < 50:
                 bad.append(f"    {Q}：樣本 {bq['n']}，實際 漲 {up_pct:.0f}%/跌 {dn_pct:.0f}%，預判正確 {acc:.0f}% ← 誤判高發")
     if bad:
-        lines.append("  誤判高發狀態（正確率<50%，供修正八象限 _Q_DIR 權重）：")
+        lines.append("  誤判高發狀態（15分，正確率<50%，供修正八象限 _Q_DIR 權重）：")
         lines.extend(bad)
     else:
         lines.append("  （樣本仍少，暫無誤判高發象限）")
-    return "【15分K 預判稽核】\n" + "\n".join(lines), stats
+    return "【分層預判稽核】\n" + "\n".join(lines), stats
 
 
 def main():

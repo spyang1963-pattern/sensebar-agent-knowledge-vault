@@ -2484,7 +2484,8 @@ def _pm_monitor():
         "date": _today, "stamp": today_snaps[-1][0],
         "stocks": [
             {"code": _it["code"], "name": _it["name"], "dir": _it["dir"],
-             "records": build_prediction_records(_it["series"], _it.get("support"), _it.get("resistance"))}
+             "records": build_prediction_records(_it["series"], _it.get("support"), _it.get("resistance")),
+             "records15": build_prediction_records(_it["series15"], _it.get("support"), _it.get("resistance"))}
             for _it in items
         ],
     }
