@@ -747,6 +747,9 @@ tr:hover td{background:#1c2438}
 .monitor-legend{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:4px 0 8px;font-size:12px;color:var(--sub)}
 .monitor-legend .lg{display:inline-flex;align-items:center;gap:4px}
 .m-band{display:inline-flex;gap:2px;margin:0 6px;vertical-align:middle}
+.m-bandrow15{margin-top:2px}
+.m-lv{color:#9db8ff;font-size:10px;font-weight:700;margin-right:6px}
+.seg15{width:14px;height:10px}
 .seg{width:10px;height:14px;border-radius:2px;display:inline-block;background:#2f3d63}
 .seg.up{background:#d64541}
 .seg.down{background:#2e9e5b}
@@ -1659,6 +1662,10 @@ function renderMonitor(m){
     var nxtCls = it.next==='續漲'?'next-up':(it.next==='續跌'?'next-down':(it.next==='轉漲'?'next-rev-up':(it.next==='轉跌'?'next-rev-down':'next-watch')));
     var rev = (it.next==='轉漲'||it.next==='轉跌');
     html += '<span class="seg '+nxtCls+'" title="'+(rev?'⚡下一輪反轉':'下一輪預測')+'">'+(rev?'⚡':'')+'</span>';
+    html += '</div><div class="m-bandrow m-bandrow15"><span class="m-lv">15分</span>';
+    if(it.octant15){ html += '<span class="m-octant" title="'+it.octant15.vol+'·'+(it.octant15.above8?'站':'破')+'8MA'+it.octant15.slope8+(it.octant15.flag?' · '+it.octant15.flag:'')+'">'+it.octant15.Q+'</span> <span class="m-next">→'+it.next15+'</span>'; }
+    else { html += '<span class="m-octant m-oct-none">15分待料</span>'; }
+    ((it.band15 && it.band15.length)?it.band15:[]).forEach(function(p,i){ var tt=(it.axis15&&it.axis15[i])||''; html += '<span class="seg seg15 '+(p?p:'blank')+'" title="'+tt+(p?(' · '+p):' · 缺資料')+'"></span>'; });
     html += '</div></div>';
   });
   html += '</div></div>';
@@ -2337,14 +2344,29 @@ def _pm_monitor():
             else:
                 next_t = _next_trend(vq)
             next_conf = 0.0
+        # 15 分層級（聚合 series → 15分 八象限/下一方向）
+        series15 = aggregate_series(series, 15)
+        octant15 = None
+        next15 = "觀望"
+        try:
+            import eight_quadrant
+            _oq15 = eight_quadrant.quadrant({"code": s["code"], "name": s["name"], "dir": s["dir"], "series": series15})
+            if _oq15:
+                octant15 = {"Q": _oq15["Q"], "bias": _oq15["bias"], "above8": _oq15["above8"],
+                            "slope8": _oq15["slope8"], "vol": _oq15["vol"],
+                            "flag": (_oq15["flag"] or ""), "mb": (_oq15["mb"] or "")}
+                next15, _ = eight_quadrant.next_direction(_oq15, climax, sweep)
+        except Exception:
+            octant15 = None
         items.append({"code": s["code"], "name": s["name"], "dir": s["dir"],
                       "close": close, "prev_close": prev["close"], "dclose": dclose,
                       "chg": last["chg"], "val": last["val"], "dval": dval,
                       "turn": last["turn"], "io": last["io"],
                       "support": sup, "resistance": res,
                       "vq": vq, "dist": dist, "climax": climax, "sweep": sweep,
-                      "next": next_t, "next_conf": next_conf, "series": series, "series15": aggregate_series(series, 15), "latest": last["s"], "t": last.get("t", ""),
-                      "octant": octant, "axis": axis, "band": band})
+                      "next": next_t, "next_conf": next_conf, "series": series, "series15": series15, "latest": last["s"], "t": last.get("t", ""),
+                      "octant": octant, "octant15": octant15, "next15": next15, "axis": axis, "band": band,
+                      "axis15": [p["t"] for p in series15], "band15": [p["d"] for p in series15]})
     import json as _json
     import os as _os
     _sig_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "outputs", "monitor", "signals_log.json")
