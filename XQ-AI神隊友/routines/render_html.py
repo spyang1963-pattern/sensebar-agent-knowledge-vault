@@ -749,7 +749,7 @@ tr:hover td{background:#1c2438}
 .m-band{display:inline-flex;gap:2px;margin:0 6px;vertical-align:middle}
 .m-bandrow15{margin-top:2px}
 .m-lv{flex:0 0 30px;color:#9db8ff;font-size:10px;font-weight:700;text-align:right;padding-right:4px}
-.seg15{width:34px;height:14px}
+.seg.seg15{width:34px;height:14px}
 .m-oct15{color:#9db8ff;font-weight:700;margin-left:6px}
 .m-predrow{margin-top:2px}
 .pred-mark{display:inline-block;width:10px;height:14px;border-radius:2px;font-size:11px;text-align:center;line-height:14px;font-weight:700}
