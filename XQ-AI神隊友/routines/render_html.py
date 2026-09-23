@@ -734,7 +734,7 @@ tr:hover td{background:#1c2438}
 .monitor-item .m-status{font-weight:700}
 .m-octant{display:inline-block;padding:1px 6px;border-radius:10px;font-size:11px;font-weight:700;background:#1b2a4a;color:#9db8ff;border:1px solid #3a4a7a;margin-right:6px}
 .m-oct-none{background:#222;color:#889;border-color:#333}
-.m-bandrow{display:inline-flex;gap:2px;align-items:center}
+.m-bandrow{display:flex;gap:2px;align-items:center;flex-wrap:nowrap}
 .m-axisrow{flex:0 0 100%;position:relative;height:16px;margin:0 0 4px 10px;color:var(--sub);font-size:10px;white-space:nowrap}
 .m-axis-hour{position:absolute;top:0;padding:0 2px;line-height:16px;background:#14231a;border-left:1px solid #3a4a7a}
 .seg.blank{background:repeating-linear-gradient(45deg,#2f3d63 0 2px,rgba(0,0,0,0) 2px 4px);opacity:.55}
@@ -748,8 +748,9 @@ tr:hover td{background:#1c2438}
 .monitor-legend .lg{display:inline-flex;align-items:center;gap:4px}
 .m-band{display:inline-flex;gap:2px;margin:0 6px;vertical-align:middle}
 .m-bandrow15{margin-top:2px}
-.m-lv{color:#9db8ff;font-size:10px;font-weight:700;margin-right:6px}
-.seg15{width:14px;height:10px}
+.m-lv{flex:0 0 30px;color:#9db8ff;font-size:10px;font-weight:700;text-align:right;padding-right:4px}
+.seg15{width:34px;height:14px}
+.m-oct15{color:#9db8ff;font-weight:700;margin-left:6px}
 .m-predrow{margin-top:2px}
 .pred-mark{display:inline-block;width:10px;height:14px;border-radius:2px;font-size:11px;text-align:center;line-height:14px;font-weight:700}
 .pred-ok{background:#0f2e1d;color:#46d88a;border:1px solid #2e9e5b}
@@ -1662,14 +1663,13 @@ function renderMonitor(m){
     if(it.resistance!==null && it.resistance!==undefined){ html += '<span class="m-dist">壓力 '+it.resistance.toFixed(1)+'</span>'; }
     if(it.climax || it.sweep){ var sig=[]; if(it.climax){sig.push('極限大量·'+(it.climax==='bull'?'轉多':'轉空'));} if(it.sweep){sig.push('掃流動性·'+(it.sweep==='bull'?'掃多':'掃空'));} html += '<span class="m-signal">⚡ '+sig.join('｜')+'</span>'; }
     html += '<span class="m-next">→'+it.next+'</span>';
-    html += '</div><div class="m-bandrow">';
+    if(it.octant15){ html += '<span class="m-oct15" title="'+it.octant15.vol+'·'+(it.octant15.above8?'站':'破')+'8MA'+it.octant15.slope8+(it.octant15.flag?' · '+it.octant15.flag:'')+'">15分 '+it.octant15.Q+' →'+it.next15+'</span>'; }
+    html += '</div><div class="m-bandrow"><span class="m-lv">5分</span>';
     ((it.band && it.band.length)?it.band:[]).forEach(function(p,i){ var tt=(AX[i]||''); html += '<span class="seg '+(p?p:'blank')+'" title="'+tt+(p?(' · '+p):' · 缺資料')+'"></span>'; });
     var nxtCls = it.next==='續漲'?'next-up':(it.next==='續跌'?'next-down':(it.next==='轉漲'?'next-rev-up':(it.next==='轉跌'?'next-rev-down':'next-watch')));
     var rev = (it.next==='轉漲'||it.next==='轉跌');
     html += '<span class="seg '+nxtCls+'" title="'+(rev?'⚡下一輪反轉':'下一輪預測')+'">'+(rev?'⚡':'')+'</span>';
     html += '</div><div class="m-bandrow m-bandrow15"><span class="m-lv">15分</span>';
-    if(it.octant15){ html += '<span class="m-octant" title="'+it.octant15.vol+'·'+(it.octant15.above8?'站':'破')+'8MA'+it.octant15.slope8+(it.octant15.flag?' · '+it.octant15.flag:'')+'">'+it.octant15.Q+'</span> <span class="m-next">→'+it.next15+'</span>'; }
-    else { html += '<span class="m-octant m-oct-none">15分待料</span>'; }
     ((it.band15 && it.band15.length)?it.band15:[]).forEach(function(p,i){ var tt=(it.axis15&&it.axis15[i])||''; html += '<span class="seg seg15 '+(p?p:'blank')+'" title="'+tt+(p?(' · '+p):' · 缺資料')+'"></span>'; });
     html += '</div><div class="m-bandrow m-predrow"><span class="m-lv">預判</span>';
     ((it.pred_marks && it.pred_marks.length)?it.pred_marks:[]).forEach(function(p,i){ var tt=(AX[i]||''); if(p==='ok'){ html += '<span class="pred-mark pred-ok" title="'+tt+' 預判正確">✓</span>'; } else if(p==='bad'){ html += '<span class="pred-mark pred-bad" title="'+tt+' 預判錯誤">✗</span>'; } else { html += '<span class="pred-mark pred-blank" title="'+tt+'"></span>'; } });
