@@ -1670,6 +1670,7 @@ function renderMonitor(m){
     var rev = (it.next==='轉漲'||it.next==='轉跌');
     html += '<span class="seg '+nxtCls+'" title="'+(rev?'⚡下一輪反轉':'下一輪預測')+'">'+(rev?'⚡':'')+'</span>';
     html += '</div><div class="m-bandrow m-bandrow15"><span class="m-lv">15分</span>';
+    html += '<span class="seg blank" title="09:00 開盤"></span>';
     ((it.band15 && it.band15.length)?it.band15:[]).forEach(function(p,i){ var tt=(it.axis15&&it.axis15[i])||''; html += '<span class="seg seg15 '+(p?p:'blank')+'" title="'+tt+(p?(' · '+p):' · 缺資料')+'"></span>'; });
     html += '</div><div class="m-bandrow m-predrow"><span class="m-lv">預判</span>';
     ((it.pred_marks && it.pred_marks.length)?it.pred_marks:[]).forEach(function(p,i){ var tt=(AX[i]||''); if(p==='ok'){ html += '<span class="pred-mark pred-ok" title="'+tt+' 預判正確">✓</span>'; } else if(p==='bad'){ html += '<span class="pred-mark pred-bad" title="'+tt+' 預判錯誤">✗</span>'; } else { html += '<span class="pred-mark pred-blank" title="'+tt+'"></span>'; } });
