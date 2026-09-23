@@ -536,6 +536,10 @@ def intraday_direction_accuracy(days=2):
 
 
 def main():
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", help="稽核交易日 YYYYMMDD（預設＝今天）")
     ap.add_argument("--summary", action="store_true", help="印最近 5 天績效摘要")

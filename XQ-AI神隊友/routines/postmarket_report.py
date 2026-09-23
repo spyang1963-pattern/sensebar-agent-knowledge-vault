@@ -210,6 +210,10 @@ def _validate_board(text):
 
 
 def main():
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     ap = argparse.ArgumentParser()
     ap.add_argument("--slot", choices=["evening", "morning"], default="evening")
     args = ap.parse_args()

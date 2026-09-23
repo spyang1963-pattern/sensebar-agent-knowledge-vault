@@ -50,8 +50,19 @@ def deploy():
     subprocess.run(
         ["git", "commit", "-m", f"chore: update dashboard {now}", "--allow-empty"],
         cwd=PUB_DIR, check=True)
-    subprocess.run(["git", "push", "origin", "HEAD:master"], cwd=PUB_DIR, check=True)
-    print(f"[deploy] pushed xq-dashboard {now}")
+    import time as _time
+    last_err = None
+    for attempt in range(1, 4):
+        try:
+            subprocess.run(["git", "push", "origin", "HEAD:master"], cwd=PUB_DIR, check=True)
+            print(f"[deploy] pushed xq-dashboard {now}")
+            return
+        except subprocess.CalledProcessError as e:
+            last_err = e
+            print(f"[deploy] push 失敗（第 {attempt}/3 次）：{e}")
+            if attempt < 3:
+                _time.sleep(15 * attempt)
+    raise last_err
 
 
 def main():
