@@ -199,8 +199,26 @@ _TECH_MARKERS = ("Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Q8", "8MA", "MA5", "
                  "角度", "扣抵", "象限")
 
 
-def _validate_board(text):
-    """檢查預測榜每檔出榜依據是否含八象限/技術位階依據；回傳問題清單 [(code,name,reason)]。"""
+def _parse_alignment(input_text):
+    """從 input 的「## 0c 均線排列速查表」解析 強勢股/弱勢股 股號集合。"""
+    import re
+    strong, weak = set(), set()
+    cur = None
+    for ln in input_text.splitlines():
+        s = ln.strip()
+        if s.startswith("- 強勢股"):
+            cur = "strong"
+        elif s.startswith("- 弱勢股"):
+            cur = "weak"
+        elif s.startswith("- "):
+            cur = None
+        if cur in ("strong", "weak"):
+            (strong if cur == "strong" else weak).update(re.findall(r"\d{4,5}", s))
+    return strong, weak
+
+
+def _validate_board(text, strong_codes=None, weak_codes=None):
+    """檢查預測榜：①出榜依據含八象限/技術 ②偏多在強勢清單、偏空在弱勢清單。"""
     try:
         import predict_audit
         stocks = predict_audit.parse_forecast(text)
@@ -214,6 +232,13 @@ def _validate_board(text):
             continue
         if not any(k in basis for k in _TECH_MARKERS):
             issues.append((s["code"], s["name"], "出榜依據缺八象限/技術位階依據"))
+        d = s.get("dir", "")
+        code = s.get("code", "")
+        if strong_codes and weak_codes:
+            if "偏多" in d and code not in strong_codes:
+                issues.append((code, s["name"], "偏多但不在 0c 強勢（全多排列）清單"))
+            elif "偏空" in d and code not in weak_codes:
+                issues.append((code, s["name"], "偏空但不在 0c 弱勢（全空排列）清單"))
     return issues
 
 
@@ -235,6 +260,8 @@ def main():
     with io.open(in_path, "r", encoding="utf-8") as f:
         input_text = f.read()
 
+    strong_codes, weak_codes = _parse_alignment(input_text)
+
     fb = _audit_feedback()
     if fb and "尚無" not in fb:
         input_text = "【歷史預測績效檢討（供你修正本次預測）】\n" + fb + "\n\n" + input_text
@@ -243,18 +270,18 @@ def main():
     text, model = call_gemini(input_text, args.slot)
 
     MAX_RETRY = 3
-    issues = _validate_board(text)
+    issues = _validate_board(text, strong_codes, weak_codes)
     for attempt in range(1, MAX_RETRY):
         if not issues:
             break
         fix_lines = "\n".join(f"- {c} {n}：{r}" for c, n, r in issues)
         input_text = (input_text
                       + "\n\n## 你上一版的預測榜不合格，必須整份重寫\n"
-                      + "以下各檔未達標，請逐檔補上「出榜依據」的 ③量價結構八象限 或 ④技術/供需 實數（Q1~Q8／MA20 乖離／前高前低／三盤／大量關鍵K）後，重新輸出完整報告：\n"
+                      + "以下各檔未達標，請修正後重新輸出完整報告：①偏多必須在「## 0c」強勢股（全多排列）清單內、偏空必須在弱勢股（全空排列）清單內，不在清單的一律換掉；②每檔出榜依據要含 ③量價結構八象限 或 ④技術/供需 實數（Q1~Q8／MA20 乖離／前高前低／三盤／大量關鍵K）：\n"
                       + fix_lines)
-        print(f"[report] 驗證未過（{len(issues)} 檔缺技術/結構依據），重跑第 {attempt + 1} 次…")
+        print(f"[report] 驗證未過（{len(issues)} 檔未達標），重跑第 {attempt + 1} 次…")
         text, model = call_gemini(input_text, args.slot)
-        issues = _validate_board(text)
+        issues = _validate_board(text, strong_codes, weak_codes)
 
     if issues:
         print(f"[report] ⚠ 重試 {MAX_RETRY} 次後仍有 {len(issues)} 檔未填完整：")
