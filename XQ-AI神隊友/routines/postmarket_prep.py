@@ -195,35 +195,27 @@ def _ma_alignment():
         vols = [float(d.get("volume", 0)) for d in data if d.get("volume")]
         if len(closes) < 60:
             continue
-        ma8 = sum(closes[-8:]) / 8
-        ma21 = sum(closes[-21:]) / 21
-        ma55 = sum(closes[-55:]) / 55
-        ma8p = sum(closes[-9:-1]) / 8
-        ma21p = sum(closes[-22:-1]) / 21
-        ma55p = sum(closes[-56:-1]) / 55
-        up8, up21, up55 = ma8 > ma8p, ma21 > ma21p, ma55 > ma55p
-        chg = (closes[-1] - closes[-2]) / closes[-2] * 100 if closes[-2] else 0
         # 5 日累計漲幅（對齊 XQ「5日連續強勢＋漲幅前100」，跌勢天也抓得到）
         chg5 = (closes[-1] - closes[-6]) / closes[-6] * 100 if len(closes) >= 6 and closes[-6] else 0
         vol5 = sum(vols[-5:]) if len(vols) >= 5 else 0
         vol5_prev = sum(vols[-10:-5]) if len(vols) >= 10 else 0
         vol_up = vol5 > vol5_prev  # 近5日量 > 前5日量
-        # 強勢＝全多排列＋5日量增＋5日累計漲幅≥5%（正要/剛起漲）
-        if ma8 > ma21 > ma55 and up8 and up21 and up55 and vol_up and chg5 >= 5:
+        # 強勢＝5日量增＋5日累計漲幅≥5%（對齊 XQ，不綁全多排列）
+        if vol_up and chg5 >= 5:
             strong.append((c, r.get("Name", ""), chg5))
-        # 弱勢＝全空排列（不需資金/量：無需求價自然跌）
-        elif ma8 < ma21 < ma55 and not up8 and not up21 and not up55:
-            weak.append((c, r.get("Name", ""), chg))
+        # 弱勢＝5日累計跌幅≤-5%（自然下跌，不要求量）
+        elif chg5 <= -5:
+            weak.append((c, r.get("Name", ""), chg5))
 
     strong.sort(key=lambda x: -x[2])
     weak.sort(key=lambda x: x[2])
-    lines = ["### 均線排列速查表（強勢＝日K 全多排列＋5日量增＋5日累計漲幅≥5%；弱勢＝日K 全空排列，不要求資金/量；其餘＝糾結盤整或反轉疑慮，勿選入預測榜）"]
+    lines = ["### 均線排列速查表（強勢＝5日量增＋5日累計漲幅≥5%；弱勢＝5日累計跌幅≤-5%，不要求資金/量；其餘＝勿選入預測榜）"]
     if strong:
-        lines.append("- 強勢股（全多排列 {} 檔，依5日累計漲幅）：".format(len(strong))
-                    + "、".join(f"{c} {n}({chg:+.1f}%)" for c, n, chg in strong[:30]))
+        lines.append("- 強勢股（{} 檔，依5日累計漲幅）：".format(len(strong))
+                    + "、".join(f"{c} {n}({chg:+.1f}%)" for c, n, chg in strong[:50]))
     if weak:
-        lines.append("- 弱勢股（全空排列 {} 檔，依今日跌幅）：".format(len(weak))
-                    + "、".join(f"{c} {n}({chg:+.1f}%)" for c, n, chg in weak[:30]))
+        lines.append("- 弱勢股（{} 檔，依5日累計跌幅）：".format(len(weak))
+                    + "、".join(f"{c} {n}({chg:+.1f}%)" for c, n, chg in weak[:50]))
     if not strong and not weak:
         return "（無明確多空排列個股）"
     return "\n".join(lines)
