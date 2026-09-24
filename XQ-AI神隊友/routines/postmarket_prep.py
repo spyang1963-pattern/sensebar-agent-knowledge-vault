@@ -202,21 +202,22 @@ def _ma_alignment():
         ma21p = sum(closes[-22:-1]) / 21
         ma55p = sum(closes[-56:-1]) / 55
         up8, up21, up55 = ma8 > ma8p, ma21 > ma21p, ma55 > ma55p
-        prev = closes[-2] if len(closes) >= 2 else closes[-1]
-        chg = (closes[-1] - prev) / prev * 100 if prev else 0
-        vol_today = vols[-1] if vols else 0
-        vol_yest = vols[-2] if len(vols) >= 2 else 0
-        vol_up = vol_today > vol_yest
-        # 強勢＝全多排列＋量增＋漲幅≥5%（正要/剛起漲，排除量縮反轉階段）
-        if ma8 > ma21 > ma55 and up8 and up21 and up55 and vol_up and chg >= 5:
-            strong.append((c, r.get("Name", ""), chg))
+        chg = (closes[-1] - closes[-2]) / closes[-2] * 100 if closes[-2] else 0
+        # 5 日累計漲幅（對齊 XQ「5日連續強勢＋漲幅前100」，跌勢天也抓得到）
+        chg5 = (closes[-1] - closes[-6]) / closes[-6] * 100 if len(closes) >= 6 and closes[-6] else 0
+        vol5 = sum(vols[-5:]) if len(vols) >= 5 else 0
+        vol5_prev = sum(vols[-10:-5]) if len(vols) >= 10 else 0
+        vol_up = vol5 > vol5_prev  # 近5日量 > 前5日量
+        # 強勢＝全多排列＋5日量增＋5日累計漲幅≥5%（正要/剛起漲）
+        if ma8 > ma21 > ma55 and up8 and up21 and up55 and vol_up and chg5 >= 5:
+            strong.append((c, r.get("Name", ""), chg5))
         # 弱勢＝全空排列（不需資金/量：無需求價自然跌）
         elif ma8 < ma21 < ma55 and not up8 and not up21 and not up55:
             weak.append((c, r.get("Name", ""), chg))
 
     strong.sort(key=lambda x: -x[2])
     weak.sort(key=lambda x: x[2])
-    lines = ["### 均線排列速查表（強勢＝日K 全多排列＋量增＋今日漲幅≥5%；弱勢＝日K 全空排列，不要求資金/量；其餘＝糾結盤整或反轉疑慮，勿選入預測榜）"]
+    lines = ["### 均線排列速查表（強勢＝日K 全多排列＋5日量增＋5日累計漲幅≥5%；弱勢＝日K 全空排列，不要求資金/量；其餘＝糾結盤整或反轉疑慮，勿選入預測榜）"]
     if strong:
         lines.append("- 強勢股（全多排列 {} 檔，依今日漲幅）：".format(len(strong))
                     + "、".join(f"{c} {n}({chg:+.1f}%)" for c, n, chg in strong[:30]))
