@@ -219,7 +219,7 @@ def _ma_alignment():
     weak.sort(key=lambda x: x[2])
     lines = ["### 均線排列速查表（強勢＝日K 全多排列＋5日量增＋5日累計漲幅≥5%；弱勢＝日K 全空排列，不要求資金/量；其餘＝糾結盤整或反轉疑慮，勿選入預測榜）"]
     if strong:
-        lines.append("- 強勢股（全多排列 {} 檔，依今日漲幅）：".format(len(strong))
+        lines.append("- 強勢股（全多排列 {} 檔，依5日累計漲幅）：".format(len(strong))
                     + "、".join(f"{c} {n}({chg:+.1f}%)" for c, n, chg in strong[:30]))
     if weak:
         lines.append("- 弱勢股（全空排列 {} 檔，依今日跌幅）：".format(len(weak))
