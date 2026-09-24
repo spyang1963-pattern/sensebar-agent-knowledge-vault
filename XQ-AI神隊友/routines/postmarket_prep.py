@@ -163,6 +163,65 @@ def _tech_levels():
             + "\n".join(rows))
 
 
+def _ma_alignment():
+    """均線排列速查表：日K MA8/21/55 斜率 → 全多排列(強勢)/全空排列(弱勢)/糾結。
+
+    供 Gemini 從強勢/弱勢股挑選，排除盤整糾結的權值股。
+    全多＝MA8>MA21>MA55 且三者向上；全空＝MA8<MA21<MA55 且三者向下。
+    """
+    kline_dir = os.path.join(STOCK_MONITOR, "output", "cache", "kline")
+    try:
+        snap_rows = rh.load_csv(next(iter(rh.list_snapshots("breadth").values())))
+    except Exception:
+        snap_rows = []
+    order = [r for r in snap_rows if r.get("Code") and r.get("Val", 0)]
+    order.sort(key=lambda r: r.get("Val", 0), reverse=True)
+    order = order[:200]
+    if not order:
+        return "（本次快照無資料）"
+
+    strong, weak = [], []
+    for r in order:
+        c = str(r["Code"]).zfill(4)
+        path = os.path.join(kline_dir, f"{c}.json")
+        if not os.path.isfile(path):
+            continue
+        try:
+            with io.open(path, "r", encoding="utf-8") as f:
+                data = json.load(f).get("data", [])
+        except Exception:
+            continue
+        closes = [float(d.get("close", 0)) for d in data if d.get("close")]
+        if len(closes) < 60:
+            continue
+        ma8 = sum(closes[-8:]) / 8
+        ma21 = sum(closes[-21:]) / 21
+        ma55 = sum(closes[-55:]) / 55
+        ma8p = sum(closes[-9:-1]) / 8
+        ma21p = sum(closes[-22:-1]) / 21
+        ma55p = sum(closes[-56:-1]) / 55
+        up8, up21, up55 = ma8 > ma8p, ma21 > ma21p, ma55 > ma55p
+        prev = closes[-2] if len(closes) >= 2 else closes[-1]
+        chg = (closes[-1] - prev) / prev * 100 if prev else 0
+        if ma8 > ma21 > ma55 and up8 and up21 and up55:
+            strong.append((c, r.get("Name", ""), chg))
+        elif ma8 < ma21 < ma55 and not up8 and not up21 and not up55:
+            weak.append((c, r.get("Name", ""), chg))
+
+    strong.sort(key=lambda x: -x[2])
+    weak.sort(key=lambda x: x[2])
+    lines = ["### 均線排列速查表（日K 全多排列＝MA8>MA21>MA55 且三者向上＝強勢；全空排列＝MA8<MA21<MA55 且三者向下＝弱勢；其餘＝糾結盤整，勿選入預測榜）"]
+    if strong:
+        lines.append("- 強勢股（全多排列 {} 檔，依今日漲幅）：".format(len(strong))
+                    + "、".join(f"{c} {n}({chg:+.1f}%)" for c, n, chg in strong[:30]))
+    if weak:
+        lines.append("- 弱勢股（全空排列 {} 檔，依今日跌幅）：".format(len(weak))
+                    + "、".join(f"{c} {n}({chg:+.1f}%)" for c, n, chg in weak[:30]))
+    if not strong and not weak:
+        return "（無明確多空排列個股）"
+    return "\n".join(lines)
+
+
 def _xq_summary():
     if rh is None:
         return "（無法載入 render_html 模組）"
@@ -604,6 +663,7 @@ def main():
     parts.append(f"# 盤後綜合分析 input — {today.isoformat()}（{slot_label}）\n")
     parts.append(f"## 0. 現價速查表（支撐/壓力必須以此為基準）\n{_price_table()}\n")
     parts.append(f"## 0b. 技術位階速查表（支撐/壓力必須引用這些位階）\n{_tech_levels()}\n")
+    parts.append(f"## 0c. 均線排列速查表（強勢/弱勢選股用）\n{_ma_alignment()}\n")
     parts.append(f"## 1. XQ 盤中快照摘要\n{_xq_summary()}\n")
     try:
         import eight_quadrant
