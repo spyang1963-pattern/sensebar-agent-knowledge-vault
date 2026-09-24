@@ -204,11 +204,15 @@ def _ma_alignment():
         up8, up21, up55 = ma8 > ma8p, ma21 > ma21p, ma55 > ma55p
         # 5 日累計漲幅（對齊 XQ「5日連續強勢＋漲幅前100」）
         chg5 = (closes[-1] - closes[-6]) / closes[-6] * 100 if len(closes) >= 6 and closes[-6] else 0
-        vol5 = sum(vols[-5:]) if len(vols) >= 5 else 0
-        vol5_prev = sum(vols[-10:-5]) if len(vols) >= 10 else 0
-        vol_up = vol5 > vol5_prev  # 近5日量 > 前5日量
-        # 強勢＝全多排列（MA8>21>55 且向上）＋5日量增＋5日累計漲幅≥5%（會續漲的紅K/上漲黑K）
-        if ma8 > ma21 > ma55 and up8 and up21 and up55 and vol_up and chg5 >= 5:
+        # 量能均線：5MV>13MV>34MV＝量全多排列（近期量能放大）
+        vol_align = False
+        if len(vols) >= 34:
+            mv5 = sum(vols[-5:]) / 5
+            mv13 = sum(vols[-13:]) / 13
+            mv34 = sum(vols[-34:]) / 34
+            vol_align = mv5 > mv13 > mv34
+        # 強勢＝價全多排列（MA8>21>55 且向上）＋量全多排列（5MV>13MV>34MV）＋5日累計漲幅≥5%
+        if ma8 > ma21 > ma55 and up8 and up21 and up55 and vol_align and chg5 >= 5:
             strong.append((c, r.get("Name", ""), chg5))
         # 弱勢＝全空排列（MA8<21<55 且向下）＋5日累計跌幅≤-5%（自然下跌，不需量）
         elif ma8 < ma21 < ma55 and not up8 and not up21 and not up55 and chg5 <= -5:
@@ -216,7 +220,7 @@ def _ma_alignment():
 
     strong.sort(key=lambda x: -x[2])
     weak.sort(key=lambda x: x[2])
-    lines = ["### 均線排列速查表（強勢＝全多排列(MA8>21>55 且向上)＋5日量增＋5日累計漲幅≥5%；弱勢＝全空排列(MA8<21<55 且向下)＋5日累計跌幅≤-5%；其餘＝糾結盤整，勿選入預測榜）"]
+    lines = ["### 均線排列速查表（強勢＝價全多(MA8>21>55 且向上)＋量全多(5MV>13MV>34MV)＋5日累計漲幅≥5%；弱勢＝價全空(MA8<21<55 且向下)＋5日累計跌幅≤-5%；其餘＝糾結盤整，勿選入預測榜）"]
     if strong:
         lines.append("- 強勢股（{} 檔，依5日累計漲幅）：".format(len(strong))
                     + "、".join(f"{c} {n}({chg:+.1f}%)" for c, n, chg in strong[:50]))
