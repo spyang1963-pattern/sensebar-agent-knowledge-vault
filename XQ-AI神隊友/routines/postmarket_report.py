@@ -158,7 +158,7 @@ def call_gemini(input_text, slot):
     client = genai.Client(api_key=_read_key())
     model = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
     last_err = None
-    for attempt in range(1, 4):
+    for attempt in range(1, 6):
         try:
             resp = client.models.generate_content(
                 model=model,
@@ -175,10 +175,10 @@ def call_gemini(input_text, slot):
             return text, model
         except Exception as e:
             last_err = e
-            print(f"[report] Gemini 呼叫失敗（第 {attempt}/3 次）：{type(e).__name__} {e}")
-            if attempt < 3:
-                _time.sleep(20 * attempt)
-    raise RuntimeError(f"Gemini 呼叫 3 次皆失敗：{last_err}")
+            print(f"[report] Gemini 呼叫失敗（第 {attempt}/5 次）：{type(e).__name__} {e}")
+            if attempt < 5:
+                _time.sleep(30 * attempt)
+    raise RuntimeError(f"Gemini 呼叫 5 次皆失敗：{last_err}")
 
 
 def _audit_feedback():
