@@ -86,10 +86,20 @@ def quadrant(item):
     new_high = post_high > maxc_before
     review = "大量後未過高→調節" if max(dv) and (max(dv) / (sum(dv) / len(dv))) >= 1.5 and not new_high else ""
 
+    # 8MA 乖離（陡緩的備援：作者「離 8MA 越遠則角度陡」，A=None 時代用）
+    ma8_early = sum(p["close"] for p in ser[-8:]) / 8 if len(ser) >= 8 else last["close"]
+    dev8 = (last["close"] - ma8_early) / ma8_early * 100 if ma8_early else 0
+
     if price_up:
-        steep = "陡" if (A is None or A >= 1.2) else "缓"
+        if A is not None:
+            steep = "陡" if A >= 1.2 else "缓"
+        else:
+            steep = "陡" if dev8 >= 0.5 else "缓"
     else:
-        steep = "陡" if (A is not None and A < 0.8) else "缓"
+        if A is not None:
+            steep = "陡" if A < 0.8 else "缓"
+        else:
+            steep = "陡" if dev8 <= -0.5 else "缓"
     if vol == "增":
         if price_up:
             Q = "Q1量增价涨·陡" if steep == "陡" else "Q2量增价涨·缓(边際K)"
