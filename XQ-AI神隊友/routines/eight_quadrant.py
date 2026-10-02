@@ -120,6 +120,16 @@ def quadrant(item):
     above8 = last["close"] >= ma8_cur
     slope8 = "↑" if ma8_cur > ma8_prev else ("↓" if ma8_cur < ma8_prev else "→")
 
+    # 21MA（L0 趨勢的中段代理；55MA 需跨日約 3 交易日，暫以 21MA 代用）
+    above21 = None
+    slope21 = None
+    if len(ser) >= 21:
+        ma21_cur = sum(p["close"] for p in ser[-21:]) / 21
+        above21 = last["close"] >= ma21_cur
+        if len(ser) >= 22:
+            ma21_prev = sum(p["close"] for p in ser[-22:-1]) / 21
+            slope21 = "↑" if ma21_cur > ma21_prev else ("↓" if ma21_cur < ma21_prev else "→")
+
     mv5_prev = sum(dv[-6:-1]) / 5 if len(dv) >= 6 else None   # 前一根的 5MV
     attack = (mv5_prev is not None) and (dv[-1] > mv5_prev)
     mv5_cur = sum(dv[-5:]) / 5 if len(dv) >= 5 else None
@@ -148,15 +158,16 @@ def quadrant(item):
     return dict(code=item.get("code", ""), name=item.get("name", ""), close=last["close"],
                 dirx=item.get("dir", ""), climax=bool(item.get("climax")), sweep=bool(item.get("sweep")),
                 Q=Q, bias=bias, A=A, B=B, VR=VR, VX=VX, vol=vol, mb=mb, flag=flag or review,
-                above8=above8, slope8=slope8, attack=attack, mv5_s=mv5_s, mv13_s=mv13_s, mv55=mv55,
+                above8=above8, slope8=slope8, above21=above21, slope21=slope21, attack=attack,
+                mv5_s=mv5_s, mv13_s=mv13_s, mv55=mv55,
                 price_up=price_up, deduct=deduct, b_decline=b_decline)
 
 
 _DEFAULT_WEIGHTS = {"Q": 2, "MA": 2, "deduct": 2, "B": 2, "attack": 1}
 
-# 量價象限 → 下一方向（Q 是「量×價×陡緩」，直接映射即時方向；bias 是結構立場，不適用）
-# 依分層稽核實證（15分 樣本）改為「當沖均值回歸」：量增＝竭盡→反轉、量縮價漲陡=背離→跌、量縮價跌陡=賣壓竭盡→漲
-_Q_DIR = {"Q1": -0.3, "Q2": -0.5, "Q3": -1.0, "Q4": 0.3, "Q5": -0.5, "Q6": 0.5, "Q7": 0.3, "Q8": 0.0}
+# 量價象限 → 動作偏向（作者的「順勢/延續」，非均值回歸）
+# Q1 量增價漲陡＝買盤爆發→持有/順勢(續漲)；Q4 量增價跌緩＝空勢續(續跌)；Q8 多方整理＝等量回補(偏多)
+_Q_DIR = {"Q1": 1.0, "Q2": 0.0, "Q3": -1.0, "Q4": -0.5, "Q5": -0.3, "Q6": 0.5, "Q7": 0.0, "Q8": 0.3}
 
 
 def next_direction(q, climax="", sweep=""):
@@ -195,6 +206,15 @@ def next_direction(q, climax="", sweep=""):
             bear += w["MA"] * 0.5
         elif not above and slope == "↑":
             bull += w["MA"] * 0.5
+
+    # 2b) L0 趨勢環境（21MA 站上+↑＝多方環境；跌破+↓＝空方環境；55MA 跨日暫以 21MA 代用）
+    above21 = q.get("above21")
+    slope21 = q.get("slope21")
+    if slope21 in ("↑", "↓") and above21 is not None:
+        if above21 and slope21 == "↑":
+            bull += w["MA"]
+        elif not above21 and slope21 == "↓":
+            bear += w["MA"]
 
     # 3) 扣抵（向前看：助漲/助跌）
     d = q.get("deduct", "")
