@@ -2097,30 +2097,58 @@ def _next_trend(vq):
 
 
 def _detect_climax(series, sup, res):
-    """極限大量（Volume Climax）：最新一輪成交值爆量（>過去5輪均×2.5）且接近區間極限。
-    bear＝上漲到前高附近爆量（買盤竭盡轉空）、bull＝下跌到前低附近爆量（賣盤竭盡轉多）。"""
-    if len(series) < 3:
+    """極限大量（Volume Climax）＋兩根K確認（作者鐵律）。
+
+    極限大量＝成交值 > 過去5輪均×2.5 且接近區間極限。
+    出現後隔一根K才成立：top＝沒過高/黑K→空、紅K收最高→多；
+    bottom＝沒過低/紅K→多、黑K收最低→空。
+    bear＝上漲到前高附近爆量後隔K確認轉弱、bull＝下跌到前低附近爆量後隔K確認轉強。
+    """
+    if len(series) < 4:
         return ""
-    last = series[-1]
-    val = last.get("val", 0)
-    prev_vals = [p.get("val", 0) for p in series[-6:-1]]
+    big = series[-2]
+    conf = series[-1]
+    val = big.get("val", 0)
+    prev_vals = [p.get("val", 0) for p in series[-7:-2]]
     if not prev_vals:
         return ""
     avg = sum(prev_vals) / len(prev_vals)
     if avg <= 0 or val < avg * 2.5:
         return ""
-    close = last.get("close", 0)
+    close = big.get("close", 0)
     span = (res - sup) if (res and sup) else 0
+    side = ""
     if span > 0:
         pos = (res - close) / span
         if pos < 0.2:
-            return "bear"
-        if pos > 0.8:
-            return "bull"
+            side = "top"
+        elif pos > 0.8:
+            side = "bottom"
     elif res and close >= res * 0.99:
-        return "bear"
+        side = "top"
     elif sup and close <= sup * 1.01:
-        return "bull"
+        side = "bottom"
+    if not side:
+        return ""
+    bh, bl = big.get("high", close), big.get("low", close)
+    ch, cl = conf.get("high", 0), conf.get("low", 0)
+    co, cc = conf.get("open", 0), conf.get("close", 0)
+    if co <= 0:
+        return ""
+    if side == "top":
+        if cc < co:
+            return "bear"                    # 黑K → 空
+        if ch < bh:
+            return "bear"                    # 沒過高 → 調節
+        if cc >= bh:                          # 紅K 收過前高（收最高）→ 多
+            return "bull"
+    else:
+        if cc > co:
+            return "bull"                    # 紅K → 多
+        if cl > bl:
+            return "bull"                    # 沒過低 → 止跌
+        if cc <= bl:                          # 黑K 收破前低（收最低）→ 空
+            return "bear"
     return ""
 
 
@@ -2336,7 +2364,7 @@ def _pm_monitor():
             import eight_quadrant
             _oq = eight_quadrant.quadrant({"code": s["code"], "name": s["name"], "dir": s["dir"], "series": series})
             if _oq:
-                octant = {"Q": _oq["Q"], "bias": _oq["bias"], "above8": _oq["above8"],
+                octant = {"Q": _oq["Q"], "bias": _oq["bias"], "attribute": _oq["attribute"], "above8": _oq["above8"],
                           "slope8": _oq["slope8"], "vol": _oq["vol"],
                           "flag": (_oq["flag"] or ""), "mb": (_oq["mb"] or "")}
         except Exception:
@@ -2360,7 +2388,7 @@ def _pm_monitor():
             import eight_quadrant
             _oq15 = eight_quadrant.quadrant({"code": s["code"], "name": s["name"], "dir": s["dir"], "series": series15})
             if _oq15:
-                octant15 = {"Q": _oq15["Q"], "bias": _oq15["bias"], "above8": _oq15["above8"],
+                octant15 = {"Q": _oq15["Q"], "bias": _oq15["bias"], "attribute": _oq15["attribute"], "above8": _oq15["above8"],
                             "slope8": _oq15["slope8"], "vol": _oq15["vol"],
                             "flag": (_oq15["flag"] or ""), "mb": (_oq15["mb"] or "")}
                 next15, _ = eight_quadrant.next_direction(_oq15, climax, sweep)
