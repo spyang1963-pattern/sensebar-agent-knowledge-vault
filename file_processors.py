@@ -672,10 +672,200 @@ def _ocr_pdf(filepath, dpi=150, task_id=None):
 
 
 
-def _extract_docx(filepath):
+# ── 圖片 → AI 可讀（描述＋圖中文字）──
+
+VISION_MIME = {
+    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".webp": "image/webp", ".gif": "image/gif", ".bmp": "image/bmp",
+    ".tif": "image/tiff", ".tiff": "image/tiff",
+}
+IMG_MIN_BYTES = 15 * 1024        # 跳過 < 15KB 小圖（icon/logo/分隔線）
+IMG_MIN_DIM = 200                # 跳過任一邊 < 200px 的圖
+MAX_IMAGES_PER_DOC = 30          # 單檔圖片處理上限
+MAX_VISION_PER_DAY = 300         # 每日 vision 呼叫上限
+VISION_QUOTA_FILE = WORKING / "_vision_quota.json"
+
+_VISION_PROMPT = (
+    "請用繁體中文說明這張圖片的內容（1-3 句），並逐字抄出圖片中出現的所有文字。"
+    "請依下列格式輸出：\n【描述】<圖片內容說明>\n【文字】<圖中所有文字；若無文字請寫「（無）」>"
+)
+
+
+def _vision_quota_take(n=1):
+    """每日 vision 呼叫配額（逐日重置）；可取用回傳 True"""
+    today = datetime.now().strftime("%Y-%m-%d")
+    data = {"date": today, "count": 0}
+    try:
+        if VISION_QUOTA_FILE.exists():
+            d = json.loads(VISION_QUOTA_FILE.read_text("utf-8"))
+            if d.get("date") == today:
+                data = d
+    except Exception:
+        pass
+    if data["count"] + n > MAX_VISION_PER_DAY:
+        return False
+    data["count"] += n
+    try:
+        VISION_QUOTA_FILE.parent.mkdir(parents=True, exist_ok=True)
+        VISION_QUOTA_FILE.write_text(json.dumps(data, ensure_ascii=False), "utf-8")
+    except Exception:
+        pass
+    return True
+
+
+def _img_passes(data, ext):
+    """過濾小圖（icon/logo/分隔線）"""
+    if not data or len(data) < IMG_MIN_BYTES:
+        return False
+    if ext in (".emf", ".wmf"):
+        return True
+    try:
+        from io import BytesIO
+        from PIL import Image
+        with Image.open(BytesIO(data)) as im:
+            if min(im.size) < IMG_MIN_DIM:
+                return False
+    except Exception:
+        return True
+    return True
+
+
+def _describe_image(data, ext, task_id=None, idx=None, total=None):
+    """圖片 →「描述＋圖中文字」。引擎：Gemini Vision → Groq Vision → Tesseract（僅文字）"""
+    mime = VISION_MIME.get(ext, "image/png")
+    _write_progress(task_id, type="image", stage="vision",
+                    image=idx, total=total, msg=f"辨識圖片 {idx or ''}/{total or ''}")
+
+    # 1) Gemini Vision
+    try:
+        from google import genai
+        from google.genai import types
+        key = os.environ.get("GEMINI_API_KEY") or ""
+        if not key:
+            kf = Path.home() / ".gemini_api_key"
+            if kf.exists():
+                key = kf.read_text("utf-8").strip()
+        if key and _vision_quota_take():
+            client = genai.Client(api_key=key)
+            resp = client.models.generate_content(
+                model="gemini-3.5-flash-lite",
+                contents=[types.Part.from_bytes(data=data, mime_type=mime), _VISION_PROMPT],
+                config=types.GenerateContentConfig(temperature=0.2),
+            )
+            t = (resp.text or "").strip()
+            if t:
+                return t
+    except Exception as e:
+        sys.stderr.write(f"[img] Gemini 失敗: {str(e)[:150]}，改試 Groq\n")
+
+    # 2) Groq Vision
+    try:
+        import groq, base64
+        key = os.environ.get("GROQ_API_KEY") or ""
+        if not key:
+            kf = Path.home() / ".groq_api_key"
+            if kf.exists():
+                key = kf.read_text("utf-8").strip()
+        if key:
+            client = groq.Groq(api_key=key, timeout=60, max_retries=0)
+            b64 = base64.b64encode(data).decode("utf-8")
+            resp = client.chat.completions.create(
+                model="qwen/qwen3.6-27b",
+                messages=[{"role": "user", "content": [
+                    {"type": "text", "text": _VISION_PROMPT},
+                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                ]}],
+                max_tokens=4096,
+            )
+            t = resp.choices[0].message.content.strip() if resp.choices else ""
+            if t:
+                return _strip_think(t)
+    except Exception as e:
+        sys.stderr.write(f"[img] Groq 失敗: {str(e)[:150]}，改試 Tesseract\n")
+
+    # 3) Tesseract（僅文字，無描述）
+    try:
+        import pytesseract
+        from io import BytesIO
+        from PIL import Image
+        tess = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+        if Path(tess).exists():
+            pytesseract.pytesseract.tesseract_cmd = tess
+        with Image.open(BytesIO(data)) as im:
+            text = pytesseract.image_to_string(im, lang="chi_tra+eng", config="--psm 6").strip()
+        if text:
+            return f"【描述】（離線 OCR，無描述）\n【文字】\n{text}"
+    except Exception as e:
+        sys.stderr.write(f"[img] Tesseract 失敗: {str(e)[:150]}\n")
+    return ""
+
+
+def _render_segments(segs, rels, task_id=None):
+    """把 text/img 段落依原順序交錯輸出；img 段落呼叫 vision 產生描述＋文字"""
+    total_imgs = sum(1 for k, _ in segs if k == "img")
+    out, img_no, done = [], 0, 0
+    for kind, val in segs:
+        if kind == "text":
+            out.append(val)
+            continue
+        rel = rels.get(val)
+        part = getattr(rel, "target_part", None)
+        data = getattr(part, "blob", None)
+        ext = Path(str(getattr(rel, "target_ref", ""))).suffix.lower()
+        if not data or not _img_passes(data, ext):
+            continue
+        if done >= MAX_IMAGES_PER_DOC:
+            out.append(f"[圖（已達單檔上限 {MAX_IMAGES_PER_DOC} 張，其餘略過）]")
+            break
+        done += 1
+        img_no += 1
+        desc = _describe_image(data, ext, task_id=task_id,
+                               idx=img_no, total=min(total_imgs, MAX_IMAGES_PER_DOC))
+        if desc:
+            out.append(f"[圖{img_no}]\n{desc}")
+    return "\n".join(out)
+
+
+def _extract_docx(filepath, task_id=None):
+    """Word → 文字＋表格；內嵌圖片依原位交錯插入（描述＋圖中文字）"""
     import docx
+    from docx.oxml.ns import qn
     doc = docx.Document(filepath)
-    return "\n".join(p.text for p in doc.paragraphs)
+    rels = doc.part.rels
+
+    def para_text(p):
+        return "".join(t.text or "" for t in p.iter(qn("w:t")))
+
+    def collect_imgs(el, segs):
+        for node in el.iter():
+            tag = node.tag.split("}")[-1]
+            if tag == "blip":            # DrawingML（新版）
+                rid = node.get(qn("r:embed"))
+            elif tag == "imagedata":     # VML（舊版）
+                rid = node.get(qn("r:id"))
+            else:
+                continue
+            if rid:
+                segs.append(("img", rid))
+
+    segs = []
+    for child in doc.element.body.iterchildren():
+        if child.tag == qn("w:p"):
+            txt = para_text(child).strip()
+            if txt:
+                segs.append(("text", txt))
+            collect_imgs(child, segs)
+        elif child.tag == qn("w:tbl"):
+            for row in child.iter(qn("w:tr")):
+                cells = []
+                for tc in row.findall(qn("w:tc")):
+                    cells.append(" ".join(para_text(p).strip() for p in tc.iter(qn("w:p"))).strip())
+                line = " | ".join(c for c in cells if c)
+                if line:
+                    segs.append(("text", line))
+                collect_imgs(row, segs)
+
+    return _render_segments(segs, rels, task_id=task_id)
 
 
 def _extract_txt(filepath):
@@ -719,6 +909,8 @@ def process_document(filepath, kb_subdir="文件", title=None, task_id=None):
     try:
         if handler is _extract_pdf:
             content = handler(str(fp), task_id=task_id)
+        elif handler is _extract_docx:
+            content = handler(str(fp), task_id=task_id)
         else:
             content = handler(str(fp))
     except _QuotaStop:
@@ -748,6 +940,63 @@ def process_document(filepath, kb_subdir="文件", title=None, task_id=None):
 
 # ── Web ──
 
+def _download_image(url, max_bytes=10 * 1024 * 1024):
+    """下載網頁圖片；回傳 (data, ext)；失敗或過大回傳 (None, "")"""
+    from urllib.parse import urlparse, unquote
+    import requests
+    try:
+        r = requests.get(url, timeout=20, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Referer": url,
+        })
+        r.raise_for_status()
+        data = r.content
+        if not data or len(data) > max_bytes:
+            return None, ""
+        ctype = (r.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if ctype.startswith("image/"):
+            ext = "." + ctype.split("/")[-1]
+            if ext == ".jpeg":
+                ext = ".jpg"
+        else:
+            ext = Path(urlparse(url).path).suffix.lower()
+        return data, ext
+    except Exception:
+        return None, ""
+
+
+def _embed_web_images(soup, base_url, task_id=None):
+    """依網頁原順序把 <img> 就地換成「描述＋圖中文字」，跳過小圖/logo"""
+    from urllib.parse import urljoin
+    imgs = soup.find_all("img")
+    total = len(imgs)
+    img_no, done = 0, 0
+    for img in imgs:
+        if done >= MAX_IMAGES_PER_DOC:
+            break
+        src = (img.get("src") or img.get("data-src") or img.get("data-original") or "").strip()
+        alt = (img.get("alt") or "").strip()
+        if not src or src.startswith("data:"):
+            if alt:
+                img.replace_with(f"[圖：{alt}]")
+            else:
+                img.decompose()
+            continue
+        data, ext = _download_image(urljoin(base_url, src))
+        if not data or not _img_passes(data, ext):
+            if alt:
+                img.replace_with(alt)
+            else:
+                img.decompose()
+            continue
+        done += 1
+        img_no += 1
+        desc = _describe_image(data, ext, task_id=task_id,
+                               idx=img_no, total=min(total, MAX_IMAGES_PER_DOC))
+        label = f"[圖{img_no}]" + (f"（{alt}）" if alt else "")
+        img.replace_with(f"\n{label}\n{desc}\n" if desc else f"\n{label}\n")
+
+
 def process_web(url, kb_subdir="網頁", title=None, task_id=None):
     """網頁 URL → 擷取內容 → KB 條目"""
     import requests
@@ -772,6 +1021,10 @@ def process_web(url, kb_subdir="網頁", title=None, task_id=None):
         soup = BeautifulSoup(r.text, "html.parser")
         for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
             tag.decompose()
+        try:
+            _embed_web_images(soup, url, task_id)
+        except Exception as e:
+            sys.stderr.write(f"[web] 圖片處理失敗（略過）: {str(e)[:150]}\n")
         content = soup.get_text(separator="\n", strip=True)
     except Exception as e:
         content = r.text[:50000]
