@@ -19,7 +19,7 @@ channel_watcher.py — YouTube 頻道自動監控與收成
 """
 import os, sys, re, json, shutil, subprocess, time, argparse
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 sys.stdout.reconfigure(encoding="utf-8")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -43,6 +43,47 @@ _last_scan_details = []
 def safe_filename(name):
     illegal = r'[\\/:*?"<>|]'
     return re.sub(illegal, "_", name)
+
+def kb_basename(title, date_prefix=None):
+    """KB 檔名：有日期時以「YYYY-MM-DD_標題」為前綴，否則僅用標題。
+    頻道/直播等有時間序的影片進入知識庫時，日期前綴可辨識資訊時點。"""
+    safe = safe_filename(title)
+    return f"{date_prefix}_{safe}" if date_prefix else safe
+
+# 影片日期快取（避免同一支重複呼叫 yt-dlp）
+_VIDEO_DATE_CACHE = {}
+
+def get_video_date(video_id):
+    """取得影片日期（Asia/Taipei）→ 'YYYY-MM-DD' 或 None。
+    優先順序：timestamp（直播/發布時點，換算台北時區）→ release_date → upload_date。
+    """
+    if video_id in _VIDEO_DATE_CACHE:
+        return _VIDEO_DATE_CACHE[video_id]
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    date = None
+    try:
+        r = subprocess.run(
+            ["yt-dlp", "--no-update", "--skip-download", "--no-warnings",
+             "--print", "%(timestamp)s|%(release_date)s|%(upload_date)s", url],
+            capture_output=True, text=False, timeout=120,
+        )
+        line = r.stdout.decode("utf-8", errors="replace").strip().splitlines()
+        if line:
+            parts = (line[0].split("|") + ["", "", ""])[:3]
+            ts, rel, up = parts
+            if ts and ts not in ("NA", "None"):
+                tw = datetime.fromtimestamp(int(ts), timezone(timedelta(hours=8)))
+                date = tw.strftime("%Y-%m-%d")
+            else:
+                for v in (rel, up):
+                    if v and re.match(r"^\d{8}$", v):
+                        date = f"{v[:4]}-{v[4:6]}-{v[6:8]}"
+                        break
+        log(f"  [日期] {video_id} → {date}")
+    except Exception as e:
+        log(f"  [日期] 取得失敗 {video_id}: {e}")
+    _VIDEO_DATE_CACHE[video_id] = date
+    return date
 
 def srt_to_transcript(srt_path):
     """從 .srt 提取純文字逐字稿"""
@@ -115,10 +156,11 @@ YT_DL_FORMAT = ("bestvideo[height<=1080][ext=mp4][vcodec^=avc1]+bestaudio[ext=m4
                 "best[ext=mp4]/best")
 
 
-def download_yt_video(video_id, title, format_spec=YT_DL_FORMAT):
-    """下載完整影片（預設最高 1080p H.264，避免最差畫質字幕讀不清）"""
+def download_yt_video(video_id, title, format_spec=YT_DL_FORMAT, date_prefix=None):
+    """下載完整影片（預設最高 1080p H.264，避免最差畫質字幕讀不清）
+    date_prefix：有值時檔名以「YYYY-MM-DD_標題」為前綴。"""
     url = f"https://www.youtube.com/watch?v={video_id}"
-    fname = safe_filename(title)
+    fname = kb_basename(title, date_prefix)
     out_path = YT_VIDEOS / f"{fname}.mp4"
 
     if out_path.exists() and out_path.stat().st_size > 0:
@@ -259,15 +301,16 @@ def burn_subtitles(video_path, srt_path, output_path, font_size=18, margin_v=15,
     return os.path.exists(output_path)
 
 
-def create_kb_entry(video_id, title, transcript, srt_path, video_path, kb_dir, burned_path=None):
+def create_kb_entry(video_id, title, transcript, srt_path, video_path, kb_dir, burned_path=None, date_prefix=None):
     """建立知識庫條目
-    - kb_dir/kb_dir.md：逐字稿 + 連結（含燒字幕影片路徑，若有產出）
-    - kb_dir/kb_dir.srt：字幕檔
+    - kb_dir/{date_prefix_}{title}.md：逐字稿 + 連結（含燒字幕影片路徑，若有產出）
+    - kb_dir/{date_prefix_}{title}.srt：字幕檔
+    date_prefix：有值時（YYYY-MM-DD）作為檔名前綴，維持知識時序可辨識。
     """
-    safe = safe_filename(title)
-    md_path = kb_dir / f"{safe}.md"
-    srt_dst = kb_dir / f"{safe}.srt"
-    link_dst = kb_dir / f"{safe}.link.txt"
+    base = kb_basename(title, date_prefix)
+    md_path = kb_dir / f"{base}.md"
+    srt_dst = kb_dir / f"{base}.srt"
+    link_dst = kb_dir / f"{base}.link.txt"
 
     kb_dir.mkdir(parents=True, exist_ok=True)
 
@@ -277,6 +320,8 @@ def create_kb_entry(video_id, title, transcript, srt_path, video_path, kb_dir, b
 ## 影片資訊
 - YouTube 連結：https://www.youtube.com/watch?v={video_id}
 """
+    if date_prefix:
+        md_content += f"- 日期：{date_prefix}\n"
     if video_path and os.path.exists(video_path):
         md_content += f"- 本機影片：{video_path}\n"
     if burned_path and os.path.exists(burned_path):
@@ -320,16 +365,18 @@ def process_has_subs(video_id, title, langs, kb_dir, burn_subs=False):
     log(f"  [字幕] YouTube 字幕：{srt_path.name}")
     transcript = srt_to_transcript(srt_path)
 
+    date_prefix = get_video_date(video_id)
+
     burned_path = None
     if burn_subs:
         log("  [燒字幕] 依規則下載搭配影片並燒字幕...")
-        video_path = download_yt_video(video_id, title)
+        video_path = download_yt_video(video_id, title, date_prefix=date_prefix)
         if video_path:
             bp = Path(video_path).with_name(Path(video_path).stem + "_字幕.mp4")
             if burn_subtitles(video_path, srt_path, bp):
                 burned_path = bp
 
-    md_path = create_kb_entry(video_id, title, transcript, srt_path, None, kb_dir, burned_path=burned_path)
+    md_path = create_kb_entry(video_id, title, transcript, srt_path, None, kb_dir, burned_path=burned_path, date_prefix=date_prefix)
 
     # 清理
     srt_path.unlink()
@@ -340,7 +387,8 @@ def process_no_subs(video_id, title, langs, kb_dir):
     """無字幕路徑：下載影片 → Pipeline → 燒字幕 → KB 條目。成功回傳 md_path，失敗回傳 None"""
     log("  [轉錄] 無 YouTube 字幕，啟動離線 Pipeline...")
 
-    video_path = download_yt_video(video_id, title)
+    date_prefix = get_video_date(video_id)
+    video_path = download_yt_video(video_id, title, date_prefix=date_prefix)
     if not video_path:
         log("  [轉錄] 影片下載失敗")
         return None
@@ -363,7 +411,7 @@ def process_no_subs(video_id, title, langs, kb_dir):
     if not burn_subtitles(video_path, srt_src, burned_path):
         burned_path = None
 
-    md_path = create_kb_entry(video_id, title, transcript, srt_src, video_path, kb_dir, burned_path=burned_path)
+    md_path = create_kb_entry(video_id, title, transcript, srt_src, video_path, kb_dir, burned_path=burned_path, date_prefix=date_prefix)
 
     return md_path
 
@@ -632,6 +680,7 @@ def process_youtube_url(url, burn_sub=False, save_to_kb=True, langs=None):
 
             log(f"  [{i+1}] {title}")
             video_info = {"id": vid, "title": title, "success": False, "kb_path": ""}
+            date_prefix = get_video_date(vid)
 
             # 嘗試下載字幕
             langs_to_try = langs
@@ -641,14 +690,14 @@ def process_youtube_url(url, burn_sub=False, save_to_kb=True, langs=None):
                 log(f"  有 YouTube 字幕")
                 transcript = srt_to_transcript(srt_path)
                 kb_dir = KB_ROOT / "youtube-clips"
-                create_kb_entry(vid, title, transcript, srt_path, None, kb_dir)
+                create_kb_entry(vid, title, transcript, srt_path, None, kb_dir, date_prefix=date_prefix)
                 video_info["success"] = True
-                video_info["kb_path"] = str(kb_dir / f"{safe_filename(title)}.md")
+                video_info["kb_path"] = str(kb_dir / f"{kb_basename(title, date_prefix)}.md")
                 srt_path.unlink()
                 processed_count += 1
             else:
                 log(f"  無 YouTube 字幕，啟動 Pipeline...")
-                video_path = download_yt_video(vid, title)
+                video_path = download_yt_video(vid, title, date_prefix=date_prefix)
                 if video_path:
                     output_dir = run_pipeline(video_path, title, vid)
                     if output_dir:
@@ -656,9 +705,9 @@ def process_youtube_url(url, burn_sub=False, save_to_kb=True, langs=None):
                         if srt_src.exists():
                             transcript = srt_to_transcript(srt_src)
                             kb_dir = KB_ROOT / "youtube-clips"
-                            create_kb_entry(vid, title, transcript, srt_src, video_path, kb_dir)
+                            create_kb_entry(vid, title, transcript, srt_src, video_path, kb_dir, date_prefix=date_prefix)
                             video_info["success"] = True
-                            video_info["kb_path"] = str(kb_dir / f"{safe_filename(title)}.md")
+                            video_info["kb_path"] = str(kb_dir / f"{kb_basename(title, date_prefix)}.md")
 
                             if burn_sub:
                                 burned = Path(video_path).with_name(Path(video_path).stem + "_字幕.mp4")
