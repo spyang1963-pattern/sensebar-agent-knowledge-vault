@@ -252,3 +252,23 @@ Clipping/
 | YouTube 連結不能點 | 改成 `[YouTube](URL)` 格式 |
 | 無逐字稿的檔案 | 移到 `_archive_no_transcript/` |
 | knowledge-base 沒同步 | 跑 `python sync_clipping.py` |
+
+## channel_watcher 頻道自動監控（2026-09-23 更新）
+
+### 已知陷阱（都被踩過，務必讀）
+
+1. **auto-editor 完成後會自動開播放器**：`smart_cut.py` 呼叫 auto-editor 處理完預設「Do not open the output file after editing」，此環境的系統預設播放器是 PotPlayer → 直播逐支處理時 PotPlayer 一個接一個跳窗（使用者印象＝「一直打轉」）。**已修**：smart_cut.py 已加 `--no-open`。改回時勿移除。
+2. **state 檔舊 bug（打轉真正主因一）**：舊版 `channel_watcher.py` 的 `process_has_subs` 成功分支 `continue` 會跳過 `save_channel_state`，只有離線轉錄分支會存。結果 `shared\watched_channels_state.json` 的 `last_video_id` 停在最早 → 每次掃描把已處理的支當「新片」重新下載＋轉錄（耗時且反覆）。**已修**：for 迴圈每支處理完統一保存。勿再改用 continue 跳過保存。
+3. **`--once` 超過 10 分鐘無輸出**：多半是 PowerShell 管線緩衝假象，不代表卡住。判別法：另開視窗看 `logs\channel_watcher.log` 是否持續進展；執行時建議 `python -u ... --once *> 檔` 重導輸出。
+4. **執行中途被中止的後果**：state 倒退 → 下次掃描重處理已完成的支。校正法：把該頻道 `last_video_id` 設為該清單**列表第一個** `id`（即「假裝全部處理過」→ 掃描時 0 新片）。20VTA streams 列表排序非直覺（首支未必最新上傳），但以此校正仍安全。
+5. **Groq chat completions 在此環境回 403/404**（models 可用但 chat 被拒，疑似 region 限制）。直播摘要改用 **Gemini**：key 在 `~/.gemini_api_key`（deep_report.py 同款讀法），模型 `gemini-3.5-flash-lite`。
+
+### 直播報告（20VTA）
+
+- 產生器：`make_live_report.py`（逐字稿 md → Gemini 摘要 → python-docx 產 Word）
+- 輸出：`knowledge-base\20VTA 頻道\直播\直播報告\*.docx`
+- 格式參考：`【波段王子 廖崧沂】命中大盤轉折 42006！...doc`
+  （一、影片資訊；二、摘要；三、主要重點與操作策略（大盤/技術/操作系統/個股/建議）；四、重點與提醒事項；五、結語）
+- `channel_watcher.py` 在處理 20VTA 直播（`kb_dir.name=="直播"`）完成後自動呼叫 `make_live_report.make_report(md_path)`。
+- 補做缺報告：`python make_live_report.py --all`（已存在 .doc/.docx 會 SKIP）。
+- 日期來源：`.link.txt` 的 video_id → yt-dlp `extract_flat` 取 upload_date。

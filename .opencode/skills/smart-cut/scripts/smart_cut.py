@@ -127,6 +127,7 @@ def main() -> None:
         "--margin", args.margin,
         "--edit", f"audio:threshold={args.threshold}",
         "-o", str(args.out),
+        "--no-open",
     ]
     print(f"[CMD] {' '.join(cmd)}")
     try:
