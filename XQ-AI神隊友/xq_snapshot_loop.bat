@@ -25,14 +25,21 @@ set TMPOUT=%TEMP%\xq_snap_%RANDOM%_%RANDOM%.txt
 
 echo ===== round %date% %time% ===== >> "%LOGFILE%"
 
+set FRESH=0
 call :cap rank
 call :cap breadth
 call :cap notes
 
+if "%FRESH%"=="0" goto :no_render
 echo [snapshot] render dashboard >> "%LOGFILE%"
 python "%~dp0routines\render_html.py" --dashboard >> "%LOGFILE%" 2>&1
 echo [snapshot] deploy >> "%LOGFILE%"
 python "%~dp0publisher\deploy.py" >> "%LOGFILE%" 2>&1
+goto :after_render
+
+:no_render
+echo [snapshot] all snapshots stale/SKIP (休市/報價中斷/Excel 停住) - skip render+deploy >> "%LOGFILE%"
+:after_render
 
 echo [xq_snapshot_loop] done: %date% %time% >> "%LOGFILE%"
 del "%TMPOUT%" 2>nul
@@ -49,4 +56,6 @@ if not errorlevel 1 (
   powershell.exe -STA -NoProfile -ExecutionPolicy Bypass -File "%~dp0routines\snapshot.ps1" -Kind %1 > "%TMPOUT%" 2>&1
   type "%TMPOUT%" >> "%LOGFILE%"
 )
+findstr /C:"stale=0" "%TMPOUT%" >nul
+if not errorlevel 1 set FRESH=1
 exit /b 0

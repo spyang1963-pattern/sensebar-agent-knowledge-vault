@@ -42,6 +42,25 @@ if (-not $Force -and ($mins -lt 545 -or $mins -gt 810)) {
     exit 0
 }
 
+# ---------- 台灣股市休市日守門（國定假日/補假；每年更新一次） ----------
+# 排程只跑週一~五，但不知國定假日；若今天是休市日就直接 SKIP，
+# 避免 Excel 沒關、停留在前一交易日收盤，把舊資料誤當今天快照。
+# 格式 yyyy-MM-dd；來源：證交所歷年開休市日期表（http://www.twse.com.tw）。
+$holidays = @(
+    '2026-01-01',                                                       # 元旦
+    '2026-02-16', '2026-02-17', '2026-02-18', '2026-02-19', '2026-02-20',   # 春節（除夕~初四）
+    '2026-03-02',                                                       # 228 補假
+    '2026-04-06',                                                       # 清明補假
+    '2026-06-19',                                                       # 端午節
+    '2026-09-25', '2026-09-28', '2026-09-29',                           # 中秋節 + 連假
+    '2026-10-09'                                                        # 國慶補假（10/10 週六）
+)
+$todayStr = $now.ToString('yyyy-MM-dd')
+if (-not $Force -and $holidays -contains $todayStr) {
+    "### SKIP=1  今天 $todayStr 為台股休市日（國定假日/補假），本次不執行（要測試請加 -Force）"
+    exit 0
+}
+
 . (Join-Path $PSScriptRoot '_excel.ps1')
 
 $proc = Get-Process -Name EXCEL -ErrorAction SilentlyContinue
@@ -104,12 +123,13 @@ if ($KeepN -gt 0 -and $outSorted.Count -gt $KeepN) {
 $dir = Join-Path $PSScriptRoot 'snapshots'
 if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
 $stamp = $Kind + '_' + $now.ToString('yyyyMMdd_HHmmss')
-$sig = ($outSorted | ForEach-Object { "$($_.Code):$($_.Vol):$($_.Close)" }) -join ','
+# 簽章依「代碼:量:價」排序後再接，避免成交值微幅漂移改變排序、導致休市舊資料誤判成新資料
+$sig = (($outSorted | ForEach-Object { "$($_.Code):$($_.Vol):$($_.Close)" }) | Sort-Object) -join ','
 $stale = 0
 $prev = Get-ChildItem $dir -Filter ($Kind + '_*.csv') -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
 if ($prev) {
     $pd = Import-Csv $prev.FullName
-    $psig = ($pd | ForEach-Object { "$($_.Code):$($_.Vol):$($_.Close)" }) -join ','
+    $psig = (($pd | ForEach-Object { "$($_.Code):$($_.Vol):$($_.Close)" }) | Sort-Object) -join ','
     if ($sig -eq $psig) { $stale = 1 }
 }
 $saved = ''
