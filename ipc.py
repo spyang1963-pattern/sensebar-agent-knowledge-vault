@@ -192,7 +192,20 @@ class TaskQueue:
             assigned_to = task_info.get("assigned_to")
             if assigned_to == self.machine or assigned_to is None:
                 assigned.append(task)
-        
+
+        # 排序：優先級高者先，其次新指派者先（discovered_at 新→舊）。
+        # 避免新任務因為檔名編號最大而永遠排在最後、長期等不到執行。
+        def _pick_key(t):
+            ti = t.get("task_info", {})
+            try:
+                prio = int(ti.get("priority", t.get("priority", 0)) or 0)
+            except (TypeError, ValueError):
+                prio = 0
+            disc = ti.get("discovered_at") or t.get("discovered_at") or t.get("last_updated") or ""
+            return (prio, str(disc))
+
+        assigned.sort(key=_pick_key, reverse=True)
+
         return assigned
     
     def update_task_status(self, task_id, status, error=None):

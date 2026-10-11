@@ -45,22 +45,47 @@ def strip_meta(md_text: str) -> str:
     return "\n".join(md_text.splitlines()[8:]).strip()
 
 
+def split_body(body: str, chunk_chars: int) -> list:
+    """把長逐字稿依行切成長度約 chunk_chars 的多段（0＝不分段）"""
+    if chunk_chars <= 0:
+        return [body]
+    chunks, cur, size = [], [], 0
+    for ln in body.splitlines():
+        cur.append(ln)
+        size += len(ln) + 1
+        if size >= chunk_chars:
+            seg = "\n".join(cur).strip()
+            if seg:
+                chunks.append(seg)
+            cur, size = [], 0
+    tail = "\n".join(cur).strip()
+    if tail:
+        chunks.append(tail)
+    return chunks or [body]
+
+
 def gemini_note(transcript: str, api_key: str) -> str:
     from google import genai
     from google.genai import types
 
-    system = "你是專業的教學共筆編輯，擅長把技術分析課程的語音逐字稿整理成結構完整、易於複習的詳細課程筆記。"
-    user = f"""這是某堂技術分析課程其中一部分的逐字稿。請整理成「詳細課程筆記」章節。
+    system = "你是專業的教學共筆編輯，擅長把課程的語音逐字稿整理成結構完整、內容詳盡、深入淺出的課程筆記；目標是讓沒上到課的學習者也能讀懂每個觀念的內涵。"
+    user = f"""這是某堂課程某一部分的逐字稿。請整理成「詳細課程筆記」，重點是**把細節講清楚、講透**，而不是只列大綱或重點摘要。
 
-要求（這是「課程筆記」，不是重點摘要，必須完整詳細）：
-1. 沿著講師實際授課順序推進，保留講解中的推導、理由與舉例，不要跳過。
-2. 每個方法/指標先寫「定義與參數設定」，再寫「原理」與「使用時機」，最後「實戰要領」。
-3. 講師強調的口訣、金句、結論請原句保留並用 **粗體** 標示。
-4. 提到實際股票舉例時，詳細寫下：股票代號（若講師有說）、當時的線型/型態、講師如何逐步解讀、該例子說明了什麼規則。
-5. 語音轉錄可能含有錯字，請依上下文合理修正（例如技術名詞的「真說」→「增率」）；無法確認的就保留原樣。
-6. 刪除「嗯、啊、好、可以嗎、各位同學」等口頭贅詞與離題閒聊，但保留所有教學與實戰內容。
-7. 使用 Markdown：章節標題用 ###；子項目用 - 條列；關鍵術語或口訣用 **粗體**。
-8. 全部使用繁體中文。
+最高原則：
+- 這是給學習者閱讀的共筆：**每一個主題、每一個重點都要有充分的文字闡述**，讓讀者真正理解其內涵，不能只有標題或一行帶過。
+- 請用完整通順的句子與**段落敘述**；**不要通篇條列式大綱**。只有真正屬於「清單」的內容（如多個並列條件、操作步驟、參數項）才使用條列。
+- **言之有物**：凡是講師提到的數字、條件、參數、判斷標準、推論過程、因果關係與舉例，都要具體寫出，不可含糊、不可省略。
+
+內容要求：
+1. 依講師實際授課順序推進，完整保留其推導、理由、說明與舉例，不要跳過或過度精簡。
+2. 每個觀念／方法／指標，以敘述方式交代：它是什麼、**為什麼**（背後的原理與邏輯）、怎麼用、使用時機、可能的陷阱與注意事項——把講師的說明講清楚、講透。
+3. 講師強調的口訣、金句、關鍵結論，請原句保留並用 **粗體** 標示。
+4. 提到實際標的（股票／族群）舉例時，詳寫：標的（代號或名稱）、當時的線型／型態或數據、講師如何逐步解讀、這個例子說明了什麼規則。
+5. 語音轉錄可能有錯字，請依上下文合理修正（例如技術名詞的「真說」→「增率」）；無法確認的就保留原樣。
+6. 刪除「嗯、啊、好、可以嗎、各位同學」等口頭贅詞與離題閒聊；**忽略明顯的辨識亂碼與非教學雜訊**（如收尾音樂、重複的無意義字元、問候寒暄）。
+7. 使用 Markdown：主題標題用 ###（必要時 #### 分小節）；內容用一般段落文字；關鍵術語或口訣用 **粗體**。
+8. 全部使用繁體中文；**標點使用全形**；箭頭一律用「→」；**不要輸出 LaTeX／數學符號**（例如不要寫 `$\rightarrow$`），也不要輸出亂碼或非中英文字元。
+9. **寧可詳盡，不要精簡**；內容多就完整寫出，不要為了縮短而省略細節。
 
 請直接輸出該段課程的筆記（以「### 」為最高層級，不要輸出 #），不要加前言或結語。
 
@@ -298,6 +323,95 @@ def build_docx(markdown: str, out_path: Path, template: Path | None = None):
     return out_path
 
 
+def generate_note(title, md_sources, out_dir, template=None, chunk_chars=0,
+                  preview=0, progress=None):
+    """逐字稿 md（可多支，依時間序）→ 課程筆記 (.md + .docx)。
+
+    回傳 (md_out, docx_out)。已存在同名檔案不會自動略過（由呼叫端決定）；
+    progress：可選 callable(str)，用於回報進度。
+    """
+    def _p(msg):
+        if progress:
+            try:
+                progress(msg)
+            except Exception:
+                pass
+
+    api_key = load_gemini_key()
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    safe_title = re.sub(r'[\\/:*?"<>|]', "_", title)
+
+    md_sources = [str(m) for m in md_sources]
+    if preview > 0:
+        _p("[試做模式] 只處理第一支的前 {} 字".format(preview))
+        md_sources = md_sources[:1]
+
+    parts_dir = out_dir / f"_parts_{safe_title}"
+    parts_dir.mkdir(parents=True, exist_ok=True)
+
+    from collections import Counter
+    parent_count = Counter(Path(m).parent for m in md_sources)
+
+    chapters = []
+    for i, mdp in enumerate(md_sources):
+        p = Path(mdp)
+        if parent_count[p.parent] > 1:
+            base = p.stem
+        else:
+            base = p.parent.name or p.stem
+        part = parts_dir / f"{i:02d}.md"
+        if part.exists():
+            data = part.read_text(encoding="utf-8").split("\n", 1)
+            note = data[1] if len(data) > 1 else data[0]
+            chapters.append((base, note))
+            _p(f"[{i+1}/{len(md_sources)}] 載入暫存 → {base}（{len(note):,} 字元）")
+            continue
+        _p(f"[{i+1}/{len(md_sources)}] 整理 → {base} ...")
+        raw = p.read_text(encoding="utf-8", errors="replace")
+        body = strip_meta(raw)
+        if preview > 0 and len(body) > preview:
+            body = body[:preview] + "\n…（試做截斷，其餘部分正式整理時補上）…"
+        chunk = 0 if preview > 0 else chunk_chars
+        segs = split_body(body, chunk)
+        if len(segs) > 1:
+            _p(f"        （長逐字稿分段：{len(segs)} 段）")
+        notes = []
+        for k, seg in enumerate(segs):
+            if len(segs) > 1:
+                _p(f"          - 第 {k+1}/{len(segs)} 段（{len(seg):,} 字）...")
+            notes.append(gemini_note(seg, api_key))
+        note = "\n\n".join(x for x in notes if x.strip())
+        part.write_text(base + "\n" + note, encoding="utf-8")
+        chapters.append((base, note))
+        _p(f"        ✓ 完成（{len(note):,} 字元）")
+
+    lines = [f"# {title}", ""]
+    lines.append("> 課程筆記（整理自課堂逐字稿，依時間順序）。")
+    lines.append(f"> 整理日期：{datetime.now().strftime('%Y-%m-%d')}")
+    lines.append("")
+    multi = len(chapters) > 1
+    for base, md in chapters:
+        if multi:
+            hdr = "## " + base.strip() if not base.startswith("##") else base
+            lines.append(hdr)
+            lines.append("")
+        lines.append(md.strip())
+        lines.append("")
+    md_text = "\n".join(lines)
+
+    md_out = out_dir / f"{safe_title} 課程筆記.md"
+    if preview:
+        md_out = out_dir / f"_preview_{safe_title} 課程筆記.md"
+    md_out.write_text(md_text, encoding="utf-8")
+    _p(f"[OK] {md_out}")
+
+    docx_out = md_out.with_suffix(".docx")
+    build_docx(md_text, docx_out, template=template)
+    _p(f"[OK] {docx_out}")
+    return md_out, docx_out
+
+
 def main():
     ap = argparse.ArgumentParser(description="課程逐字稿 → 詳細課程筆記")
     ap.add_argument("--title", type=str, help="課程名稱（檔案主檔名）")
@@ -305,6 +419,8 @@ def main():
     ap.add_argument("--out", type=Path, default=Path("."), help="輸出目錄（預設 目前目錄）")
     ap.add_argument("--preview", type=int, default=0,
                     help="試做模式：只取第一支逐字稿前 N 字，輸出 _preview 檔")
+    ap.add_argument("--chunk-chars", type=int, default=0, dest="chunk_chars",
+                    help="長逐字稿分段字數（0＝不分段，建議 8000）")
     ap.add_argument("--template", type=Path, default=None,
                     help="docx 樣板（保留其頁碼/排版設定，清空內容重填）")
     ap.add_argument("--from-md", type=Path, default=None,
@@ -319,72 +435,12 @@ def main():
         print(f"[OK] 已由 {md_out.name} 重建 {docx_out.name}")
         return
 
-    api_key = load_gemini_key()
     if not args.title or not args.mds:
         ap.print_help()
         return
-    args.out.mkdir(parents=True, exist_ok=True)
-    safe_title = re.sub(r'[\\/:*?"<>|]', "_", args.title)
-
-    chapters = []
-    md_sources = args.mds
-    if args.preview > 0:
-        print("[試做模式] 只處理第一支的前 {} 字".format(args.preview))
-        md_sources = [args.mds[0]]
-
-    parts_dir = args.out / f"_parts_{safe_title}"
-    parts_dir.mkdir(parents=True, exist_ok=True)
-
-    from collections import Counter
-    parent_count = Counter(Path(m).parent for m in md_sources)
-
-    for i, mdp in enumerate(md_sources):
-        p = Path(mdp)
-        if parent_count[p.parent] > 1:
-            base = p.stem
-        else:
-            base = p.parent.name or p.stem
-        part = parts_dir / f"{i:02d}.md"
-        if part.exists():
-            # resume：讀取暫存章節，但 base 重新計算（避免平鋪檔標題重複）
-            data = part.read_text(encoding="utf-8").split("\n", 1)
-            note = data[1] if len(data) > 1 else data[0]
-            chapters.append((base, note))
-            print(f"[{i+1}/{len(md_sources)}] 載入暫存 → {base}（{len(note):,} 字元）")
-            continue
-        print(f"[{i+1}/{len(md_sources)}] 整理 → {base} ...")
-        raw = p.read_text(encoding="utf-8", errors="replace")
-        body = strip_meta(raw)
-        if args.preview > 0 and len(body) > args.preview:
-            body = body[:args.preview] + "\n…（試做截斷，其餘部分正式整理時補上）…"
-        note = gemini_note(body, api_key)
-        part.write_text(base + "\n" + note, encoding="utf-8")
-        chapters.append((base, note))
-        print(f"        ✓ 完成（{len(note):,} 字元）")
-
-    # 合併
-    lines = [f"# {args.title}", ""]
-    lines.append("> 課程筆記（整理自課堂逐字稿，依時間順序）。")
-    lines.append(f"> 整理日期：{datetime.now().strftime('%Y-%m-%d')}")
-    lines.append("")
-    for base, md in chapters:
-        hdr = "## " + base.strip() if not base.startswith("##") else base
-        lines.append(hdr)
-        lines.append("")
-        lines.append(md.strip())
-        lines.append("")
-
-    md_text = "\n".join(lines)
-
-    md_out = args.out / f"{safe_title} 課程筆記.md"
-    if args.preview:
-        md_out = args.out / f"_preview_{safe_title} 課程筆記.md"
-    md_out.write_text(md_text, encoding="utf-8")
-    print(f"[OK] {md_out}")
-
-    docx_out = md_out.with_suffix(".docx")
-    build_docx(md_text, docx_out, template=args.template)
-    print(f"[OK] {docx_out}")
+    generate_note(args.title, args.mds, args.out, template=args.template,
+                  chunk_chars=args.chunk_chars, preview=args.preview,
+                  progress=print)
 
 
 if __name__ == "__main__":

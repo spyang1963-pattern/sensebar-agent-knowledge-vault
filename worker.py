@@ -29,6 +29,12 @@ heartbeat = Heartbeat(MACHINE)
 error_reporter = ErrorReporter(MACHINE)
 task_queue = TaskQueue(MACHINE)
 
+# 課程筆記預設樣板（沿用林教授樣板；不存在時退回 python-docx 預設格式）
+DEFAULT_NOTE_TEMPLATE = os.path.join(
+    str(PROJECT_ROOT), "knowledge-base", "金融交易", "理周學院", "林教授",
+    "_preview_林教授 量價時間角度的三道菜 課程筆記.docx")
+DEFAULT_NOTE_CHUNK_CHARS = 8000
+
 def send_notify(title, message):
     try:
         notification.notify(title=title, message=message, timeout=10)
@@ -45,6 +51,18 @@ def get_free_space_gb(path):
         return free.value / 1024**3
     except:
         return 0
+
+def _write_task_progress(tid, **kw):
+    """寫入任務進度檔（供 GUI 顯示階段與已執行時間；所有任務型別共用）"""
+    try:
+        pdir = os.path.join(LOCAL_ROOT, "working", "_task_progress")
+        os.makedirs(pdir, exist_ok=True)
+        data = {"updated": datetime.now().isoformat()}
+        data.update(kw)
+        with open(os.path.join(pdir, f"{tid}.json"), "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+    except Exception:
+        pass
 
 def run_pipeline(video_path, slug=None):
     cmd = [sys.executable, "-X", "utf8", str(PROJECT_ROOT / "run_pipeline.py"), video_path, "--skip-cut"]
@@ -124,7 +142,7 @@ def compress_video(src_path):
 
 
 def burn_subtitles(video_path, srt_path, output_path, font_size=18, position="bottom", margin_v=15,
-                   font_family="華康仿宋體W6"):
+                   font_family="微軟正黑體"):
     """燒錄字幕到影片"""
     import subprocess, tempfile, shutil
 
@@ -202,6 +220,13 @@ def process_subtitle_task(task):
 
     heartbeat.update(status="processing", current_task=tid)
     task_queue.update_task_status(tid, "processing")
+    try:
+        from scheduler import sync_shared_to_local
+        sync_shared_to_local()
+    except Exception:
+        pass
+    _write_task_progress(tid, status="processing", type="subtitle", stage="燒字幕",
+                         started_at=info.get("started_at") or datetime.now().isoformat())
 
     try:
         video_path = os.path.normpath(info["video_path"])
@@ -212,7 +237,7 @@ def process_subtitle_task(task):
         font_size = info.get("font_size", 18)
         position = info.get("position", "bottom")
         margin_v = info.get("margin_v", 15)
-        font_family = info.get("font_family") or "華康仿宋體W6"
+        font_family = info.get("font_family") or "微軟正黑體"
 
         # 確認檔案存在
         if not os.path.exists(video_path):
@@ -237,6 +262,7 @@ def process_subtitle_task(task):
         # 完成
         log(f"  完成: {output_path}")
         task_queue.update_task_status(tid, "completed")
+        _write_task_progress(tid, status="completed", type="subtitle", stage="完成")
         timer.finish(success=True)
         return True
 
@@ -244,6 +270,7 @@ def process_subtitle_task(task):
         err = str(e)
         log(f"  [錯誤] {err}")
         task_queue.update_task_status(tid, "failed", error=err)
+        _write_task_progress(tid, status="failed", type="subtitle", message=err)
         timer.finish(success=False, error=err)
         return False
 
@@ -315,7 +342,7 @@ def _create_subtitle_task(orig_tid, info, video_path, output_dir):
             "font_size": info.get("font_size", 18),
             "position": info.get("position", "bottom"),
             "margin_v": info.get("margin_v", 15),
-            "font_family": info.get("font_family") or "華康仿宋體W6",
+            "font_family": info.get("font_family") or "微軟正黑體",
             "note": f"自動建立（原始任務 #{orig_tid}）",
             "discovered_at": datetime.now().isoformat(),
             "started_at": None, "completed_at": None,
@@ -341,6 +368,141 @@ def _create_subtitle_task(orig_tid, info, video_path, output_dir):
         return None
 
 
+def process_note_task(task):
+    """處理「產生課程筆記」任務：逐字稿 md → 詳細課程筆記（.md + .docx）"""
+    tid = task["task_id"]
+    info = task["task_info"]
+
+    from tracker import TaskTimer
+    timer = TaskTimer(tid)
+    timer.start()
+
+    log(f"\n{'─'*50}")
+    log(f"開始產生課程筆記 #{tid}: {info.get('name')}")
+
+    heartbeat.update(status="processing", current_task=tid)
+    task_queue.update_task_status(tid, "processing")
+    try:
+        from scheduler import sync_shared_to_local
+        sync_shared_to_local()
+    except Exception:
+        pass
+    _write_task_progress(tid, status="processing", type="note", stage="準備逐字稿",
+                         started_at=info.get("started_at") or datetime.now().isoformat())
+
+    try:
+        from make_course_note import generate_note
+        title = info["title"]
+        source_md = os.path.normpath(info["source_md"])
+        out_dir = os.path.normpath(info["out_dir"])
+        chunk_chars = int(info.get("chunk_chars", DEFAULT_NOTE_CHUNK_CHARS))
+        template = info.get("template") or DEFAULT_NOTE_TEMPLATE
+        if template and not os.path.isfile(template):
+            template = None
+
+        safe_title = re.sub(r'[\\/:*?"<>|]', "_", title)
+        md_out = os.path.join(out_dir, f"{safe_title} 課程筆記.md")
+
+        # 去重：同名課程筆記已存在就跳過（決策⑥）
+        if os.path.exists(md_out):
+            log(f"  已存在課程筆記，跳過：{md_out}")
+            task_queue.update_task_status(tid, "completed")
+            _write_task_progress(tid, status="completed", type="note", stage="已存在，略過")
+            timer.finish(success=True)
+            return True
+
+        if not os.path.isfile(source_md):
+            raise FileNotFoundError(f"逐字稿 md 不存在: {source_md}")
+        os.makedirs(out_dir, exist_ok=True)
+
+        def _progress(msg):
+            _write_task_progress(tid, status="processing", type="note", stage=str(msg)[:60],
+                                 started_at=info.get("started_at") or datetime.now().isoformat())
+            log(f"  {msg}")
+
+        generate_note(title, [source_md], out_dir, template=template,
+                      chunk_chars=chunk_chars, progress=_progress)
+
+        log(f"  完成: {md_out}")
+        task_queue.update_task_status(tid, "completed")
+        _write_task_progress(tid, status="completed", type="note", stage="完成")
+        timer.finish(success=True)
+        return True
+
+    except Exception as e:
+        err = str(e)
+        log(f"  [錯誤] {err}")
+        task_queue.update_task_status(tid, "failed", error=err)
+        _write_task_progress(tid, status="failed", type="note", message=err)
+        timer.finish(success=False, error=err)
+        return False
+
+
+def _read_harvested_kb_md(tid):
+    """從 shared/tasks 讀取收成後記錄的 KB md 路徑（harvest 會寫入 task_info.kb_md）"""
+    try:
+        shared_file = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "shared", "tasks", f"task_{tid}.json")
+        if not os.path.isfile(shared_file):
+            return None
+        with open(shared_file, "r", encoding="utf-8") as f:
+            shared = json.load(f)
+        return shared.get("task_info", {}).get("kb_md")
+    except Exception:
+        return None
+
+
+def _create_note_task(orig_tid, kb_md):
+    """收成後自動建立「產生課程筆記」任務（來源＝KB 逐字稿 md，輸出同目錄）"""
+    try:
+        if not kb_md or not os.path.isfile(kb_md):
+            log(f"  [筆記] 跳過：找不到知識庫逐字稿 md（{kb_md}）")
+            return None
+        out_dir = os.path.dirname(kb_md)
+        title = os.path.splitext(os.path.basename(kb_md))[0]
+        safe_title = re.sub(r'[\\/:*?"<>|]', "_", title)
+        if os.path.exists(os.path.join(out_dir, f"{safe_title} 課程筆記.md")):
+            log(f"  [筆記] 跳過：已存在「{safe_title} 課程筆記.md」")
+            return None
+        from scheduler import load_task_status, save_task_status
+        tid = _get_next_task_id()
+        data = load_task_status()
+        current_max = max((int(k) for k in data.get("tasks", {}) if k.isdigit()), default=0)
+        if int(tid) <= current_max:
+            tid = str(current_max + 1)
+        data["tasks"][tid] = {
+            "type": "note", "status": "pending",
+            "assigned_to": MACHINE, "priority": 0,
+            "name": f"{title} 課程筆記",
+            "title": title,
+            "source_md": kb_md,
+            "out_dir": out_dir,
+            "chunk_chars": DEFAULT_NOTE_CHUNK_CHARS,
+            "template": DEFAULT_NOTE_TEMPLATE if os.path.isfile(DEFAULT_NOTE_TEMPLATE) else None,
+            "note": f"自動建立（原始任務 #{orig_tid}）",
+            "discovered_at": datetime.now().isoformat(),
+            "started_at": None, "completed_at": None,
+            "last_error": None, "machine": None,
+        }
+        shared_task = {
+            "task_id": tid, "task_info": data["tasks"][tid],
+            "status": "pending", "assigned_to": MACHINE,
+        }
+        shared_file = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "shared", "tasks", f"task_{tid}.json")
+        os.makedirs(os.path.dirname(shared_file), exist_ok=True)
+        with open(shared_file, "w", encoding="utf-8") as f:
+            json.dump(shared_task, f, indent=2, ensure_ascii=False)
+        existing_ids = [int(k) for k in data.get("tasks", {}) if k.isdigit()]
+        data["task_counter"] = max([int(tid)] + existing_ids + [data.get("task_counter", 0)])
+        save_task_status(data)
+        log(f"  [筆記] 已建立 #{tid}（原始 #{orig_tid}）")
+        return tid
+    except Exception as e:
+        log(f"  [筆記] 建立失敗: {e}")
+        return None
+
+
 def process_task(task):
     """處理單一任務"""
     tid = task["task_id"]
@@ -349,6 +511,10 @@ def process_task(task):
     # 燒字幕任務獨立處理
     if info.get("type") == "subtitle":
         return process_subtitle_task(task)
+
+    # 課程筆記任務獨立處理
+    if info.get("type") == "note":
+        return process_note_task(task)
     
     # 初始化追蹤器
     from tracker import TaskTimer, OutputValidator, ErrorTracker, HealthChecker
@@ -369,6 +535,9 @@ def process_task(task):
         sync_shared_to_local()
     except Exception:
         pass
+    _write_task_progress(tid, status="processing", type=info.get("type", "video"),
+                         stage="檢查環境",
+                         started_at=info.get("started_at") or datetime.now().isoformat())
     
     # 健康檢查
     timer.step("health_check")
@@ -468,6 +637,9 @@ def process_task(task):
         shutil.copy2(compressed, pipeline_input)
     
     # Pipeline
+    _write_task_progress(tid, status="processing", type=info.get("type", "video"),
+                         stage="轉錄/產生筆記",
+                         started_at=info.get("started_at") or datetime.now().isoformat())
     timer.step("pipeline")
     log(f"  執行 pipeline...")
     success, error_msg = run_pipeline(pipeline_input, slug=task_slug)
@@ -507,6 +679,9 @@ def process_task(task):
         
         harvest_to_kb = info.get("harvest_to_kb", True)
         if harvest_to_kb:
+            _write_task_progress(tid, status="processing", type=info.get("type", "video"),
+                                 stage="收成知識庫",
+                                 started_at=info.get("started_at") or datetime.now().isoformat())
             timer.step("harvest")
             try:
                 from scheduler import harvest
@@ -518,13 +693,36 @@ def process_task(task):
         else:
             _copy_output_to_source(output_dir, video_path, tid)
 
+        # 自動產生課程筆記（需先收成到知識庫，來源＝KB 逐字稿 md）
+        if info.get("auto_note") and success and harvest_to_kb:
+            _write_task_progress(tid, status="processing", type=info.get("type", "video"),
+                                 stage="產生課程筆記",
+                                 started_at=info.get("started_at") or datetime.now().isoformat())
+            kb_md = _read_harvested_kb_md(tid)
+            note_tid = _create_note_task(tid, kb_md)
+            if note_tid:
+                try:
+                    from scheduler import load_task_status
+                    st = load_task_status()
+                    if note_tid in st.get("tasks", {}):
+                        note_task = {
+                            "task_id": note_tid,
+                            "task_info": st["tasks"][note_tid],
+                            "status": "pending",
+                            "assigned_to": MACHINE,
+                        }
+                        process_note_task(note_task)
+                        log(f"  [筆記] #{note_tid} 已在同一次處理中完成")
+                except Exception as e:
+                    log(f"  [筆記] 內嵌執行失敗: {e}（任務保留，可再重試）")
+
         # 自動燒字幕（帶入字幕樣式設定）
         if info.get("auto_subtitle") and success:
             sub_info = dict(info)
             sub_info["font_size"] = info.get("auto_subtitle_font_size", 18)
             sub_info["position"] = info.get("auto_subtitle_position", "bottom")
             sub_info["margin_v"] = info.get("auto_subtitle_margin_v", 15)
-            sub_info["font_family"] = info.get("auto_subtitle_font_family") or "華康仿宋體W6"
+            sub_info["font_family"] = info.get("auto_subtitle_font_family") or "微軟正黑體"
             sub_tid = _create_subtitle_task(tid, sub_info, video_path, output_dir)
             # 立即內嵌執行燒字幕：不依賴下次 worker 輪詢，燒完影片當場產出
             if sub_tid:
@@ -543,6 +741,7 @@ def process_task(task):
                 except Exception as e:
                     log(f"  [燒字幕] 內嵌執行失敗: {e}（任務保留，可再重試）")
 
+        _write_task_progress(tid, status="completed", type=info.get("type", "video"), stage="完成")
         heartbeat.update(status="online", current_task=None)
         return True
     else:
@@ -568,6 +767,7 @@ def process_task(task):
         
         # 超過重試次數，標記為永久失敗
         task_queue.update_task_status(tid, "failed", error=error_msg)
+        _write_task_progress(tid, status="failed", type=info.get("type", "video"), message=error_msg)
         
         # 同步到 task_status.json
         try:

@@ -31,6 +31,10 @@ COLOR_CARD_BORDER = "#45475a"
 COLOR_ONLINE = "#a6e3a1"
 COLOR_OFFLINE = "#f38ba8"
 
+# 燒字幕可選字型（預設微軟正黑體；華康仿宋體W6 在影片上偏細）
+SUBTITLE_FONTS = ["微軟正黑體", "微軟雅黑", "標楷體", "新細明體", "華康仿宋體W6", "華康儷黑體", "思源黑體"]
+DEFAULT_SUBTITLE_FONT = "微軟正黑體"
+
 REFRESH_INTERVAL = 5
 
 PROGRESS_DIR = os.path.join(LOCAL_ROOT, "working", "_task_progress")
@@ -266,10 +270,14 @@ class TaskManagerGUI:
                                  bg="#a6e3a1", fg="#1e1e2e", font=("Consolas", 10),
                                  relief="flat", padx=10)
         self.btn_new.pack(side="left", padx=(5, 0))
-        self.btn_delete = tk.Button(action_row, text="✕ 刪除", command=self._delete_task,
+        self.btn_delete = tk.Button(action_row, text="✕ 刪除選取(可多選)", command=self._delete_task,
                                      bg="#f38ba8", fg="#1e1e2e", font=("Consolas", 10),
                                      relief="flat", padx=10)
         self.btn_delete.pack(side="left", padx=(5, 0))
+        self.btn_delete_all = tk.Button(action_row, text="🗑 全部刪除", command=self._delete_all,
+                                        bg="#c0392b", fg="#ffffff", font=("Consolas", 10),
+                                        relief="flat", padx=10)
+        self.btn_delete_all.pack(side="left", padx=(5, 0))
         
         # 篩選按鈕
         self.filter_var = tk.StringVar(value="all")
@@ -283,10 +291,10 @@ class TaskManagerGUI:
         self.btn_filter_all.pack(side="left", padx=(5, 0))
 
         # 表格
-        columns = ("#", "狀態", "優先級", "類型", "指派給", "機器", "名稱/標題", "大小", "錯誤")
+        columns = ("#", "狀態", "排隊", "耗時", "優先級", "類型", "指派給", "機器", "名稱/標題", "大小", "錯誤")
         self.tree = ttk.Treeview(parent, columns=columns, show="headings",
-                                 selectmode="browse")
-        widths = [50, 80, 60, 60, 70, 80, 350, 70, 200]
+                                 selectmode="extended")
+        widths = [50, 110, 60, 55, 60, 60, 70, 80, 320, 70, 180]
         for col, w in zip(columns, widths):
             self.tree.heading(col, text=col, anchor="w")
             self.tree.column(col, width=w, anchor="w", minwidth=40)
@@ -620,6 +628,13 @@ class TaskManagerGUI:
                 int(x) if x.isdigit() else 0
             ))
 
+            # 排隊順序（與 worker 挑選邏輯一致：優先級高者先，其次新指派者先）
+            pending_order = sorted(
+                [t for t in tasks if tasks[t].get("status") in ("pending", "assigned")],
+                key=lambda x: tasks[x].get("discovered_at") or "", reverse=True)
+            pending_order.sort(key=lambda x: -tasks[x].get("priority", 0))
+            queue_pos = {t: i + 1 for i, t in enumerate(pending_order)}
+
             for tid in sorted_tids:
                 info = tasks[tid]
                 task_type = info.get("type", "video")
@@ -628,24 +643,41 @@ class TaskManagerGUI:
                 # 燒字幕任務顯示中文狀態
                 status_display = {
                     "subtitle": {"pending": "待燒錄", "processing": "燒錄中", "completed": "已燒錄", "failed": "失敗", "assigned": "待燒錄"},
+                    "note": {"pending": "待產筆記", "processing": "產筆記中", "completed": "已產筆記", "failed": "失敗", "assigned": "待產筆記"},
                     "document": {"pending": "待處理", "processing": "處理中", "done": "已完成", "failed": "失敗", "paused": "等待額度"},
                     "audio": {"pending": "待處理", "processing": "處理中", "done": "已完成", "failed": "失敗", "paused": "等待額度"},
                     "web": {"pending": "待處理", "processing": "處理中", "done": "已完成", "failed": "失敗", "paused": "等待額度"},
                 }.get(task_type, {}).get(status, status)
 
-                # 文件/聲音/網頁任務：讀取副程序進度
+                # 所有型別：讀取副程序進度（階段 / 已執行時間 / OCR 頁數）
                 progress_note = ""
-                if task_type in ("document", "audio", "web") and status == "processing":
+                queue_str = ""
+                elapsed_str = ""
+                if status in ("pending", "assigned"):
+                    pos = queue_pos.get(tid)
+                    if pos:
+                        queue_str = f"#{pos}/{len(pending_order)}"
+                if status == "processing":
                     prog = _read_progress(tid)
                     if prog:
                         ptype = prog.get("type", "")
                         page = prog.get("page", 0)
                         total_pages = prog.get("total", 0)
                         msg = prog.get("message", "") or prog.get("msg", "")
+                        stage = prog.get("stage", "")
                         if ptype in ("ocr", "ocr-tesseract") and total_pages:
                             status_display = f"OCR 第 {page}/{total_pages} 頁"
+                        elif stage:
+                            status_display = f"執行中·{stage}"
                         elif msg:
                             progress_note = msg
+                        started = prog.get("started_at")
+                        if started:
+                            try:
+                                mins = (datetime.now() - datetime.fromisoformat(started)).total_seconds() / 60
+                                elapsed_str = f"{int(mins)}分" if mins < 60 else f"{mins/60:.1f}h"
+                            except Exception:
+                                pass
                 error = info.get("last_error", "") or ""
                 if not error and status == "failed" and task_type in ("document", "audio", "web"):
                     prog = _read_progress(tid)
@@ -682,8 +714,8 @@ class TaskManagerGUI:
                 error_display = error if len(error) <= 40 else error[:37] + "..."
 
                 self.tree.insert("", "end", iid=tid, values=(
-                    tid, status_display, priority_str, task_type, assigned,
-                    machine, name_display, size_str, error_display
+                    tid, status_display, queue_str, elapsed_str, priority_str,
+                    task_type, assigned, machine, name_display, size_str, error_display
                 ), tags=tags)
 
             self.lbl_status.config(text="更新時間: " + datetime.now().strftime('%H:%M:%S'))
@@ -696,6 +728,19 @@ class TaskManagerGUI:
         self._refresh()
         self._refresh_channel_status()
         self.root.after(REFRESH_INTERVAL * 1000, self._auto_refresh)
+
+    def _sync_priority_to_shared(self, tid, prio):
+        """同步優先級到 shared/tasks（worker 實際以此挑任務）"""
+        try:
+            p = os.path.join(SHARED_ROOT, "tasks", f"task_{tid}.json")
+            if os.path.exists(p):
+                with open(p, "r", encoding="utf-8") as f:
+                    t = json.load(f)
+                t.setdefault("task_info", {})["priority"] = prio
+                with open(p, "w", encoding="utf-8") as f:
+                    json.dump(t, f, indent=2, ensure_ascii=False)
+        except Exception:
+            pass
 
     def _promote_task(self):
         sel = self.tree.selection()
@@ -711,6 +756,7 @@ class TaskManagerGUI:
             return
         data["tasks"][tid]["priority"] = 1
         save_task_status(data)
+        self._sync_priority_to_shared(tid, 1)
         self._refresh()
         self.lbl_status.config(text="#{} 已設為高優先級".format(tid))
 
@@ -728,6 +774,7 @@ class TaskManagerGUI:
             return
         data["tasks"][tid]["priority"] = 0
         save_task_status(data)
+        self._sync_priority_to_shared(tid, 0)
         self._refresh()
         self.lbl_status.config(text="#{} 已設為一般優先級".format(tid))
 
@@ -830,11 +877,15 @@ class TaskManagerGUI:
         harvest_kb_var = tk.BooleanVar(value=True)
         tk.Checkbutton(cb_frame, text="收成到知識庫", variable=harvest_kb_var,
                        bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
+                       font=("Consolas", 10)).pack(side="left", padx=(0, 15))
+        auto_note_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(cb_frame, text="自動產課程筆記", variable=auto_note_var,
+                       bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
                        font=("Consolas", 10)).pack(side="left")
 
         # 自動燒字幕設定面板（勾選後展開）
         sub_style_frame = tk.Frame(video_frame, bg="#252540", relief="solid", bd=1)
-        sub_family_var = tk.StringVar(value="華康仿宋體W6")
+        sub_family_var = tk.StringVar(value=DEFAULT_SUBTITLE_FONT)
         sub_font_var = tk.IntVar(value=18)
         sub_margin_var = tk.IntVar(value=15)
         sub_pos_var = tk.StringVar(value="bottom")
@@ -852,9 +903,8 @@ class TaskManagerGUI:
         fam_row.pack(fill="x", padx=8, pady=(6, 0))
         tk.Label(fam_row, text="字型:", bg="#252540", fg=COLOR_FG,
                  font=("Consolas", 9)).pack(side="left")
-        tk.Entry(fam_row, textvariable=sub_family_var,
-                 font=("Consolas", 9), bg="#313244", fg=COLOR_FG,
-                 insertbackground=COLOR_FG, relief="flat", width=16).pack(side="left", padx=(4, 0))
+        ttk.Combobox(fam_row, textvariable=sub_family_var, values=SUBTITLE_FONTS,
+                     font=("Consolas", 9), width=14).pack(side="left", padx=(4, 0))
 
         # 字型大小（Spinbox 精準輸入 + 滑桿）
         fs_row = tk.Frame(sub_style_frame, bg="#252540")
@@ -930,6 +980,10 @@ class TaskManagerGUI:
         yt_harvest_kb = tk.BooleanVar(value=True)
         tk.Checkbutton(yt_cb_frame, text="收成到知識庫", variable=yt_harvest_kb,
                        bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
+                       font=("Consolas", 10)).pack(side="left", padx=(0, 15))
+        yt_note_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(yt_cb_frame, text="自動產課程筆記", variable=yt_note_var,
+                       bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
                        font=("Consolas", 10)).pack(side="left")
 
         # 燒字幕表單
@@ -976,10 +1030,9 @@ class TaskManagerGUI:
         fam_frame.pack(fill="x", pady=(2, 0))
         tk.Label(fam_frame, text="字型:", bg=COLOR_BG, fg=COLOR_FG,
                  font=("Consolas", 10)).pack(side="left")
-        sub_family_var2 = tk.StringVar(value="華康仿宋體W6")
-        tk.Entry(fam_frame, textvariable=sub_family_var2,
-                 font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
-                 insertbackground=COLOR_FG, relief="flat", width=20).pack(side="left", padx=(5, 0))
+        sub_family_var2 = tk.StringVar(value=DEFAULT_SUBTITLE_FONT)
+        ttk.Combobox(fam_frame, textvariable=sub_family_var2, values=SUBTITLE_FONTS,
+                     font=("Consolas", 10), width=16).pack(side="left", padx=(5, 0))
 
         # 字型大小（Spinbox + 滑桿，8~72）
         fs_frame = tk.Frame(sub_frame_inner, bg=COLOR_BG)
@@ -1319,10 +1372,11 @@ class TaskManagerGUI:
                             "note": note,
                             "auto_subtitle": auto_sub_var.get(),
                             "harvest_to_kb": harvest_kb_var.get(),
+                        "auto_note": auto_note_var.get(),
                             "auto_subtitle_font_size": sub_font_var.get() if auto_sub_var.get() else 18,
                             "auto_subtitle_position": sub_pos_var.get() if auto_sub_var.get() else "bottom",
                             "auto_subtitle_margin_v": sub_margin_var.get() if auto_sub_var.get() else 15,
-                            "auto_subtitle_font_family": sub_family_var.get() if auto_sub_var.get() else "華康仿宋體W6",
+                            "auto_subtitle_font_family": sub_family_var.get() if auto_sub_var.get() else DEFAULT_SUBTITLE_FONT,
                             "discovered_at": datetime.now().isoformat(),
                             "started_at": None,
                             "completed_at": None,
@@ -1383,10 +1437,11 @@ class TaskManagerGUI:
                         "note": note,
                         "auto_subtitle": auto_sub_var.get(),
                         "harvest_to_kb": harvest_kb_var.get(),
+                        "auto_note": auto_note_var.get(),
                         "auto_subtitle_font_size": sub_font_var.get() if auto_sub_var.get() else 18,
                         "auto_subtitle_position": sub_pos_var.get() if auto_sub_var.get() else "bottom",
                         "auto_subtitle_margin_v": sub_margin_var.get() if auto_sub_var.get() else 15,
-                        "auto_subtitle_font_family": sub_family_var.get() if auto_sub_var.get() else "華康仿宋體W6",
+                        "auto_subtitle_font_family": sub_family_var.get() if auto_sub_var.get() else DEFAULT_SUBTITLE_FONT,
                         "discovered_at": datetime.now().isoformat(),
                         "started_at": None,
                         "completed_at": None,
@@ -1414,6 +1469,7 @@ class TaskManagerGUI:
                     return
                 do_burn = yt_auto_sub.get()
                 do_kb = yt_harvest_kb.get()
+                do_note = yt_note_var.get()
 
                 win.destroy()
                 self.lbl_status.config(text=f"正在處理 YouTube: {url[:50]}...", fg="#89b4fa")
@@ -1421,7 +1477,7 @@ class TaskManagerGUI:
                 def _process_yt():
                     try:
                         from channel_watcher import process_youtube_url
-                        results = process_youtube_url(url, burn_sub=do_burn, save_to_kb=do_kb)
+                        results = process_youtube_url(url, burn_sub=do_burn, save_to_kb=do_kb, note=do_note)
                         self.root.after(0, lambda: _yt_done(results))
                     except Exception as e:
                         self.root.after(0, lambda: messagebox.showerror("處理異常", str(e)))
@@ -1458,7 +1514,7 @@ class TaskManagerGUI:
                 font_size = str(sub_fontsize_var.get())
                 position = sub_position.get()
                 margin_v = sub_margin_var2.get()
-                font_family = sub_family_var2.get().strip() or "華康仿宋體W6"
+                font_family = sub_family_var2.get().strip() or DEFAULT_SUBTITLE_FONT
 
                 created_count = 0
                 for md_path in md_files:
@@ -1718,23 +1774,58 @@ class TaskManagerGUI:
         t = threading.Thread(target=loop, daemon=True)
         t.start()
 
+    def _purge_task_files(self, tid):
+        """刪除任務時，一併移除 shared/tasks 與進度檔（否則 worker 仍會撿到）"""
+        for p in (os.path.join(SHARED_ROOT, "tasks", f"task_{tid}.json"),
+                  _progress_path(tid)):
+            try:
+                if os.path.exists(p):
+                    os.remove(p)
+            except Exception:
+                pass
+
     def _delete_task(self):
         sel = self.tree.selection()
         if not sel:
-            messagebox.showwarning("提示", "請先選取一個任務")
+            messagebox.showwarning("提示", "請先選取要刪除的任務（可按住 Ctrl / Shift 多選）")
             return
-        tid = sel[0]
         data = load_task_status()
-        if tid not in data["tasks"]:
+        tids = list(sel)
+        lines = []
+        for tid in tids[:15]:
+            info = data["tasks"].get(tid, {})
+            nm = info.get("name") or info.get("title", "?")
+            lines.append(f"#{tid} {nm}")
+        if len(tids) > 15:
+            lines.append(f"... 等共 {len(tids)} 筆")
+        if not messagebox.askyesno("確認刪除", "確定刪除以下 {} 筆任務？\n\n{}".format(len(tids), "\n".join(lines))):
             return
-        info = data["tasks"][tid]
-        name = info.get("name") or info.get("title", "?")
-        if not messagebox.askyesno("確認刪除", "刪除任務 #" + tid + ": " + name + "？"):
-            return
-        del data["tasks"][tid]
+        removed = 0
+        for tid in tids:
+            if tid in data["tasks"]:
+                del data["tasks"][tid]
+                removed += 1
+            self._purge_task_files(tid)
         save_task_status(data)
         self._refresh()
-        self.lbl_status.config(text="已刪除任務 #" + tid)
+        self.lbl_status.config(text=f"已刪除 {removed} 筆任務")
+
+    def _delete_all(self):
+        data = load_task_status()
+        tids = list(data["tasks"].keys())
+        if not tids:
+            messagebox.showinfo("提示", "目前沒有任務")
+            return
+        if not messagebox.askyesno("確認全部刪除", "⚠ 即將刪除全部 {} 筆任務！\n此動作無法復原，確定嗎？".format(len(tids))):
+            return
+        if not messagebox.askyesno("再次確認", "請再確認一次：真的要刪除全部 {} 筆任務嗎？".format(len(tids))):
+            return
+        for tid in tids:
+            self._purge_task_files(tid)
+        data["tasks"] = {}
+        save_task_status(data)
+        self._refresh()
+        self.lbl_status.config(text=f"已刪除全部 {len(tids)} 筆任務")
 
     def _filter_pending(self):
         """只顯示 pending/processing 任務"""

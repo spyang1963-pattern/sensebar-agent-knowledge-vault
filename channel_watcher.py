@@ -232,7 +232,7 @@ def run_pipeline(video_path, title, video_id, skip_cut=True):
     return None
 
 def burn_subtitles(video_path, srt_path, output_path, font_size=18, margin_v=15, position="bottom",
-                   font_family="華康仿宋體W6"):
+                   font_family="微軟正黑體"):
     """用 ffmpeg + libass 燒錄字幕（與 worker.py 相同處理方式）。
 
     ffmpeg filter 語法中 `:` 與 `,` 有特殊意義（選項分隔符/濾鏡鏈分隔符），
@@ -350,6 +350,62 @@ def create_kb_entry(video_id, title, transcript, srt_path, video_path, kb_dir, b
     return md_path
 
 
+# ── 課程筆記（自動產出，預設關；由呼叫端 note=True 觸發）──
+NOTE_TEMPLATE = KB_ROOT / "金融交易" / "理周學院" / "林教授" / "_preview_林教授 量價時間角度的三道菜 課程筆記.docx"
+NOTE_CHUNK_CHARS = 8000
+MAX_NOTES_PER_RUN = 3          # 單批上限（決策⑦）
+MAX_NOTES_PER_DAY = 20         # 每日上限（決策⑦；Gemini 免費層 500/日，留安全邊際）
+_NOTE_QUOTA_FILE = KB_ROOT / ".note_quota.json"
+
+
+def _note_quota_take():
+    """檢查並扣用今日筆記額度。回傳 True=可產、False=已達當日上限（決策⑦）。"""
+    today = datetime.now().strftime("%Y-%m-%d")
+    data = {}
+    try:
+        if _NOTE_QUOTA_FILE.exists():
+            data = json.loads(_NOTE_QUOTA_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        data = {}
+    if data.get("date") != today:
+        data = {"date": today, "count": 0}
+    if data.get("count", 0) >= MAX_NOTES_PER_DAY:
+        return False
+    data["count"] = data.get("count", 0) + 1
+    try:
+        _NOTE_QUOTA_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+    return True
+
+
+def make_note_for_md(title, md_path, out_dir=None):
+    """為 KB 逐字稿 md 產生課程筆記（.md+.docx，放同目錄）。
+    已存在同名「課程筆記」則略過（決策⑥）；達每日上限則略過並記待辦（決策⑦）。
+    回傳 (md_out, docx_out) 或 None。
+    """
+    md_path = Path(md_path)
+    title = title or md_path.stem
+    out_dir = Path(out_dir) if out_dir else md_path.parent
+    safe_title = re.sub(r'[\\/:*?"<>|]', "_", title)
+    md_out = out_dir / f"{safe_title} 課程筆記.md"
+    if md_out.exists():
+        log(f"  [筆記] 略過（已存在）：{md_out.name}")
+        return md_out, md_out.with_suffix(".docx")
+    if not _note_quota_take():
+        log(f"  [筆記] 今日已達上限 {MAX_NOTES_PER_DAY} 份，記待辦略過：{title}")
+        return None
+    from make_course_note import generate_note
+    tpl = NOTE_TEMPLATE if NOTE_TEMPLATE.exists() else None
+    log(f"  [筆記] 產生課程筆記：{title}")
+    try:
+        return generate_note(title, [md_path], out_dir, template=tpl,
+                             chunk_chars=NOTE_CHUNK_CHARS, progress=lambda m: log(f"    {m}"))
+    except Exception as e:
+        log(f"  [筆記] 產生失敗：{e}")
+        return None
+
+
 # ── 核心邏輯 ──
 
 def process_has_subs(video_id, title, langs, kb_dir, burn_subs=False):
@@ -416,12 +472,13 @@ def process_no_subs(video_id, title, langs, kb_dir):
     return md_path
 
 
-def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未知頻道", burn_subs=False):
+def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未知頻道", burn_subs=False, note=False):
     """掃描單一播放清單，處理新影片
     source: playlist_id 或 YouTube URL
     max_initial: 初次掃描最多處理幾支
     channel_name: 頻道名稱（供通知明細使用）
     burn_subs: 即使有官方字幕也下載影片並燒字幕
+    note: 收成後自動產生課程筆記（預設關）
     """
     global _last_scan_details
     label = source[:40] if "youtube.com" in source else source
@@ -468,6 +525,7 @@ def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未
 
     # 處理新影片
     processed = 0
+    notes_made = 0
     for entry in new_entries:
         vid = entry.get("id", "")
         title = entry.get("title", vid)
@@ -523,6 +581,17 @@ def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未
                 _make_live_report(Path(md_path))
             except Exception as e:
                 log(f"  ⚠️ 直播報告產生失敗: {e}")
+
+        # 自動產生課程筆記（預設關；達單批/每日上限即停）
+        if note and md_path and notes_made < MAX_NOTES_PER_RUN:
+            try:
+                title_for_note = Path(md_path).stem
+                r = make_note_for_md(title_for_note, md_path)
+                if r:
+                    notes_made += 1
+                    _last_scan_details[-1]["result"] += "（含課程筆記）"
+            except Exception as e:
+                log(f"  ⚠️ 課程筆記產生失敗: {e}")
 
     state[state_key] = {
         "last_video_id": entries[0].get("id", ""),
@@ -590,7 +659,7 @@ def scan_all_channels():
                 continue
             try:
                 n = scan_playlist(source, kb_dir, langs, state, max_initial=max_init, channel_name=name,
-                                   burn_subs=pl.get("burn_subs", False))
+                                   burn_subs=pl.get("burn_subs", False), note=pl.get("note", False))
                 total += n
             except Exception as e:
                 log(f"  [錯誤] {source[:30]}: {e}")
@@ -634,7 +703,7 @@ def show_status():
     print()
 
 
-def process_youtube_url(url, burn_sub=False, save_to_kb=True, langs=None):
+def process_youtube_url(url, burn_sub=False, save_to_kb=True, langs=None, note=False):
     """處理單一 YouTube 網址（供 GUI 呼叫）
     
     支援格式：
@@ -695,6 +764,8 @@ def process_youtube_url(url, burn_sub=False, save_to_kb=True, langs=None):
                 video_info["kb_path"] = str(kb_dir / f"{kb_basename(title, date_prefix)}.md")
                 srt_path.unlink()
                 processed_count += 1
+                if note:
+                    make_note_for_md(kb_basename(title, date_prefix), video_info["kb_path"], kb_dir)
             else:
                 log(f"  無 YouTube 字幕，啟動 Pipeline...")
                 video_path = download_yt_video(vid, title, date_prefix=date_prefix)
@@ -714,6 +785,8 @@ def process_youtube_url(url, burn_sub=False, save_to_kb=True, langs=None):
                                 burn_subtitles(video_path, srt_src, burned)
 
                             processed_count += 1
+                            if note:
+                                make_note_for_md(kb_basename(title, date_prefix), video_info["kb_path"], kb_dir)
                         else:
                             log(f"  找不到 SRT 輸出")
                     else:

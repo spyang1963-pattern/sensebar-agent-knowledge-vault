@@ -540,6 +540,10 @@ def harvest():
                         vfp = os.path.join(get_machine_paths()["videos"], vr)
                         full_md = full_md.replace("## 影片\n" + display_text, "## 影片\n" + vfp)
 
+            # 記錄收成後的 KB md 路徑，供後續自動產生課程筆記使用
+            ti["kb_md"] = dst_md
+            ti["kb_dir"] = os.path.dirname(dst_md)
+
             if not os.path.exists(dst_md):
                 os.makedirs(os.path.dirname(dst_md), exist_ok=True)
                 with open(dst_md, 'w', encoding="utf-8") as f:
