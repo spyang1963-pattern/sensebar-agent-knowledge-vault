@@ -681,9 +681,10 @@ VISION_MIME = {
 }
 IMG_MIN_BYTES = 15 * 1024        # 跳過 < 15KB 小圖（icon/logo/分隔線）
 IMG_MIN_DIM = 200                # 跳過任一邊 < 200px 的圖
-MAX_IMAGES_PER_DOC = 30          # 單檔圖片處理上限
-MAX_VISION_PER_DAY = 300         # 每日 vision 呼叫上限
+MAX_IMAGES_PER_DOC = 30          # 單檔圖片處理預設上限（可經參數 max_images 覆寫；0=無限）
+MAX_VISION_PER_DAY = 450         # 每日 vision 呼叫上限（貼近 Gemini 免費層 500/日，留餘裕）
 VISION_QUOTA_FILE = WORKING / "_vision_quota.json"
+IMG_CKPT_DIR = WORKING / "_img_checkpoints"   # 逐圖辨識結果檢查點（續傳用）
 
 _VISION_PROMPT = (
     "請用繁體中文說明這張圖片的內容（1-3 句），並逐字抄出圖片中出現的所有文字。"
@@ -735,6 +736,9 @@ def _describe_image(data, ext, task_id=None, idx=None, total=None):
     mime = VISION_MIME.get(ext, "image/png")
     _write_progress(task_id, type="image", stage="vision",
                     image=idx, total=total, msg=f"辨識圖片 {idx or ''}/{total or ''}")
+
+    if not _vision_quota_take():
+        raise _QuotaStop(f"已達每日圖片辨識上限（{MAX_VISION_PER_DAY} 張），暫停待續")
 
     # 1) Gemini Vision
     try:
@@ -800,9 +804,48 @@ def _describe_image(data, ext, task_id=None, idx=None, total=None):
     return ""
 
 
-def _render_segments(segs, rels, task_id=None):
-    """把 text/img 段落依原順序交錯輸出；img 段落呼叫 vision 產生描述＋文字"""
+def _img_ckpt_path(key):
+    """逐圖檢查點檔路徑（key：檔案路徑或網址）"""
+    IMG_CKPT_DIR.mkdir(parents=True, exist_ok=True)
+    h = hashlib.md5(str(key).encode()).hexdigest()[:12]
+    return IMG_CKPT_DIR / f"{h}.json"
+
+
+def _load_ckpt(ckpt_path):
+    if ckpt_path and Path(ckpt_path).exists():
+        try:
+            return json.loads(Path(ckpt_path).read_text("utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+
+def _save_ckpt(ckpt_path, ckpt):
+    if not ckpt_path:
+        return
+    try:
+        Path(ckpt_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(ckpt_path).write_text(json.dumps(ckpt, ensure_ascii=False), "utf-8")
+    except Exception:
+        pass
+
+
+def _describe_cached(data, ext, ckpt, ckpt_path, task_id=None, idx=None, total=None):
+    """同圖已辨識（檢查點）→ 直接重用（去重＋續傳）；否則呼叫 vision 並存檢查點"""
+    h = hashlib.md5(data).hexdigest()
+    if h in ckpt:
+        return ckpt[h]
+    desc = _describe_image(data, ext, task_id=task_id, idx=idx, total=total)
+    ckpt[h] = desc
+    _save_ckpt(ckpt_path, ckpt)
+    return desc
+
+
+def _render_segments(segs, rels, task_id=None, ckpt_path=None, max_images=None):
+    """把 text/img 段落依原順序交錯輸出；img 依 md5 去重並支援檢查點續傳"""
+    limit = MAX_IMAGES_PER_DOC if max_images is None else max_images  # 0 = 無限
     total_imgs = sum(1 for k, _ in segs if k == "img")
+    ckpt = _load_ckpt(ckpt_path)
     out, img_no, done = [], 0, 0
     for kind, val in segs:
         if kind == "text":
@@ -814,20 +857,23 @@ def _render_segments(segs, rels, task_id=None):
         ext = Path(str(getattr(rel, "target_ref", ""))).suffix.lower()
         if not data or not _img_passes(data, ext):
             continue
-        if done >= MAX_IMAGES_PER_DOC:
-            out.append(f"[圖（已達單檔上限 {MAX_IMAGES_PER_DOC} 張，其餘略過）]")
-            break
-        done += 1
+        h = hashlib.md5(data).hexdigest()
+        if h not in ckpt:
+            if limit and done >= limit:
+                out.append(f"[圖（已達單檔上限 {limit} 張，其餘略過）]")
+                break
+            done += 1
         img_no += 1
-        desc = _describe_image(data, ext, task_id=task_id,
-                               idx=img_no, total=min(total_imgs, MAX_IMAGES_PER_DOC))
+        desc = _describe_cached(data, ext, ckpt, ckpt_path, task_id=task_id,
+                                idx=img_no, total=min(total_imgs, limit) if limit else total_imgs)
         if desc:
             out.append(f"[圖{img_no}]\n{desc}")
     return "\n".join(out)
 
 
-def _extract_docx(filepath, task_id=None):
-    """Word → 文字＋表格；內嵌圖片依原位交錯插入（描述＋圖中文字）"""
+def _extract_docx(filepath, task_id=None, max_images=None):
+    """Word → 文字＋表格；內嵌圖片依原位交錯插入（描述＋圖中文字）
+    max_images：圖片處理上限（None=預設 30；0=無限）；逐圖檢查點支援續傳/去重"""
     import docx
     from docx.oxml.ns import qn
     doc = docx.Document(filepath)
@@ -865,7 +911,9 @@ def _extract_docx(filepath, task_id=None):
                     segs.append(("text", line))
                 collect_imgs(row, segs)
 
-    return _render_segments(segs, rels, task_id=task_id)
+    return _render_segments(segs, rels, task_id=task_id,
+                            ckpt_path=_img_ckpt_path(str(Path(filepath).resolve())),
+                            max_images=max_images)
 
 
 def _extract_txt(filepath):
@@ -892,8 +940,8 @@ DOC_EXT_HANDLERS = {
 }
 
 
-def process_document(filepath, kb_subdir="文件", title=None, task_id=None):
-    """文件檔 → 文字提取 → KB 條目"""
+def process_document(filepath, kb_subdir="文件", title=None, task_id=None, max_images=None):
+    """文件檔 → 文字提取（含內嵌圖片）→ KB 條目；max_images=0 表示圖片不限量"""
     fp = Path(filepath)
     if not fp.exists():
         return _msg("error", f"檔案不存在: {filepath}")
@@ -910,11 +958,11 @@ def process_document(filepath, kb_subdir="文件", title=None, task_id=None):
         if handler is _extract_pdf:
             content = handler(str(fp), task_id=task_id)
         elif handler is _extract_docx:
-            content = handler(str(fp), task_id=task_id)
+            content = handler(str(fp), task_id=task_id, max_images=max_images)
         else:
             content = handler(str(fp))
     except _QuotaStop:
-        return _msg("paused", "已達 OCR API 每日額度，OCR 暫停；待額度重置後可續傳（檢查點已保存）")
+        return _msg("paused", "已達每日辨識額度，暫停；檢查點已保存，待額度重置後可續傳")
     except Exception as e:
         return _msg("error", f"文字提取失敗: {e}")
 
@@ -965,15 +1013,15 @@ def _download_image(url, max_bytes=10 * 1024 * 1024):
         return None, ""
 
 
-def _embed_web_images(soup, base_url, task_id=None):
-    """依網頁原順序把 <img> 就地換成「描述＋圖中文字」，跳過小圖/logo"""
+def _embed_web_images(soup, base_url, task_id=None, ckpt_path=None, max_images=None):
+    """依網頁原順序把 <img> 就地換成「描述＋圖中文字」，跳過小圖/logo；支援去重/續傳"""
     from urllib.parse import urljoin
+    limit = MAX_IMAGES_PER_DOC if max_images is None else max_images  # 0 = 無限
     imgs = soup.find_all("img")
     total = len(imgs)
+    ckpt = _load_ckpt(ckpt_path)
     img_no, done = 0, 0
     for img in imgs:
-        if done >= MAX_IMAGES_PER_DOC:
-            break
         src = (img.get("src") or img.get("data-src") or img.get("data-original") or "").strip()
         alt = (img.get("alt") or "").strip()
         if not src or src.startswith("data:"):
@@ -989,16 +1037,20 @@ def _embed_web_images(soup, base_url, task_id=None):
             else:
                 img.decompose()
             continue
-        done += 1
+        h = hashlib.md5(data).hexdigest()
+        if h not in ckpt:
+            if limit and done >= limit:
+                break
+            done += 1
         img_no += 1
-        desc = _describe_image(data, ext, task_id=task_id,
-                               idx=img_no, total=min(total, MAX_IMAGES_PER_DOC))
+        desc = _describe_cached(data, ext, ckpt, ckpt_path, task_id=task_id,
+                                idx=img_no, total=min(total, limit) if limit else total)
         label = f"[圖{img_no}]" + (f"（{alt}）" if alt else "")
         img.replace_with(f"\n{label}\n{desc}\n" if desc else f"\n{label}\n")
 
 
-def process_web(url, kb_subdir="網頁", title=None, task_id=None):
-    """網頁 URL → 擷取內容 → KB 條目"""
+def process_web(url, kb_subdir="網頁", title=None, task_id=None, max_images=None):
+    """網頁 URL → 擷取內容（含圖片）→ KB 條目；max_images=0 表示圖片不限量"""
     import requests
     from bs4 import BeautifulSoup
     if not url.startswith(("http://", "https://")):
@@ -1022,10 +1074,15 @@ def process_web(url, kb_subdir="網頁", title=None, task_id=None):
         for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
             tag.decompose()
         try:
-            _embed_web_images(soup, url, task_id)
+            _embed_web_images(soup, url, task_id,
+                              ckpt_path=_img_ckpt_path(url), max_images=max_images)
+        except _QuotaStop:
+            raise
         except Exception as e:
             sys.stderr.write(f"[web] 圖片處理失敗（略過）: {str(e)[:150]}\n")
         content = soup.get_text(separator="\n", strip=True)
+    except _QuotaStop:
+        return _msg("paused", "已達每日辨識額度，暫停；檢查點已保存，待額度重置後可續傳")
     except Exception as e:
         content = r.text[:50000]
 
@@ -1055,6 +1112,8 @@ if __name__ == "__main__":
     ap.add_argument("--kb", default="", help="KB 子目錄（預設自動判斷）")
     ap.add_argument("--title", default="", help="條目標題（預設用檔名或網址）")
     ap.add_argument("--task-id", default="", help="GUI 任務 ID（用於進度回報）")
+    ap.add_argument("--max-images", type=int, default=None,
+                    help="圖片處理上限（預設 30；0=無限，供大型文件用）")
     args = ap.parse_args()
     kb_map = {"audio": "音頻", "doc": "文件", "web": "網頁"}
     kb_subdir = args.kb or kb_map.get(args.type, "")
@@ -1063,9 +1122,9 @@ if __name__ == "__main__":
     if args.type == "audio":
         r = process_audio(args.source, kb_subdir, title, task_id)
     elif args.type == "doc":
-        r = process_document(args.source, kb_subdir, title, task_id)
+        r = process_document(args.source, kb_subdir, title, task_id, max_images=args.max_images)
     else:
-        r = process_web(args.source, kb_subdir, title, task_id)
+        r = process_web(args.source, kb_subdir, title, task_id, max_images=args.max_images)
     # 寫入最終狀態供 GUI 讀取
     if task_id:
         if r["status"] == "ok":

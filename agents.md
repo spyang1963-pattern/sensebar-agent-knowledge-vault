@@ -272,3 +272,29 @@ Clipping/
 - `channel_watcher.py` 在處理 20VTA 直播（`kb_dir.name=="直播"`）完成後自動呼叫 `make_live_report.make_report(md_path)`。
 - 補做缺報告：`python make_live_report.py --all`（已存在 .doc/.docx 會 SKIP）。
 - 日期來源：`.link.txt` 的 video_id → yt-dlp `extract_flat` 取 upload_date。
+
+## 文件內嵌圖片 OCR 工作流（E，2026-10-12）
+
+### 目的
+文件（Word）與網頁內的圖片，轉成 AI 可讀文字，隨原文「原位交錯」寫入 KB 條目 .md，補足純文字提取會遺漏的圖表/截圖知識。
+
+### 規格（file_processors.py）
+- 輸出格式：每張圖 `[圖N]` + `【描述】…【文字】…`。
+- 引擎鏈：Gemini Vision（`gemini-3.5-flash-lite`）→ Groq Vision（`qwen/qwen3.6-27b`）→ Tesseract（僅文字）。
+- 原位交錯：docx 依 `document.xml` 順序（DrawingML `a:blip` + 舊版 VML `v:imagedata`）；web 依 `<img>` 順序就地替換。
+- 過濾：<15KB 或任一邊 <200px 視為 icon/logo 略過。
+- 上限：單檔預設 30 張（`MAX_IMAGES_PER_DOC`；CLI `--max-images 0`＝無限）；每日 `MAX_VISION_PER_DAY=450`（貼近 Gemini 免費層 500/日）。
+- 去重＋續傳：逐圖 md5 檢查點 `working\_img_checkpoints\{hash}.json`；重跑跳過已完成、同圖只辨識一次。
+- 撞每日上限：丟 `_QuotaStop` → 任務標 `paused`、檢查點保存；隔日重跑同任務自動接續。
+
+### 重活交付與收成（分工）
+- 設計原則：**不做中央派遣**；任一 PC 一鍵部署後獨立運作。
+- Notebook：建流程、下任務、收成 KB。
+- PC：執行重活（docx 大量圖片 OCR），循序、寫進度（`working\_task_progress\{tid}.json`）、跨日續傳。
+- 收成：PC 產出 KB 條目 .md → notebook 抽驗 → `make_course_note.generate_note` 產課程筆記 .md＋.docx → 入 KB。
+
+### 實例：選擇權實驗室--外資期貨成本的計算方法.docx
+- 1246 張 JPEG、228MB、1239 張唯一（去重效益小）。
+- 舊流程 KB md（60KB）只留段落文字，圖全成空白行。
+- 新流程 30 張樣本 → 23.5K 字（`working\_samples\..._sample30.md`），品質良好（籌碼表/K線/履約價表數字完整）。
+- 全檔外推約 1MB md、約 75 分 API，受 500/日限制跨約 3 天；**待其他 PC 備便後再交付執行**。
