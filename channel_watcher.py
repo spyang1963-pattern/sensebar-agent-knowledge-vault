@@ -35,6 +35,9 @@ KB_ROOT = PROJECT_ROOT / "knowledge-base"
 YT_VIDEOS = Path(r"D:\YouTube_Videos")
 YT_VIDEOS.mkdir(parents=True, exist_ok=True)
 
+# 最近一次掃描的詳細處理明細（供通知產生）
+_last_scan_details = []
+
 # ── 工具函數 ──
 
 def safe_filename(name):
@@ -182,48 +185,77 @@ def run_pipeline(video_path, title, video_id):
         log(f"  [Pipeline] 異常: {e}")
     return None
 
-def burn_subtitles(video_path, srt_path, output_path, font_size=24, margin_v=30, position="bottom"):
-    """用 VLC 燒錄字幕"""
+def burn_subtitles(video_path, srt_path, output_path, font_size=18, margin_v=15, position="bottom",
+                   font_family="華康仿宋體W6"):
+    """用 ffmpeg + libass 燒錄字幕（與 worker.py 相同處理方式）。
+
+    ffmpeg filter 語法中 `:` 與 `,` 有特殊意義（選項分隔符/濾鏡鏈分隔符），
+    Windows 磁碟機代號 `D:` 會讓解析出錯。解法：
+    1. 將 SRT 複製到不含特殊字元的暫存路徑
+    2. 在 force_style 值內以跳脫字元分隔選項
+    3. 使用相對路徑（不含磁碟機代號）避開 `:` 問題
+
+    成功回傳 True，失敗回傳 False（不中斷主流程）。
+    """
     if not os.path.exists(srt_path):
         log("  [燒字幕] 找不到字幕檔，跳過")
         return False
 
-    vlc = r"C:\Program Files\VideoLAN\VLC\vlc.exe"
-    if not os.path.exists(vlc):
-        log("  [燒字幕] 找不到 VLC")
-        return False
-
-    # 位置對應
-    pos_map = {
-        "top-left": 4, "top-center": 5, "top-right": 6,
-        "center-left": 7, "center": 8, "center-right": 9,
-        "bottom-left": 1, "bottom": 2, "bottom-right": 3,
+    import tempfile
+    # 字幕位置樣式：libass alignment 1-9
+    position_map = {
+        "bottom": 2, "bottom-center": 2, "下": 2, "下中": 2,
+        "bottom-left": 1, "下左": 1,
+        "bottom-right": 3, "下右": 3,
+        "top": 8, "top-center": 8, "上": 8, "上中": 8,
+        "top-left": 7, "上左": 7,
+        "top-right": 9, "上右": 9,
+        "middle": 5, "mid-center": 5, "中": 5, "正中": 5,
+        "middle-left": 4, "mid-left": 4, "中左": 4,
+        "middle-right": 6, "mid-right": 6, "中右": 6,
     }
-    alignment = pos_map.get(position, 2)
+    alignment = position_map.get(position, 2)
 
+    work_dir = os.path.join(tempfile.gettempdir(), "opencode_subtitle")
+    os.makedirs(work_dir, exist_ok=True)
+    tmp_srt = os.path.join(work_dir, "subtitle.srt")
+    try:
+        shutil.copy2(srt_path, tmp_srt)
+    except Exception:
+        tmp_srt = srt_path
+        work_dir = os.path.dirname(srt_path)
+
+    style = "FontSize={}\\,MarginV={}\\,Alignment={}".format(font_size, margin_v, alignment)
+    if font_family:
+        style += "\\,FontName={}".format(font_family)
     cmd = [
-        vlc, str(video_path),
-        f"--sub-file={srt_path}",
-        f"--sub-text-scale={font_size * 10}",
-        f"--sub-margin={margin_v}",
-        f"--sub-alignment={alignment}",
-        "--sout", (
-            f"#transcode{{soverlay}}:"
-            f"std{{access=file,mux=mp4,dst={output_path}}}"
-        ),
-        "--no-sout-all", "--sout-keep", "--stop-time=5",
-        "vlk://quit",
+        "ffmpeg", "-y",
+        "-i", str(video_path),
+        "-vf", "subtitles={}:force_style={}".format(os.path.basename(tmp_srt), style),
+        "-c:a", "copy",
+        str(output_path),
     ]
     try:
-        subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-    except Exception:
-        log("  [燒字幕] 失敗，但主流程繼續")
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=7200, cwd=work_dir)
+    except Exception as e:
+        log(f"  [燒字幕] 執行失敗: {e}")
+        return False
+    finally:
+        if tmp_srt != srt_path and os.path.isfile(tmp_srt):
+            try:
+                os.unlink(tmp_srt)
+            except Exception:
+                pass
+    if result.returncode != 0:
+        log(f"  [燒字幕] ffmpeg 失敗: {result.stderr[-300:] if result.stderr else ''}")
+        return False
+    log(f"  [燒字幕] 完成：{output_path}")
     return os.path.exists(output_path)
 
 
-def create_kb_entry(video_id, title, transcript, srt_path, video_path, kb_dir):
+def create_kb_entry(video_id, title, transcript, srt_path, video_path, kb_dir, burned_path=None):
     """建立知識庫條目
-    - kb_dir/kb_dir.md：逐字稿 + 連結
+    - kb_dir/kb_dir.md：逐字稿 + 連結（含燒字幕影片路徑，若有產出）
     - kb_dir/kb_dir.srt：字幕檔
     """
     safe = safe_filename(title)
@@ -241,6 +273,8 @@ def create_kb_entry(video_id, title, transcript, srt_path, video_path, kb_dir):
 """
     if video_path and os.path.exists(video_path):
         md_content += f"- 本機影片：{video_path}\n"
+    if burned_path and os.path.exists(burned_path):
+        md_content += f"- 燒字幕影片：{burned_path}\n"
     md_content += f"""
 ---
 
@@ -267,59 +301,75 @@ def create_kb_entry(video_id, title, transcript, srt_path, video_path, kb_dir):
 
 # ── 核心邏輯 ──
 
-def process_has_subs(video_id, title, langs, kb_dir):
-    """有字幕路徑：下載字幕 → KB 條目"""
+def process_has_subs(video_id, title, langs, kb_dir, burn_subs=False):
+    """有字幕路徑：下載字幕 → KB 條目。成功回傳 md_path，失敗回傳 None。
+    burn_subs=True：即使有官方字幕，也下載影片並把字幕燒進去（依頻道規則）。"""
     temp_dir = WORKING / "channel-watcher-temp"
     temp_dir.mkdir(parents=True, exist_ok=True)
 
     srt_path = download_yt_sub(video_id, langs, temp_dir)
     if not srt_path:
-        return False
+        return None
 
     log(f"  [字幕] YouTube 字幕：{srt_path.name}")
     transcript = srt_to_transcript(srt_path)
-    create_kb_entry(video_id, title, transcript, srt_path, None, kb_dir)
+
+    burned_path = None
+    if burn_subs:
+        log("  [燒字幕] 依規則下載搭配影片並燒字幕...")
+        video_path = download_yt_video(video_id, title)
+        if video_path:
+            bp = Path(video_path).with_name(Path(video_path).stem + "_字幕.mp4")
+            if burn_subtitles(video_path, srt_path, bp):
+                burned_path = bp
+
+    md_path = create_kb_entry(video_id, title, transcript, srt_path, None, kb_dir, burned_path=burned_path)
 
     # 清理
     srt_path.unlink()
-    return True
+    return md_path
 
 
 def process_no_subs(video_id, title, langs, kb_dir):
-    """無字幕路徑：下載影片 → Pipeline → 燒字幕 → KB 條目"""
+    """無字幕路徑：下載影片 → Pipeline → 燒字幕 → KB 條目。成功回傳 md_path，失敗回傳 None"""
     log("  [轉錄] 無 YouTube 字幕，啟動離線 Pipeline...")
 
     video_path = download_yt_video(video_id, title)
     if not video_path:
         log("  [轉錄] 影片下載失敗")
-        return False
+        return None
 
     output_dir = run_pipeline(video_path, title, video_id)
     if not output_dir:
         log("  [轉錄] Pipeline 失敗")
-        return False
+        return None
 
     # 找到產出的 SRT
     srt_src = output_dir / "字幕.srt"
     if not srt_src.exists():
         log("  [轉錄] 找不到 Pipeline 產出的 SRT")
-        return False
+        return None
 
     transcript = srt_to_transcript(srt_src)
-    create_kb_entry(video_id, title, transcript, srt_src, video_path, kb_dir)
 
-    # 燒字幕
-    burned_path = output_dir / f"{safe_filename(title)}_burned.mp4"
-    burn_subtitles(video_path, srt_src, burned_path)
+    # 燒字幕：輸出到影片同資料夾（ffmpeg），成功才寫入 KB 連結
+    burned_path = Path(video_path).with_name(Path(video_path).stem + "_字幕.mp4")
+    if not burn_subtitles(video_path, srt_src, burned_path):
+        burned_path = None
 
-    return True
+    md_path = create_kb_entry(video_id, title, transcript, srt_src, video_path, kb_dir, burned_path=burned_path)
+
+    return md_path
 
 
-def scan_playlist(source, kb_dir, langs, state, max_initial=3):
+def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未知頻道", burn_subs=False):
     """掃描單一播放清單，處理新影片
     source: playlist_id 或 YouTube URL
     max_initial: 初次掃描最多處理幾支
+    channel_name: 頻道名稱（供通知明細使用）
+    burn_subs: 即使有官方字幕也下載影片並燒字幕
     """
+    global _last_scan_details
     label = source[:40] if "youtube.com" in source else source
     log(f"[掃描] 清單：{label}")
     log(f"  KB 目錄：{kb_dir}")
@@ -370,16 +420,55 @@ def scan_playlist(source, kb_dir, langs, state, max_initial=3):
         log(f"\n  ── {title[:50]}")
         log(f"      https://www.youtube.com/watch?v={vid}")
 
-        if process_has_subs(vid, title, langs, kb_dir):
+        md_path = None
+        md_path = process_has_subs(vid, title, langs, kb_dir, burn_subs=burn_subs)
+        if md_path:
             processed += 1
             log(f"  ✅ 有字幕處理完成")
-            continue
-
-        if process_no_subs(vid, title, langs, kb_dir):
-            processed += 1
-            log(f"  ✅ 離線轉錄完成")
+            _last_scan_details.append({
+                "channel": channel_name,
+                "title": title,
+                "video_id": vid,
+                "result": "✅ 已下載字幕並存入知識庫",
+                "kb": str(md_path),
+            })
         else:
-            log(f"  ❌ 處理失敗")
+            md_path = process_no_subs(vid, title, langs, kb_dir)
+            if md_path:
+                processed += 1
+                log(f"  ✅ 離線轉錄完成")
+                _last_scan_details.append({
+                    "channel": channel_name,
+                    "title": title,
+                    "video_id": vid,
+                    "result": "✅ 已離線轉錄並存入知識庫",
+                    "kb": str(md_path),
+                })
+            else:
+                log(f"  ❌ 處理失敗")
+                _last_scan_details.append({
+                    "channel": channel_name,
+                    "title": title,
+                    "video_id": vid,
+                    "result": "❌ 處理失敗",
+                    "kb": "",
+                })
+
+        # 每完成一支立即保存狀態進度，被中斷時不致全部重跑
+        state[state_key] = {
+            "last_video_id": vid,
+            "last_check": datetime.now().isoformat(),
+            "last_process_time": datetime.now().isoformat(),
+        }
+        save_channel_state(state)
+
+        # 20VTA 直播 → 自動產生 AI 重點摘要報告（存「直播報告」資料夾）
+        if md_path and (kb_dir.name == "直播" or channel_name == "20VTA 波段王子"):
+            try:
+                from make_live_report import make_report as _make_live_report
+                _make_live_report(Path(md_path))
+            except Exception as e:
+                log(f"  ⚠️ 直播報告產生失敗: {e}")
 
     state[state_key] = {
         "last_video_id": entries[0].get("id", ""),
@@ -388,6 +477,24 @@ def scan_playlist(source, kb_dir, langs, state, max_initial=3):
     }
 
     return processed
+
+
+def format_scan_details(details):
+    """把本次掃描明細做成通知文字（email/Line）
+    details: [{channel, title, video_id, result, kb}]
+    """
+    if not details:
+        return ""
+    lines = [f"共處理 {len(details)} 支新影片", ""]
+    for d in details:
+        lines.append(f"■ 頻道：{d['channel']}")
+        lines.append(f"  影片：{d['title']}")
+        lines.append(f"  連結：https://www.youtube.com/watch?v={d['video_id']}")
+        lines.append(f"  結果：{d['result']}")
+        if d.get("kb"):
+            lines.append(f"  存於：{d['kb']}")
+        lines.append("")
+    return "\n".join(lines)
 
 
 def notify(title, message):
@@ -401,6 +508,8 @@ def notify(title, message):
 
 def scan_all_channels():
     """掃描所有設定中的頻道與播放清單"""
+    global _last_scan_details
+    _last_scan_details = []
     state = load_channel_state()
     channels = get_watched_channels()
     total = 0
@@ -426,7 +535,8 @@ def scan_all_channels():
             if not source:
                 continue
             try:
-                n = scan_playlist(source, kb_dir, langs, state, max_initial=max_init)
+                n = scan_playlist(source, kb_dir, langs, state, max_initial=max_init, channel_name=name,
+                                   burn_subs=pl.get("burn_subs", False))
                 total += n
             except Exception as e:
                 log(f"  [錯誤] {source[:30]}: {e}")
@@ -545,7 +655,7 @@ def process_youtube_url(url, burn_sub=False, save_to_kb=True, langs=None):
                             video_info["kb_path"] = str(kb_dir / f"{safe_filename(title)}.md")
 
                             if burn_sub:
-                                burned = output_dir / f"{safe_filename(title)}_burned.mp4"
+                                burned = Path(video_path).with_name(Path(video_path).stem + "_字幕.mp4")
                                 burn_subtitles(video_path, srt_src, burned)
 
                             processed_count += 1
@@ -631,7 +741,7 @@ def main():
             n = scan_all_channels()
             log(f"本輪處理 {n} 支新影片")
             if n > 0:
-                notify("頻道監控", f"處理 {n} 支新影片")
+                notify("頻道監控", format_scan_details(_last_scan_details))
                 log(f"等待 {args.interval}s 後再次掃描...")
             else:
                 log(f"無新影片，{args.interval}s 後再檢查")
@@ -646,7 +756,7 @@ def main():
     n = scan_all_channels()
     log(f"\n處理完成，共 {n} 支新影片")
     if n > 0:
-        notify("頻道監控", f"處理完成，共 {n} 支新影片")
+        notify("頻道監控", format_scan_details(_last_scan_details))
 
 
 if __name__ == "__main__":

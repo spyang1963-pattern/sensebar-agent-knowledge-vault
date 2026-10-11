@@ -123,7 +123,8 @@ def compress_video(src_path):
     return local_dst
 
 
-def burn_subtitles(video_path, srt_path, output_path, font_size=24, position="bottom", margin_v=30):
+def burn_subtitles(video_path, srt_path, output_path, font_size=18, position="bottom", margin_v=15,
+                   font_family="華康仿宋體W6"):
     """燒錄字幕到影片"""
     import subprocess, tempfile, shutil
 
@@ -160,6 +161,8 @@ def burn_subtitles(video_path, srt_path, output_path, font_size=24, position="bo
         work_dir = os.path.dirname(srt_path)
 
     style = "FontSize={}\\,MarginV={}\\,Alignment={}".format(font_size, margin_v, alignment)
+    if font_family:
+        style += "\\,FontName={}".format(font_family)
     cmd = [
         "ffmpeg", "-y",
         "-i", video_path,
@@ -199,12 +202,15 @@ def process_subtitle_task(task):
     task_queue.update_task_status(tid, "processing")
 
     try:
-        video_path = info["video_path"]
-        srt_path = info["srt_path"]
+        video_path = os.path.normpath(info["video_path"])
+        srt_path = os.path.normpath(info["srt_path"])
         output_dir = info.get("output_dir")
-        font_size = info.get("font_size", 24)
+        if output_dir:
+            output_dir = os.path.normpath(output_dir)
+        font_size = info.get("font_size", 18)
         position = info.get("position", "bottom")
-        margin_v = info.get("margin_v", 30)
+        margin_v = info.get("margin_v", 15)
+        font_family = info.get("font_family") or "華康仿宋體W6"
 
         # 確認檔案存在
         if not os.path.exists(video_path):
@@ -219,10 +225,11 @@ def process_subtitle_task(task):
             output_path = os.path.join(output_dir, os.path.basename(stem) + "_字幕.mp4")
         else:
             output_path = stem + "_字幕.mp4"
+        output_path = os.path.normpath(output_path)
 
         # 燒字幕
         timer.step("burn_subtitles")
-        burn_subtitles(video_path, srt_path, output_path, font_size, position, margin_v)
+        burn_subtitles(video_path, srt_path, output_path, font_size, position, margin_v, font_family)
         timer.step_done("burn_subtitles")
 
         # 完成
@@ -303,7 +310,10 @@ def _create_subtitle_task(orig_tid, info, video_path, output_dir):
             "video_path": video_path,
             "srt_path": srt_path,
             "output_dir": os.path.dirname(video_path),
-            "font_size": 24, "position": "bottom", "margin_v": 30,
+            "font_size": info.get("font_size", 18),
+            "position": info.get("position", "bottom"),
+            "margin_v": info.get("margin_v", 15),
+            "font_family": info.get("font_family") or "華康仿宋體W6",
             "note": f"自動建立（原始任務 #{orig_tid}）",
             "discovered_at": datetime.now().isoformat(),
             "started_at": None, "completed_at": None,
@@ -323,8 +333,10 @@ def _create_subtitle_task(orig_tid, info, video_path, output_dir):
         data["task_counter"] = max([int(tid)] + existing_ids + [data.get("task_counter", 0)])
         save_task_status(data)
         log(f"  [燒字幕] 已建立 #{tid}（原始 #{orig_tid}）")
+        return tid
     except Exception as e:
         log(f"  [燒字幕] 建立失敗: {e}")
+        return None
 
 
 def process_task(task):
@@ -507,10 +519,27 @@ def process_task(task):
         # 自動燒字幕（帶入字幕樣式設定）
         if info.get("auto_subtitle") and success:
             sub_info = dict(info)
-            sub_info["font_size"] = info.get("auto_subtitle_font_size", 24)
+            sub_info["font_size"] = info.get("auto_subtitle_font_size", 18)
             sub_info["position"] = info.get("auto_subtitle_position", "bottom")
-            sub_info["margin_v"] = info.get("auto_subtitle_margin_v", 30)
-            _create_subtitle_task(tid, sub_info, video_path, output_dir)
+            sub_info["margin_v"] = info.get("auto_subtitle_margin_v", 15)
+            sub_info["font_family"] = info.get("auto_subtitle_font_family") or "華康仿宋體W6"
+            sub_tid = _create_subtitle_task(tid, sub_info, video_path, output_dir)
+            # 立即內嵌執行燒字幕：不依賴下次 worker 輪詢，燒完影片當場產出
+            if sub_tid:
+                try:
+                    from scheduler import load_task_status
+                    st = load_task_status()
+                    if sub_tid in st.get("tasks", {}):
+                        sub_task = {
+                            "task_id": sub_tid,
+                            "task_info": st["tasks"][sub_tid],
+                            "status": "pending",
+                            "assigned_to": MACHINE,
+                        }
+                        process_subtitle_task(sub_task)
+                        log(f"  [燒字幕] #{sub_tid} 已在同一次處理中燒錄完成")
+                except Exception as e:
+                    log(f"  [燒字幕] 內嵌執行失敗: {e}（任務保留，可再重試）")
 
         heartbeat.update(status="online", current_task=None)
         return True

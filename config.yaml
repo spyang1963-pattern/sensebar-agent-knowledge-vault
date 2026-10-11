@@ -71,3 +71,4 @@ watched_channels:
       - url: "https://www.youtube.com/@20VTA/streams"
         kb_dir: "20VTA 頻道/直播"
         max_initial: 2
+        burn_subs: true

@@ -834,8 +834,9 @@ class TaskManagerGUI:
 
         # 自動燒字幕設定面板（勾選後展開）
         sub_style_frame = tk.Frame(video_frame, bg="#252540", relief="solid", bd=1)
-        sub_font_var = tk.IntVar(value=24)
-        sub_margin_var = tk.IntVar(value=30)
+        sub_family_var = tk.StringVar(value="華康仿宋體W6")
+        sub_font_var = tk.IntVar(value=18)
+        sub_margin_var = tk.IntVar(value=15)
         sub_pos_var = tk.StringVar(value="bottom")
 
         def toggle_sub_style(*_):
@@ -846,30 +847,43 @@ class TaskManagerGUI:
 
         auto_sub_var.trace("w", toggle_sub_style)
 
-        # 字型大小
-        fs_row = tk.Frame(sub_style_frame, bg="#252540")
-        fs_row.pack(fill="x", padx=8, pady=(6, 0))
-        tk.Label(fs_row, text="字型:", bg="#252540", fg=COLOR_FG,
+        # 字型（字型家族）
+        fam_row = tk.Frame(sub_style_frame, bg="#252540")
+        fam_row.pack(fill="x", padx=8, pady=(6, 0))
+        tk.Label(fam_row, text="字型:", bg="#252540", fg=COLOR_FG,
                  font=("Consolas", 9)).pack(side="left")
-        tk.Scale(fs_row, from_=8, to=72, orient="horizontal",
+        tk.Entry(fam_row, textvariable=sub_family_var,
+                 font=("Consolas", 9), bg="#313244", fg=COLOR_FG,
+                 insertbackground=COLOR_FG, relief="flat", width=16).pack(side="left", padx=(4, 0))
+
+        # 字型大小（Spinbox 精準輸入 + 滑桿）
+        fs_row = tk.Frame(sub_style_frame, bg="#252540")
+        fs_row.pack(fill="x", padx=8, pady=(4, 0))
+        tk.Label(fs_row, text="大小:", bg="#252540", fg=COLOR_FG,
+                 font=("Consolas", 9)).pack(side="left")
+        tk.Scale(fs_row, from_=8, to=72, resolution=1, orient="horizontal",
                  variable=sub_font_var, showvalue=False,
                  bg="#252540", fg=COLOR_FG, highlightbackground="#252540",
-                 length=100, sliderlength=12).pack(side="left", padx=(4, 0))
-        tk.Entry(fs_row, textvariable=sub_font_var,
-                 font=("Consolas", 9), bg="#313244", fg=COLOR_FG,
-                 insertbackground=COLOR_FG, relief="flat", width=3).pack(side="left", padx=4)
+                 length=160, sliderlength=14).pack(side="left", padx=(4, 0))
+        tk.Spinbox(fs_row, from_=8, to=72, increment=1, textvariable=sub_font_var,
+                   font=("Consolas", 9), bg="#313244", fg=COLOR_FG,
+                   insertbackground=COLOR_FG, relief="flat", width=3).pack(side="left", padx=4)
         tk.Label(fs_row, text="pt", bg="#252540", fg="#a6adc8",
                  font=("Consolas", 8)).pack(side="left")
-        tk.Label(fs_row, text="  邊距:", bg="#252540", fg=COLOR_FG,
-                 font=("Consolas", 9)).pack(side="left", padx=(8, 0))
-        tk.Scale(fs_row, from_=0, to=200, orient="horizontal",
+
+        # 垂直邊距（Spinbox + 滑桿）
+        mv_row = tk.Frame(sub_style_frame, bg="#252540")
+        mv_row.pack(fill="x", padx=8, pady=(4, 6))
+        tk.Label(mv_row, text="邊距:", bg="#252540", fg=COLOR_FG,
+                 font=("Consolas", 9)).pack(side="left")
+        tk.Scale(mv_row, from_=0, to=200, resolution=1, orient="horizontal",
                  variable=sub_margin_var, showvalue=False,
                  bg="#252540", fg=COLOR_FG, highlightbackground="#252540",
-                 length=80, sliderlength=12).pack(side="left", padx=(4, 0))
-        tk.Entry(fs_row, textvariable=sub_margin_var,
-                 font=("Consolas", 9), bg="#313244", fg=COLOR_FG,
-                 insertbackground=COLOR_FG, relief="flat", width=3).pack(side="left", padx=4)
-        tk.Label(fs_row, text="px", bg="#252540", fg="#a6adc8",
+                 length=140, sliderlength=14).pack(side="left", padx=(4, 0))
+        tk.Spinbox(mv_row, from_=0, to=200, increment=5, textvariable=sub_margin_var,
+                   font=("Consolas", 9), bg="#313244", fg=COLOR_FG,
+                   insertbackground=COLOR_FG, relief="flat", width=3).pack(side="left", padx=4)
+        tk.Label(mv_row, text="px", bg="#252540", fg="#a6adc8",
                  font=("Consolas", 8)).pack(side="left")
 
         # 位置：3x3
@@ -957,20 +971,31 @@ class TaskManagerGUI:
         tk.Label(sub_frame_inner, text="字幕樣式：", bg=COLOR_BG, fg=COLOR_FG,
                  font=("Consolas", 10, "bold"), anchor="w").pack(fill="x", pady=(8, 0))
 
-        # 字型大小（滑桿 + 數字輸入，8~72）
+        # 字型（字型家族）
+        fam_frame = tk.Frame(sub_frame_inner, bg=COLOR_BG)
+        fam_frame.pack(fill="x", pady=(2, 0))
+        tk.Label(fam_frame, text="字型:", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10)).pack(side="left")
+        sub_family_var2 = tk.StringVar(value="華康仿宋體W6")
+        tk.Entry(fam_frame, textvariable=sub_family_var2,
+                 font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
+                 insertbackground=COLOR_FG, relief="flat", width=20).pack(side="left", padx=(5, 0))
+
+        # 字型大小（Spinbox + 滑桿，8~72）
         fs_frame = tk.Frame(sub_frame_inner, bg=COLOR_BG)
         fs_frame.pack(fill="x", pady=(2, 0))
         tk.Label(fs_frame, text="字型大小:", bg=COLOR_BG, fg=COLOR_FG,
                  font=("Consolas", 10)).pack(side="left")
-        sub_fontsize_var = tk.IntVar(value=24)
-        sub_fontsize_scale = tk.Scale(fs_frame, from_=8, to=72, orient="horizontal",
+        sub_fontsize_var = tk.IntVar(value=18)
+        sub_fontsize_scale = tk.Scale(fs_frame, from_=8, to=72, resolution=1, orient="horizontal",
                                       variable=sub_fontsize_var, showvalue=False,
                                       bg=COLOR_BG, fg=COLOR_FG, highlightbackground=COLOR_BG,
-                                      length=150, sliderlength=15)
+                                      length=170, sliderlength=15)
         sub_fontsize_scale.pack(side="left", padx=(5, 0))
-        sub_fontsize_entry = tk.Entry(fs_frame, textvariable=sub_fontsize_var,
-                                      font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
-                                      insertbackground=COLOR_FG, relief="flat", width=4)
+        sub_fontsize_entry = tk.Spinbox(fs_frame, from_=8, to=72, increment=1,
+                                        textvariable=sub_fontsize_var,
+                                        font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
+                                        insertbackground=COLOR_FG, relief="flat", width=4)
         sub_fontsize_entry.pack(side="left", padx=5)
         tk.Label(fs_frame, text="pt", bg=COLOR_BG, fg="#a6adc8",
                  font=("Consolas", 9)).pack(side="left")
@@ -980,15 +1005,16 @@ class TaskManagerGUI:
         mv_frame.pack(fill="x", pady=(2, 0))
         tk.Label(mv_frame, text="垂直邊距:", bg=COLOR_BG, fg=COLOR_FG,
                  font=("Consolas", 10)).pack(side="left")
-        sub_margin_var = tk.IntVar(value=30)
-        sub_margin_scale = tk.Scale(mv_frame, from_=0, to=200, orient="horizontal",
-                                     variable=sub_margin_var, showvalue=False,
+        sub_margin_var2 = tk.IntVar(value=15)
+        sub_margin_scale = tk.Scale(mv_frame, from_=0, to=200, resolution=1, orient="horizontal",
+                                     variable=sub_margin_var2, showvalue=False,
                                      bg=COLOR_BG, fg=COLOR_FG, highlightbackground=COLOR_BG,
-                                     length=150, sliderlength=15)
+                                     length=170, sliderlength=15)
         sub_margin_scale.pack(side="left", padx=(5, 0))
-        sub_margin_entry = tk.Entry(mv_frame, textvariable=sub_margin_var,
-                                     font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
-                                     insertbackground=COLOR_FG, relief="flat", width=4)
+        sub_margin_entry = tk.Spinbox(mv_frame, from_=0, to=200, increment=5,
+                                      textvariable=sub_margin_var2,
+                                      font=("Consolas", 10), bg="#313244", fg=COLOR_FG,
+                                      insertbackground=COLOR_FG, relief="flat", width=4)
         sub_margin_entry.pack(side="left", padx=5)
         tk.Label(mv_frame, text="px", bg=COLOR_BG, fg="#a6adc8",
                  font=("Consolas", 9)).pack(side="left")
@@ -1218,9 +1244,13 @@ class TaskManagerGUI:
                                 base = r"D:\!!!!!理周學院老師"
                                 try:
                                     rel_path = os.path.relpath(full_path, base)
+                                    # 不在 base 之下（例如 XQ直播_Videos 在 base 旁）→ 用絕對路徑，
+                                    # 否則 relpath 會產生 ..\ 跳出路徑，導致影片→字幕連結不穩
+                                    if rel_path.startswith(".."):
+                                        rel_path = os.path.abspath(full_path)
                                 except ValueError:
                                     # 跨磁碟無法算相對路徑，用完整路徑
-                                    rel_path = full_path
+                                    rel_path = os.path.abspath(full_path)
                                 
                                 # 命名驗證
                                 parts = rel_path.split(os.sep)
@@ -1289,6 +1319,10 @@ class TaskManagerGUI:
                             "note": note,
                             "auto_subtitle": auto_sub_var.get(),
                             "harvest_to_kb": harvest_kb_var.get(),
+                            "auto_subtitle_font_size": sub_font_var.get() if auto_sub_var.get() else 18,
+                            "auto_subtitle_position": sub_pos_var.get() if auto_sub_var.get() else "bottom",
+                            "auto_subtitle_margin_v": sub_margin_var.get() if auto_sub_var.get() else 15,
+                            "auto_subtitle_font_family": sub_family_var.get() if auto_sub_var.get() else "華康仿宋體W6",
                             "discovered_at": datetime.now().isoformat(),
                             "started_at": None,
                             "completed_at": None,
@@ -1349,9 +1383,10 @@ class TaskManagerGUI:
                         "note": note,
                         "auto_subtitle": auto_sub_var.get(),
                         "harvest_to_kb": harvest_kb_var.get(),
-                        "auto_subtitle_font_size": sub_font_var.get() if auto_sub_var.get() else 24,
+                        "auto_subtitle_font_size": sub_font_var.get() if auto_sub_var.get() else 18,
                         "auto_subtitle_position": sub_pos_var.get() if auto_sub_var.get() else "bottom",
-                        "auto_subtitle_margin_v": sub_margin_var.get() if auto_sub_var.get() else 30,
+                        "auto_subtitle_margin_v": sub_margin_var.get() if auto_sub_var.get() else 15,
+                        "auto_subtitle_font_family": sub_family_var.get() if auto_sub_var.get() else "華康仿宋體W6",
                         "discovered_at": datetime.now().isoformat(),
                         "started_at": None,
                         "completed_at": None,
@@ -1422,7 +1457,8 @@ class TaskManagerGUI:
                 outdir = sub_out_path.get().strip()
                 font_size = str(sub_fontsize_var.get())
                 position = sub_position.get()
-                margin_v = sub_margin_var.get()
+                margin_v = sub_margin_var2.get()
+                font_family = sub_family_var2.get().strip() or "華康仿宋體W6"
 
                 created_count = 0
                 for md_path in md_files:
@@ -1483,6 +1519,7 @@ class TaskManagerGUI:
                         "font_size": int(font_size),
                         "position": position,
                         "margin_v": margin_v,
+                        "font_family": font_family,
                         "note": "",
                         "discovered_at": datetime.now().isoformat(),
                         "started_at": None,
@@ -1668,7 +1705,7 @@ class TaskManagerGUI:
                     r = subprocess.run(
                         [sys.executable, str(PROJECT_ROOT / "worker.py"), "--once"],
                         capture_output=True, text=True, cwd=str(PROJECT_ROOT),
-                        timeout=3600)
+                        timeout=7200)
                     self.root.after(0, self._refresh)
                 except subprocess.TimeoutExpired:
                     pass
