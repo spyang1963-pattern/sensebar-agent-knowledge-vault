@@ -167,12 +167,13 @@ def burn_subtitles(video_path, srt_path, output_path, font_size=18, position="bo
         "ffmpeg", "-y",
         "-i", video_path,
         "-vf", "subtitles={}:force_style={}".format(os.path.basename(tmp_srt), style),
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
         "-c:a", "copy",
         output_path
     ]
 
-    log(f"  執行: ffmpeg -y -i <video> -vf subtitles=<srt>:force_style=<style> -c:a copy <output>")
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=7200, cwd=work_dir)
+    log(f"  執行: ffmpeg -y -i <video> -vf subtitles=<srt>:force_style=<style> -c:v libx264 -preset veryfast -crf 20 -c:a copy <output>")
+    result = subprocess.run(cmd, capture_output=True, text=False, timeout=7200, cwd=work_dir)
 
     if tmp_srt != srt_path and os.path.isfile(tmp_srt):
         try:
@@ -181,7 +182,8 @@ def burn_subtitles(video_path, srt_path, output_path, font_size=18, position="bo
             pass
 
     if result.returncode != 0:
-        raise RuntimeError(f"ffmpeg 失敗: {result.stderr[:500]}")
+        err = result.stderr[-500:].decode("utf-8", errors="replace") if result.stderr else ""
+        raise RuntimeError(f"ffmpeg 失敗: {err}")
 
     return output_path
 

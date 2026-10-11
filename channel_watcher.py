@@ -109,47 +109,58 @@ def download_yt_sub(video_id, langs, temp_dir):
         pass
     return None
 
-def download_yt_video(video_id, title):
-    """下載完整影片（較低品質以節省時間）"""
+# 下載格式：優先 1080p H.264 mp4（字幕燒錄與播放相容最佳），不超過 1080p
+YT_DL_FORMAT = ("bestvideo[height<=1080][ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/"
+                "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/"
+                "best[ext=mp4]/best")
+
+
+def download_yt_video(video_id, title, format_spec=YT_DL_FORMAT):
+    """下載完整影片（預設最高 1080p H.264，避免最差畫質字幕讀不清）"""
     url = f"https://www.youtube.com/watch?v={video_id}"
     fname = safe_filename(title)
     out_path = YT_VIDEOS / f"{fname}.mp4"
 
-    if out_path.exists():
+    if out_path.exists() and out_path.stat().st_size > 0:
         log(f"  [下載] 已存在：{out_path.name}")
         return out_path
 
     cmd = [
-        "yt-dlp",
-        "-f", "worstvideo[ext=mp4]+worstaudio[ext=m4a]/worst[ext=mp4]/worst",
-        "-o", str(out_path),
+        "yt-dlp", "--no-update",
+        "-f", format_spec,
+        "--merge-output-format", "mp4",
         "--no-playlist", "--ignore-errors",
+        "-o", str(out_path),
         url,
     ]
     try:
-        log("  [下載] 下載影片中（較低畫質）...")
-        subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-        if out_path.exists():
+        log("  [下載] 下載影片中（最高 1080p）...")
+        result = subprocess.run(cmd, capture_output=True, text=False, timeout=1800)
+        if out_path.exists() and out_path.stat().st_size > 0:
             log(f"  [下載] 完成：{out_path.name}")
             return out_path
+        err = result.stderr[-300:].decode("utf-8", errors="replace") if result.stderr else ""
+        log(f"  [下載] yt-dlp rc={result.returncode} {err}")
     except subprocess.TimeoutExpired:
         log("  [下載] 逾時")
     except Exception as e:
         log(f"  [下載] 錯誤: {e}")
 
-    # 嘗試用普通品質
-    cmd[3] = "best[ext=mp4]/best"
-    try:
-        log("  [下載] 重試（最佳品質）...")
-        subprocess.run(cmd, capture_output=True, text=True, timeout=900)
-        if out_path.exists():
-            return out_path
-    except Exception:
-        pass
+    # 找目前任一既有成功檔案當作驗證後再重試一次（排除已燒字幕檔 _字幕.mp4）
+    for lp in out_path.parent.glob(f"{fname}*"):
+        if "_字幕" in lp.stem:
+            continue
+        if lp.is_file() and lp.suffix.lower() in (".mp4", ".mkv", ".webm"):
+            log(f"  [下載] 已存在副檔名版本：{lp.name}")
+            return lp
     return None
 
-def run_pipeline(video_path, title, video_id):
-    """執行 run_pipeline.py 完整流程（壓縮→轉錄→收成）"""
+def run_pipeline(video_path, title, video_id, skip_cut=True):
+    """執行 run_pipeline.py 完整流程（壓縮→轉錄→收成）
+
+    skip_cut=True（預設）：略過 smart-cut 剪輯，字幕時間軸對齊原片，
+    避免「燒在原片但 SRT 來自剪輯版」的時間軸錯位。
+    """
     log("  [Pipeline] 開始...")
     slug = safe_filename(f"{title[:30]}_{video_id}")
     cmd = [
@@ -158,11 +169,14 @@ def run_pipeline(video_path, title, video_id):
         str(video_path),
         "--slug", slug,
     ]
+    if skip_cut:
+        cmd.append("--skip-cut")
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+        result = subprocess.run(cmd, capture_output=True, text=False, timeout=1800)
         if result.returncode != 0:
             log(f"  [Pipeline] 失敗（rc={result.returncode}）")
-            log(result.stderr[-500:] if result.stderr else "")
+            err_text = result.stderr[-800:].decode("utf-8", errors="replace") if result.stderr else ""
+            log(err_text)
             return None
         log("  [Pipeline] 成功")
         output_dir = PROJECT_ROOT / "output" / slug
@@ -171,16 +185,6 @@ def run_pipeline(video_path, title, video_id):
         log(f"  [Pipeline] 找不到輸出: {output_dir}")
     except subprocess.TimeoutExpired:
         log("  [Pipeline] 逾時（1800s）")
-    except UnicodeDecodeError:
-        log("  [Pipeline] 編碼問題，改用無 capture 模式...")
-        try:
-            r = subprocess.run(cmd, timeout=1800)
-            if r.returncode == 0:
-                od = PROJECT_ROOT / "output" / slug
-                if od.exists():
-                    return od
-        except Exception as e2:
-            log(f"  [Pipeline] 重試仍失敗: {e2}")
     except Exception as e:
         log(f"  [Pipeline] 異常: {e}")
     return None
@@ -232,11 +236,12 @@ def burn_subtitles(video_path, srt_path, output_path, font_size=18, margin_v=15,
         "ffmpeg", "-y",
         "-i", str(video_path),
         "-vf", "subtitles={}:force_style={}".format(os.path.basename(tmp_srt), style),
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
         "-c:a", "copy",
         str(output_path),
     ]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=7200, cwd=work_dir)
+        result = subprocess.run(cmd, capture_output=True, text=False, timeout=7200, cwd=work_dir)
     except Exception as e:
         log(f"  [燒字幕] 執行失敗: {e}")
         return False
@@ -247,7 +252,8 @@ def burn_subtitles(video_path, srt_path, output_path, font_size=18, margin_v=15,
             except Exception:
                 pass
     if result.returncode != 0:
-        log(f"  [燒字幕] ffmpeg 失敗: {result.stderr[-300:] if result.stderr else ''}")
+        err = result.stderr[-300:].decode("utf-8", errors="replace") if result.stderr else ""
+        log(f"  [燒字幕] ffmpeg 失敗: {err}")
         return False
     log(f"  [燒字幕] 完成：{output_path}")
     return os.path.exists(output_path)
