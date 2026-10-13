@@ -438,6 +438,73 @@ def process_note_task(task):
         return False
 
 
+def process_document_task(task):
+    """處理「文件/網頁圖片 OCR」任務：呼叫 file_processors（含內嵌圖片）→ KB 條目
+    task_info 需含：type=doc|web, source(路徑或網址), kb_subdir, title, max_images(可選,0=無限)"""
+    tid = task["task_id"]
+    info = task["task_info"]
+
+    from tracker import TaskTimer
+    timer = TaskTimer(tid)
+    timer.start()
+
+    log(f"\n{'─'*50}")
+    log(f"開始處理文件 #{tid}: {info.get('name') or info.get('title')}")
+
+    heartbeat.update(status="processing", current_task=tid)
+    task_queue.update_task_status(tid, "processing")
+    try:
+        from scheduler import sync_shared_to_local
+        sync_shared_to_local()
+    except Exception:
+        pass
+
+    doctype = info.get("doc_type") or info.get("type") or "doc"
+    source = info.get("source") or info.get("url") or info.get("path") or ""
+    kb_subdir = info.get("kb_subdir") or ("網頁" if doctype == "web" else "文件")
+    title = info.get("title") or None
+    max_images = info.get("max_images")
+    started = info.get("started_at") or datetime.now().isoformat()
+    _write_task_progress(tid, status="processing", type=doctype, stage="提取內容（含圖片）",
+                         started_at=started)
+
+    try:
+        import file_processors as fp
+        if doctype == "web":
+            r = fp.process_web(source, kb_subdir, title, tid, max_images=max_images)
+        else:
+            r = fp.process_document(source, kb_subdir, title, tid, max_images=max_images)
+    except Exception as e:
+        err = str(e)
+        log(f"  [錯誤] {err}")
+        task_queue.update_task_status(tid, "failed", error=err)
+        _write_task_progress(tid, status="failed", type=doctype, message=err)
+        timer.finish(success=False, error=err)
+        return False
+
+    status = r.get("status")
+    msg = r.get("message", "")
+    if status == "ok":
+        log(f"  完成: {msg}")
+        task_queue.update_task_status(tid, "completed")
+        _write_task_progress(tid, status="completed", type=doctype, stage="完成", message=msg)
+        timer.finish(success=True)
+        return True
+    if status == "paused":
+        # 撞每日辨識上限：標 paused，隔日 worker 重拾同任務即自動接續（檢查點續傳）
+        log(f"  暫停（待額度重置）: {msg}")
+        task_queue.update_task_status(tid, "paused")
+        _write_task_progress(tid, status="paused", type=doctype,
+                             stage="已達每日上限，隔日自動續", message=msg)
+        timer.finish(success=True)
+        return False
+    log(f"  [失敗] {msg}")
+    task_queue.update_task_status(tid, "failed", error=msg)
+    _write_task_progress(tid, status="failed", type=doctype, message=msg)
+    timer.finish(success=False, error=msg)
+    return False
+
+
 def _read_harvested_kb_md(tid):
     """從 shared/tasks 讀取收成後記錄的 KB md 路徑（harvest 會寫入 task_info.kb_md）"""
     try:
@@ -515,6 +582,10 @@ def process_task(task):
     # 課程筆記任務獨立處理
     if info.get("type") == "note":
         return process_note_task(task)
+
+    # 文件/網頁（含內嵌圖片 OCR）任務獨立處理
+    if info.get("type") in ("doc", "document", "web"):
+        return process_document_task(task)
     
     # 初始化追蹤器
     from tracker import TaskTimer, OutputValidator, ErrorTracker, HealthChecker
@@ -861,10 +932,10 @@ def main():
         # 從共用目錄取得分配的任務
         assigned_tasks = task_queue.get_assigned_tasks()
         
-        # 過濾 pending 任務
+        # 過濾 pending 任務（含 paused＝撞每日上限待續，隔日自動重拾接續）
         pending_tasks = [
             t for t in assigned_tasks
-            if t.get("status") in ["assigned", "pending"] or t.get("task_info", {}).get("status") in ["assigned", "pending"]
+            if t.get("status") in ["assigned", "pending", "paused"] or t.get("task_info", {}).get("status") in ["assigned", "pending", "paused"]
         ]
         
         if args.id:

@@ -79,7 +79,7 @@ def main():
     print(f"--- total {len(md_sources)} files ---")
 
     api_key = mcn.load_gemini_key()
-    parts_dir = args.out / f"_parts_{safe_title}"
+    parts_dir = mcn.ROOT / "working" / "_note_parts" / "dir" / safe_title
     parts_dir.mkdir(parents=True, exist_ok=True)
 
     chapters = []

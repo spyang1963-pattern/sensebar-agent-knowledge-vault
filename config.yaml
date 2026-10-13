@@ -39,6 +39,7 @@ output:
 watched_channels:
   - name: "三師爸"
     channel_url: "https://www.youtube.com/@sensebar"
+    note: true
     subtitle_langs:
       - "zh-Hant"
       - "zh-TW"
@@ -62,6 +63,7 @@ watched_channels:
 
   - name: "20VTA 波段王子"
     channel_url: "https://www.youtube.com/@20VTA"
+    note: true
     subtitle_langs:
       - "zh-Hant"
       - "zh-TW"

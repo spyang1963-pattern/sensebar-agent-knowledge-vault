@@ -23,6 +23,10 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 MAX_OUTPUT_TOKENS = 20000
 
+ROOT = Path(os.path.dirname(os.path.abspath(__file__)))
+# 續傳快取一律放 working/（gitignored），不可寫進 out_dir（避免污染知識庫）
+NOTE_PARTS_DIR = ROOT / "working" / "_note_parts" / "course"
+
 
 def load_gemini_key() -> str:
     env = os.environ.get("GEMINI_API_KEY")
@@ -35,14 +39,19 @@ def load_gemini_key() -> str:
 
 
 def strip_meta(md_text: str) -> str:
-    """去掉逐字稿 md 開頭的 YouTube Metadata 區塊，只保留逐字稿正文"""
-    if "# YouTube Metadata" not in md_text:
-        return md_text.strip()
+    """去掉逐字稿 md 開頭的 metadata 區塊，只保留「## 逐字稿」之後的正文。
+
+    支援兩種格式：
+    - pipeline/metadata.md：`# YouTube Metadata` + `## 影片`/`## 字幕`/`## 逐字稿`
+    - channel_watcher：`# 標題` + `## 影片資訊` + `## 逐字稿`
+    """
     idx = md_text.find("## 逐字稿")
     if idx >= 0:
         return md_text[idx + len("## 逐字稿"):].strip()
-    # fallback：去掉前 8 行
-    return "\n".join(md_text.splitlines()[8:]).strip()
+    if "# YouTube Metadata" in md_text:
+        # fallback：去掉前 8 行
+        return "\n".join(md_text.splitlines()[8:]).strip()
+    return md_text.strip()
 
 
 def split_body(body: str, chunk_chars: int) -> list:
@@ -347,7 +356,7 @@ def generate_note(title, md_sources, out_dir, template=None, chunk_chars=0,
         _p("[試做模式] 只處理第一支的前 {} 字".format(preview))
         md_sources = md_sources[:1]
 
-    parts_dir = out_dir / f"_parts_{safe_title}"
+    parts_dir = NOTE_PARTS_DIR / safe_title
     parts_dir.mkdir(parents=True, exist_ok=True)
 
     from collections import Counter

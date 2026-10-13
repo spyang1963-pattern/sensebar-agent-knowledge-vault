@@ -659,7 +659,8 @@ def scan_all_channels():
                 continue
             try:
                 n = scan_playlist(source, kb_dir, langs, state, max_initial=max_init, channel_name=name,
-                                   burn_subs=pl.get("burn_subs", False), note=pl.get("note", False))
+                                   burn_subs=pl.get("burn_subs", ch.get("burn_subs", False)),
+                                   note=pl.get("note", ch.get("note", False)))
                 total += n
             except Exception as e:
                 log(f"  [錯誤] {source[:30]}: {e}")
