@@ -438,6 +438,76 @@ def process_note_task(task):
         return False
 
 
+def process_summary_task(task):
+    """處理「產生摘要報告」任務：逐字稿 md → 摘要報告（.md + .docx）"""
+    tid = task["task_id"]
+    info = task["task_info"]
+
+    from tracker import TaskTimer
+    timer = TaskTimer(tid)
+    timer.start()
+
+    log(f"\n{'─'*50}")
+    log(f"開始產生摘要 #{tid}: {info.get('name')}")
+
+    heartbeat.update(status="processing", current_task=tid)
+    task_queue.update_task_status(tid, "processing")
+    try:
+        from scheduler import sync_shared_to_local
+        sync_shared_to_local()
+    except Exception:
+        pass
+    _write_task_progress(tid, status="processing", type="summary", stage="準備逐字稿",
+                         started_at=info.get("started_at") or datetime.now().isoformat())
+
+    try:
+        from make_course_note import generate_summary
+        title = info["title"]
+        source_md = os.path.normpath(info["source_md"])
+        out_dir = os.path.normpath(info["out_dir"])
+        chunk_chars = int(info.get("chunk_chars", DEFAULT_NOTE_CHUNK_CHARS))
+        template = info.get("template") or DEFAULT_NOTE_TEMPLATE
+        if template and not os.path.isfile(template):
+            template = None
+
+        safe_title = re.sub(r'[\\/:*?"<>|]', "_", title)
+        md_out = os.path.join(out_dir, f"{safe_title} 摘要.md")
+
+        # 去重：同名摘要已存在就跳過（與課程筆記相同決策）
+        if os.path.exists(md_out):
+            log(f"  已存在摘要，跳過：{md_out}")
+            task_queue.update_task_status(tid, "completed")
+            _write_task_progress(tid, status="completed", type="summary", stage="已存在，略過")
+            timer.finish(success=True)
+            return True
+
+        if not os.path.isfile(source_md):
+            raise FileNotFoundError(f"逐字稿 md 不存在: {source_md}")
+        os.makedirs(out_dir, exist_ok=True)
+
+        def _progress(msg):
+            _write_task_progress(tid, status="processing", type="summary", stage=str(msg)[:60],
+                                 started_at=info.get("started_at") or datetime.now().isoformat())
+            log(f"  {msg}")
+
+        generate_summary(title, [source_md], out_dir, template=template,
+                         chunk_chars=chunk_chars, progress=_progress)
+
+        log(f"  完成: {md_out}")
+        task_queue.update_task_status(tid, "completed")
+        _write_task_progress(tid, status="completed", type="summary", stage="完成")
+        timer.finish(success=True)
+        return True
+
+    except Exception as e:
+        err = str(e)
+        log(f"  [錯誤] {err}")
+        task_queue.update_task_status(tid, "failed", error=err)
+        _write_task_progress(tid, status="failed", type="summary", message=err)
+        timer.finish(success=False, error=err)
+        return False
+
+
 def process_document_task(task):
     """處理「文件/網頁圖片 OCR」任務：呼叫 file_processors（含內嵌圖片）→ KB 條目
     task_info 需含：type=doc|web, source(路徑或網址), kb_subdir, title, max_images(可選,0=無限)"""
@@ -519,17 +589,20 @@ def _read_harvested_kb_md(tid):
         return None
 
 
-def _create_note_task(orig_tid, kb_md):
-    """收成後自動建立「產生課程筆記」任務（來源＝KB 逐字稿 md，輸出同目錄）"""
+def _create_product_task(orig_tid, kb_md, ptype):
+    """收成後自動建立「產品任務」（note=課程筆記 / summary=摘要報告）；
+    來源＝KB 逐字稿 md，輸出同目錄，已存在則跳過。"""
+    tag = "課程筆記" if ptype == "note" else "摘要"
+    suffix = f"{tag}.md"
     try:
         if not kb_md or not os.path.isfile(kb_md):
-            log(f"  [筆記] 跳過：找不到知識庫逐字稿 md（{kb_md}）")
+            log(f"  [{tag}] 跳過：找不到知識庫逐字稿 md（{kb_md}）")
             return None
         out_dir = os.path.dirname(kb_md)
         title = os.path.splitext(os.path.basename(kb_md))[0]
         safe_title = re.sub(r'[\\/:*?"<>|]', "_", title)
-        if os.path.exists(os.path.join(out_dir, f"{safe_title} 課程筆記.md")):
-            log(f"  [筆記] 跳過：已存在「{safe_title} 課程筆記.md」")
+        if os.path.exists(os.path.join(out_dir, f"{safe_title} {suffix}")):
+            log(f"  [{tag}] 跳過：已存在「{safe_title} {suffix}」")
             return None
         from scheduler import load_task_status, save_task_status
         tid = _get_next_task_id()
@@ -538,9 +611,9 @@ def _create_note_task(orig_tid, kb_md):
         if int(tid) <= current_max:
             tid = str(current_max + 1)
         data["tasks"][tid] = {
-            "type": "note", "status": "pending",
+            "type": ptype, "status": "pending",
             "assigned_to": MACHINE, "priority": 0,
-            "name": f"{title} 課程筆記",
+            "name": f"{title} {tag}",
             "title": title,
             "source_md": kb_md,
             "out_dir": out_dir,
@@ -563,11 +636,19 @@ def _create_note_task(orig_tid, kb_md):
         existing_ids = [int(k) for k in data.get("tasks", {}) if k.isdigit()]
         data["task_counter"] = max([int(tid)] + existing_ids + [data.get("task_counter", 0)])
         save_task_status(data)
-        log(f"  [筆記] 已建立 #{tid}（原始 #{orig_tid}）")
+        log(f"  [{tag}] 已建立 #{tid}（原始 #{orig_tid}）")
         return tid
     except Exception as e:
-        log(f"  [筆記] 建立失敗: {e}")
+        log(f"  [{tag}] 建立失敗: {e}")
         return None
+
+
+def _create_note_task(orig_tid, kb_md):
+    return _create_product_task(orig_tid, kb_md, "note")
+
+
+def _create_summary_task(orig_tid, kb_md):
+    return _create_product_task(orig_tid, kb_md, "summary")
 
 
 def process_task(task):
@@ -582,6 +663,8 @@ def process_task(task):
     # 課程筆記任務獨立處理
     if info.get("type") == "note":
         return process_note_task(task)
+    if info.get("type") == "summary":
+        return process_summary_task(task)
 
     # 文件/網頁（含內嵌圖片 OCR）任務獨立處理
     if info.get("type") in ("doc", "document", "web"):
@@ -786,6 +869,29 @@ def process_task(task):
                         log(f"  [筆記] #{note_tid} 已在同一次處理中完成")
                 except Exception as e:
                     log(f"  [筆記] 內嵌執行失敗: {e}（任務保留，可再重試）")
+
+        # 自動產生摘要報告（與課程筆記同機制；摘要優先、需要時再補詳細筆記）
+        if info.get("auto_summary") and success and harvest_to_kb:
+            _write_task_progress(tid, status="processing", type=info.get("type", "video"),
+                                 stage="產生摘要",
+                                 started_at=info.get("started_at") or datetime.now().isoformat())
+            kb_md = _read_harvested_kb_md(tid)
+            sum_tid = _create_summary_task(tid, kb_md)
+            if sum_tid:
+                try:
+                    from scheduler import load_task_status
+                    st = load_task_status()
+                    if sum_tid in st.get("tasks", {}):
+                        sum_task = {
+                            "task_id": sum_tid,
+                            "task_info": st["tasks"][sum_tid],
+                            "status": "pending",
+                            "assigned_to": MACHINE,
+                        }
+                        process_summary_task(sum_task)
+                        log(f"  [摘要] #{sum_tid} 已在同一次處理中完成")
+                except Exception as e:
+                    log(f"  [摘要] 內嵌執行失敗: {e}（任務保留，可再重試）")
 
         # 自動燒字幕（帶入字幕樣式設定）
         if info.get("auto_subtitle") and success:

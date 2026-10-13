@@ -1114,6 +1114,10 @@ if __name__ == "__main__":
     ap.add_argument("--task-id", default="", help="GUI 任務 ID（用於進度回報）")
     ap.add_argument("--max-images", type=int, default=None,
                     help="圖片處理上限（預設 30；0=無限，供大型文件用）")
+    ap.add_argument("--auto-summary", action="store_true",
+                    help="完成後自動產出「摘要報告」（需 kb_path，放同目錄）")
+    ap.add_argument("--auto-note", action="store_true",
+                    help="完成後自動產出「詳細課程筆記」（需 kb_path，放同目錄）")
     args = ap.parse_args()
     kb_map = {"audio": "音頻", "doc": "文件", "web": "網頁"}
     kb_subdir = args.kb or kb_map.get(args.type, "")
@@ -1125,6 +1129,31 @@ if __name__ == "__main__":
         r = process_document(args.source, kb_subdir, title, task_id, max_images=args.max_images)
     else:
         r = process_web(args.source, kb_subdir, title, task_id, max_images=args.max_images)
+    # 產出知識產品（L0 逐字稿之外，可另選 L3 摘要 / L2 詳細筆記）
+    if r.get("status") == "ok" and r.get("kb_path") and (args.auto_summary or args.auto_note):
+        try:
+            from make_course_note import generate_summary, generate_note
+            kb_md = Path(r["kb_path"])
+            ptitle = kb_md.stem
+            safe_title = safe_filename(ptitle)
+            out_dir = kb_md.parent
+
+            def _prod_progress(tag):
+                return lambda m: _write_progress(
+                    task_id, status="processing", type=tag, stage=str(m)[:60])
+
+            if args.auto_summary and not (out_dir / f"{safe_title} 摘要.md").exists():
+                _write_progress(task_id, status="processing", type="summary", stage="產生摘要報告")
+                generate_summary(ptitle, [str(kb_md)], out_dir, progress=_prod_progress("summary"))
+                _write_progress(task_id, status="processing", type="summary", stage="摘要完成")
+            if args.auto_note and not (out_dir / f"{safe_title} 課程筆記.md").exists():
+                _write_progress(task_id, status="processing", type="note", stage="產生課程筆記")
+                generate_note(ptitle, [str(kb_md)], out_dir, progress=_prod_progress("note"))
+                _write_progress(task_id, status="processing", type="note", stage="筆記完成")
+            r["message"] = r.get("message", "") + "（含摘要/筆記）"
+        except Exception as e:
+            _write_progress(task_id, status="failed", message=f"產品產出失敗: {e}")
+
     # 寫入最終狀態供 GUI 讀取
     if task_id:
         if r["status"] == "ok":

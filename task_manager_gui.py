@@ -270,6 +270,10 @@ class TaskManagerGUI:
                                  bg="#a6e3a1", fg="#1e1e2e", font=("Consolas", 10),
                                  relief="flat", padx=10)
         self.btn_new.pack(side="left", padx=(5, 0))
+        self.btn_product = tk.Button(action_row, text="◈ 產品回補", command=self._product_dialog,
+                                     bg="#cba6f7", fg="#1e1e2e", font=("Consolas", 10),
+                                     relief="flat", padx=10)
+        self.btn_product.pack(side="left", padx=(5, 0))
         self.btn_delete = tk.Button(action_row, text="✕ 刪除選取(可多選)", command=self._delete_task,
                                      bg="#f38ba8", fg="#1e1e2e", font=("Consolas", 10),
                                      relief="flat", padx=10)
@@ -882,6 +886,10 @@ class TaskManagerGUI:
         tk.Checkbutton(cb_frame, text="自動產課程筆記", variable=auto_note_var,
                        bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
                        font=("Consolas", 10)).pack(side="left")
+        auto_sum_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(cb_frame, text="自動產摘要", variable=auto_sum_var,
+                       bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
+                       font=("Consolas", 10)).pack(side="left", padx=(15, 0))
 
         # 自動燒字幕設定面板（勾選後展開）
         sub_style_frame = tk.Frame(video_frame, bg="#252540", relief="solid", bd=1)
@@ -985,6 +993,10 @@ class TaskManagerGUI:
         tk.Checkbutton(yt_cb_frame, text="自動產課程筆記", variable=yt_note_var,
                        bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
                        font=("Consolas", 10)).pack(side="left")
+        yt_sum_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(yt_cb_frame, text="自動產摘要", variable=yt_sum_var,
+                       bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
+                       font=("Consolas", 10)).pack(side="left", padx=(15, 0))
 
         # 燒字幕表單
         sub_frame = tk.Frame(container, bg=COLOR_BG)
@@ -1125,6 +1137,19 @@ class TaskManagerGUI:
         af_kb.insert(0, "音頻")
         af_kb.pack(fill="x", padx=5, pady=(2, 0))
 
+        aud_prod_frame = tk.Frame(audio_frame, bg=COLOR_BG)
+        aud_prod_frame.pack(fill="x", padx=5, pady=(8, 0))
+        tk.Label(aud_prod_frame, text="產出產品 (除了逐字稿):", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10), anchor="w").pack(side="left")
+        aud_sum_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(aud_prod_frame, text="摘要報告", variable=aud_sum_var,
+                       bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
+                       font=("Consolas", 10)).pack(side="left", padx=(10, 0))
+        aud_note_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(aud_prod_frame, text="詳細筆記", variable=aud_note_var,
+                       bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
+                       font=("Consolas", 10)).pack(side="left", padx=(10, 0))
+
         # 文件檔表單
         doc_frame = tk.Frame(container, bg=COLOR_BG)
         tk.Label(doc_frame, text="檔案路徑 *", bg=COLOR_BG, fg=COLOR_FG,
@@ -1154,6 +1179,19 @@ class TaskManagerGUI:
         df_kb.insert(0, "文件")
         df_kb.pack(fill="x", padx=5, pady=(2, 0))
 
+        doc_prod_frame = tk.Frame(doc_frame, bg=COLOR_BG)
+        doc_prod_frame.pack(fill="x", padx=5, pady=(8, 0))
+        tk.Label(doc_prod_frame, text="產出產品 (除了逐字稿):", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10), anchor="w").pack(side="left")
+        doc_sum_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(doc_prod_frame, text="摘要報告", variable=doc_sum_var,
+                       bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
+                       font=("Consolas", 10)).pack(side="left", padx=(10, 0))
+        doc_note_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(doc_prod_frame, text="詳細筆記", variable=doc_note_var,
+                       bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
+                       font=("Consolas", 10)).pack(side="left", padx=(10, 0))
+
         # 網址表單
         web_frame = tk.Frame(container, bg=COLOR_BG)
         tk.Label(web_frame, text="網址 *", bg=COLOR_BG, fg=COLOR_FG,
@@ -1172,6 +1210,19 @@ class TaskManagerGUI:
                          insertbackground=COLOR_FG, relief="flat")
         wf_kb.insert(0, "網頁")
         wf_kb.pack(fill="x", padx=5, pady=(2, 0))
+
+        web_prod_frame = tk.Frame(web_frame, bg=COLOR_BG)
+        web_prod_frame.pack(fill="x", padx=5, pady=(8, 0))
+        tk.Label(web_prod_frame, text="產出產品 (除了逐字稿):", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10), anchor="w").pack(side="left")
+        web_sum_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(web_prod_frame, text="摘要報告", variable=web_sum_var,
+                       bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
+                       font=("Consolas", 10)).pack(side="left", padx=(10, 0))
+        web_note_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(web_prod_frame, text="詳細筆記", variable=web_note_var,
+                       bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
+                       font=("Consolas", 10)).pack(side="left", padx=(10, 0))
 
         video_frame.pack(fill="both", expand=True)
         yt_frame.pack_forget()
@@ -1373,6 +1424,7 @@ class TaskManagerGUI:
                             "auto_subtitle": auto_sub_var.get(),
                             "harvest_to_kb": harvest_kb_var.get(),
                         "auto_note": auto_note_var.get(),
+                            "auto_summary": auto_sum_var.get(),
                             "auto_subtitle_font_size": sub_font_var.get() if auto_sub_var.get() else 18,
                             "auto_subtitle_position": sub_pos_var.get() if auto_sub_var.get() else "bottom",
                             "auto_subtitle_margin_v": sub_margin_var.get() if auto_sub_var.get() else 15,
@@ -1438,6 +1490,7 @@ class TaskManagerGUI:
                         "auto_subtitle": auto_sub_var.get(),
                         "harvest_to_kb": harvest_kb_var.get(),
                         "auto_note": auto_note_var.get(),
+                        "auto_summary": auto_sum_var.get(),
                         "auto_subtitle_font_size": sub_font_var.get() if auto_sub_var.get() else 18,
                         "auto_subtitle_position": sub_pos_var.get() if auto_sub_var.get() else "bottom",
                         "auto_subtitle_margin_v": sub_margin_var.get() if auto_sub_var.get() else 15,
@@ -1470,6 +1523,7 @@ class TaskManagerGUI:
                 do_burn = yt_auto_sub.get()
                 do_kb = yt_harvest_kb.get()
                 do_note = yt_note_var.get()
+                do_sum = yt_sum_var.get()
 
                 win.destroy()
                 self.lbl_status.config(text=f"正在處理 YouTube: {url[:50]}...", fg="#89b4fa")
@@ -1477,7 +1531,7 @@ class TaskManagerGUI:
                 def _process_yt():
                     try:
                         from channel_watcher import process_youtube_url
-                        results = process_youtube_url(url, burn_sub=do_burn, save_to_kb=do_kb, note=do_note)
+                        results = process_youtube_url(url, burn_sub=do_burn, save_to_kb=do_kb, note=do_note, summary=do_sum)
                         self.root.after(0, lambda: _yt_done(results))
                     except Exception as e:
                         self.root.after(0, lambda: messagebox.showerror("處理異常", str(e)))
@@ -1667,6 +1721,14 @@ class TaskManagerGUI:
                            cli_type, src, "--kb", kb, "--task-id", tid]
                     if title:
                         cmd += ["--title", title]
+                    sum_var = {"audio": aud_sum_var, "document": doc_sum_var,
+                               "web": web_sum_var}[t]
+                    note_var = {"audio": aud_note_var, "document": doc_note_var,
+                                "web": web_note_var}[t]
+                    if sum_var.get():
+                        cmd += ["--auto-summary"]
+                    if note_var.get():
+                        cmd += ["--auto-note"]
                     subprocess.Popen(cmd, cwd=str(PROJECT_ROOT),
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                      creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -1726,6 +1788,244 @@ class TaskManagerGUI:
         tk.Button(btn_frame, text="取消", command=win.destroy,
                   bg="#45475a", fg=COLOR_FG, font=("Consolas", 10),
                   relief="flat", padx=15).pack(side="left")
+
+    def _product_dialog(self):
+        """產品回補：列出待補逐字稿、單筆／批量產出摘要報告與詳細筆記"""
+        import backfill_products as bf
+
+        win = tk.Toplevel(self.root)
+        win.title("產品回補（摘要報告／詳細筆記）")
+        win.configure(bg=COLOR_BG)
+        win.geometry("980x620")
+
+        def _log(msg):
+            txt_log.insert("end", msg + "\n")
+            txt_log.see("end")
+
+        def _quota_label():
+            used = bf.today_quota_used()
+            return f"今日配額：已用 {used}/{bf.MAX_PRODUCTS_PER_DAY}（剩 {bf.MAX_PRODUCTS_PER_DAY - used}）"
+
+        rows = []          # [(Path, {"summary": bool, "note": bool}), ...]
+
+        def refresh(*_):
+            nonlocal rows
+            scope = scope_var.get()
+            subtree = None if scope == "全部知識庫" else scope
+            rows = []
+            tree.delete(*tree.get_children())
+            try:
+                for p, k in bf.collect_pending(subtree, ("summary", "note")):
+                    if rows and rows[-1][0] == p:
+                        rows[-1][1][k] = True
+                    else:
+                        rows.append((p, {"summary": k == "summary", "note": k == "note"}))
+                for i, (p, st) in enumerate(rows):
+                    rel = p.relative_to(bf.KB)
+                    tree.insert("", "end", iid=str(i),
+                                values=(str(rel),
+                                        "✓" if not st["summary"] else "·",
+                                        "✓" if not st["note"] else "·"))
+                lbl_quota.config(text=_quota_label())
+                _log(f"待補清單：{len(rows)} 筆（範圍：{scope}）")
+            except Exception as e:
+                _log(f"[ERR] 掃描失敗: {e}")
+
+        # 範圍列
+        top = tk.Frame(win, bg=COLOR_BG)
+        top.pack(fill="x", padx=10, pady=(10, 0))
+        tk.Label(top, text="範圍:", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10)).pack(side="left")
+        scope_names = ["全部知識庫"]
+        try:
+            scope_names += [d.name for d in sorted(bf.KB.iterdir())
+                            if d.is_dir() and d.name not in bf.KB_EXCLUDE]
+        except Exception:
+            pass
+        scope_var = tk.StringVar(value="全部知識庫")
+        cmb_scope = ttk.Combobox(top, textvariable=scope_var, values=scope_names,
+                                 width=40, font=("Consolas", 10))
+        cmb_scope.pack(side="left", padx=(6, 0))
+        cmb_scope.bind("<<ComboboxSelected>>", refresh)
+        btn_refresh = tk.Button(top, text="↻ 刷新", command=refresh, bg="#45475a", fg=COLOR_FG,
+                                font=("Consolas", 10), relief="flat", padx=10)
+        btn_refresh.pack(side="left", padx=(8, 0))
+
+        # 產品選項（複選，單筆／批量共用）
+        prod = tk.Frame(win, bg=COLOR_BG)
+        prod.pack(fill="x", padx=10, pady=(8, 0))
+        tk.Label(prod, text="回補產品:", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10)).pack(side="left")
+        sum_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(prod, text="摘要報告", variable=sum_var,
+                       bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
+                       font=("Consolas", 10)).pack(side="left", padx=(8, 0))
+        note_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(prod, text="詳細筆記", variable=note_var,
+                       bg=COLOR_BG, fg=COLOR_FG, selectcolor=COLOR_BG,
+                       font=("Consolas", 10)).pack(side="left", padx=(8, 0))
+        lbl_quota = tk.Label(prod, text=_quota_label(), bg=COLOR_BG, fg=COLOR_WARN,
+                             font=("Consolas", 10))
+        lbl_quota.pack(side="right", padx=(0, 5))
+
+        # 待補清單
+        list_frame = tk.Frame(win, bg=COLOR_BG)
+        list_frame.pack(fill="both", expand=True, padx=10, pady=(6, 0))
+        tree = ttk.Treeview(list_frame, columns=("path", "sum", "note"),
+                            show="headings", selectmode="extended", height=14)
+        tree.heading("path", text="逐字稿路徑", anchor="w")
+        tree.heading("sum", text="摘要", anchor="center")
+        tree.heading("note", text="筆記", anchor="center")
+        tree.column("path", width=700, anchor="w")
+        tree.column("sum", width=60, anchor="center")
+        tree.column("note", width=60, anchor="center")
+        tree.pack(side="left", fill="both", expand=True)
+        sb = ttk.Scrollbar(list_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+
+        # 執行區
+        btns = tk.Frame(win, bg=COLOR_BG)
+        btns.pack(fill="x", padx=10, pady=(6, 0))
+
+        def _checked_kinds():
+            ks = []
+            if sum_var.get():
+                ks.append("summary")
+            if note_var.get():
+                ks.append("note")
+            return ks
+
+        msgs = []           # worker 執行緒訊息（主執行緒輪詢顯示）
+        busy = [False]      # 是否正在執行（防止重複下命令）
+        done = [False]
+        finished = [0]      # 已完成的產品數
+
+        def _produce_one(p, kind):
+            try:
+                r = bf.produce(p, kind, False)
+                rel = p.relative_to(bf.KB)
+                if r == "ok":
+                    msgs.append(f"  ✓ [{kind}] {rel}")
+                elif r == "no-quota":
+                    msgs.append(f"  ⛔ 今日配額已用完，停止。剩餘待補 {rel}")
+                    return False
+                elif r == "skip-exists":
+                    msgs.append(f"  ·（已存在，跳過）[{kind}] {rel}")
+                return True
+            except Exception as e:
+                msgs.append(f"  ✗ [{kind}] {p.relative_to(bf.KB)} 失敗：{e}")
+                return True
+
+        def _run_worker(kinds, targets):
+            if busy[0]:
+                win.bell()
+                _log("[忽略] 上一批仍在執行，請等它完成後再按。")
+                return
+            total = len(targets) * len(kinds)
+            btn_single.config(state="disabled")
+            btn_batch.config(state="disabled")
+            btn_refresh.config(state="disabled")
+            busy[0] = True
+            done[0] = False
+            finished[0] = 0
+            _log(f"▶ 開始回補：{len(targets)} 筆 × {len(kinds)} 種產物 ＝ {total} 項"
+                 f"（今日已用 {bf.today_quota_used()}/{bf.MAX_PRODUCTS_PER_DAY}，剩 "
+                 f"{bf.MAX_PRODUCTS_PER_DAY - bf.today_quota_used()}）")
+            lbl_state.config(text=f"執行中…（0/{total}）", fg="#f9e2af")
+
+            def worker():
+                try:
+                    for p in targets:
+                        for k in kinds:
+                            rel = str(p.relative_to(bf.KB))
+                            msgs.append(f"⏳ 產出中 [{k}] {rel} …")
+                            if not _produce_one(p, k):
+                                return
+                            finished[0] += 1
+                finally:
+                    done[0] = True
+
+            try:
+                threading.Thread(target=worker, daemon=True).start()
+            except Exception as e:
+                busy[0] = False
+                done[0] = True
+                _log(f"[ERR] 無法啟動執行緒：{e}")
+            win.after(100, _poll)
+
+        def _poll():
+            while msgs:
+                _log(msgs.pop(0))
+            lbl_quota.config(text=_quota_label())
+            if done[0]:
+                lbl_state.config(text="✔ 已完成", fg="#a6e3a1")
+                btn_single.config(state="normal")
+                btn_batch.config(state="normal")
+                btn_refresh.config(state="normal")
+                busy[0] = False
+                _log(f"完成。（今日已用 {bf.today_quota_used()}/{bf.MAX_PRODUCTS_PER_DAY}，剩 "
+                     f"{bf.MAX_PRODUCTS_PER_DAY - bf.today_quota_used()}）")
+                refresh()
+            else:
+                lbl_state.config(text=f"執行中…（已 {finished[0]} 項）")
+                win.after(200, _poll)
+
+        def single():
+            if busy[0]:
+                win.bell()
+                messagebox.showinfo("忙碌中", "上一批仍在執行，請等它完成再繼續。",
+                                    parent=win)
+                return
+            sel = tree.selection()
+            if not sel:
+                messagebox.showinfo("提示", "請先在清單中選取（可 Ctrl 多選）", parent=win)
+                return
+            targets = [rows[int(i)][0] for i in sel]
+            kinds = _checked_kinds() or ["summary"]
+            _run_worker(kinds, targets)
+
+        def batch():
+            if busy[0]:
+                win.bell()
+                messagebox.showinfo("忙碌中", "上一批仍在執行，請等它完成再繼續。",
+                                    parent=win)
+                return
+            kinds = _checked_kinds() or ["summary"]
+            targets = [p for p, _ in rows]
+            if not targets:
+                messagebox.showinfo("提示", "目前沒有待補項目", parent=win)
+                return
+            if not messagebox.askyesno("批量回補",
+                                       f"將對 {len(targets)} 筆逐字稿補上「{'」＋「'.join(kinds)}」\n"
+                                       "（每日配額 20 筆，達上限即停、隔日重跑續補）\n\n確定開始？",
+                                       parent=win):
+                return
+            _run_worker(kinds, targets)
+
+        btn_single = tk.Button(btns, text="回補選取（可多選）", command=single,
+                               bg="#cba6f7", fg="#1e1e2e", font=("Consolas", 10),
+                               relief="flat", padx=12)
+        btn_single.pack(side="left", padx=(0, 8))
+        btn_batch = tk.Button(btns, text="批量回補全部", command=batch,
+                              bg="#f9e2af", fg="#1e1e2e", font=("Consolas", 10),
+                              relief="flat", padx=12)
+        btn_batch.pack(side="left")
+        lbl_state = tk.Label(btns, text="待命", bg=COLOR_BG, fg=COLOR_FG,
+                             font=("Consolas", 10))
+        lbl_state.pack(side="left", padx=(14, 0))
+        tk.Button(btns, text="關閉", command=win.destroy,
+                  bg="#45475a", fg=COLOR_FG, font=("Consolas", 10),
+                  relief="flat", padx=12).pack(side="right")
+
+        # 日誌
+        tk.Label(win, text="執行日誌：", bg=COLOR_BG, fg=COLOR_FG,
+                 font=("Consolas", 10), anchor="w").pack(fill="x", padx=10, pady=(8, 0))
+        txt_log = tk.Text(win, height=10, bg="#11111b", fg=COLOR_FG,
+                          font=("Consolas", 9), relief="flat")
+        txt_log.pack(fill="both", expand=True, padx=10, pady=(2, 10))
+
+        refresh()
 
     def _redistribute(self):
         if not messagebox.askyesno("確認重新分配", "所有 pending/processing 任務將釋放，\n由各 worker 自動搶單。\n\n確定？"):

@@ -356,15 +356,16 @@ NOTE_CHUNK_CHARS = 8000
 MAX_NOTES_PER_RUN = 3          # 單批上限（決策⑦）
 MAX_NOTES_PER_DAY = 20         # 每日上限（決策⑦；Gemini 免費層 500/日，留安全邊際）
 _NOTE_QUOTA_FILE = KB_ROOT / ".note_quota.json"
+_NOTE_QUOTA_LOG_FILE = KB_ROOT / ".note_quota_log.tsv"
 
 
-def _note_quota_take():
+def _note_quota_take(tag: str = ""):
     """檢查並扣用今日筆記額度。回傳 True=可產、False=已達當日上限（決策⑦）。"""
     today = datetime.now().strftime("%Y-%m-%d")
     data = {}
     try:
         if _NOTE_QUOTA_FILE.exists():
-            data = json.loads(_NOTE_QUOTA_FILE.read_text(encoding="utf-8"))
+            data = json.loads(_NOTE_QUOTA_FILE.read_text(encoding="utf-8-sig"))
     except Exception:
         data = {}
     if data.get("date") != today:
@@ -374,6 +375,11 @@ def _note_quota_take():
     data["count"] = data.get("count", 0) + 1
     try:
         _NOTE_QUOTA_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+    try:
+        with open(_NOTE_QUOTA_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(f"{datetime.now().isoformat(timespec='seconds')}\t{data['count']}\t{tag}\n")
     except Exception:
         pass
     return True
@@ -392,7 +398,7 @@ def make_note_for_md(title, md_path, out_dir=None):
     if md_out.exists():
         log(f"  [筆記] 略過（已存在）：{md_out.name}")
         return md_out, md_out.with_suffix(".docx")
-    if not _note_quota_take():
+    if not _note_quota_take(f"channel note:{title}"):
         log(f"  [筆記] 今日已達上限 {MAX_NOTES_PER_DAY} 份，記待辦略過：{title}")
         return None
     from make_course_note import generate_note
@@ -403,6 +409,33 @@ def make_note_for_md(title, md_path, out_dir=None):
                              chunk_chars=NOTE_CHUNK_CHARS, progress=lambda m: log(f"    {m}"))
     except Exception as e:
         log(f"  [筆記] 產生失敗：{e}")
+        return None
+
+
+def make_summary_for_md(title, md_path, out_dir=None):
+    """為 KB 逐字稿 md 產生摘要報告（.md+.docx，放同目錄）。
+    已存在同名「摘要」則略過；達每日上限則略過。與課程筆記共用同一個產製預算。
+    回傳 (md_out, docx_out) 或 None。
+    """
+    md_path = Path(md_path)
+    title = title or md_path.stem
+    out_dir = Path(out_dir) if out_dir else md_path.parent
+    safe_title = re.sub(r'[\\/:*?"<>|]', "_", title)
+    md_out = out_dir / f"{safe_title} 摘要.md"
+    if md_out.exists():
+        log(f"  [摘要] 略過（已存在）：{md_out.name}")
+        return md_out, md_out.with_suffix(".docx")
+    if not _note_quota_take(f"channel summary:{title}"):
+        log(f"  [摘要] 今日已達上限 {MAX_NOTES_PER_DAY} 份，略過：{title}")
+        return None
+    from make_course_note import generate_summary
+    tpl = NOTE_TEMPLATE if NOTE_TEMPLATE.exists() else None
+    log(f"  [摘要] 產生摘要報告：{title}")
+    try:
+        return generate_summary(title, [md_path], out_dir, template=tpl,
+                                chunk_chars=NOTE_CHUNK_CHARS, progress=lambda m: log(f"    {m}"))
+    except Exception as e:
+        log(f"  [摘要] 產生失敗：{e}")
         return None
 
 
@@ -472,13 +505,14 @@ def process_no_subs(video_id, title, langs, kb_dir):
     return md_path
 
 
-def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未知頻道", burn_subs=False, note=False):
+def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未知頻道", burn_subs=False, note=False, summary=False):
     """掃描單一播放清單，處理新影片
     source: playlist_id 或 YouTube URL
     max_initial: 初次掃描最多處理幾支
     channel_name: 頻道名稱（供通知明細使用）
     burn_subs: 即使有官方字幕也下載影片並燒字幕
     note: 收成後自動產生課程筆記（預設關）
+    summary: 收成後自動產生摘要報告（預設關；摘要優先，需要時再補詳細筆記）
     """
     global _last_scan_details
     label = source[:40] if "youtube.com" in source else source
@@ -593,6 +627,17 @@ def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未
             except Exception as e:
                 log(f"  ⚠️ 課程筆記產生失敗: {e}")
 
+        # 自動產生摘要報告（與課程筆記共用「摘要優先」策略；經 MAX_NOTES_PER_RUN 併計）
+        if summary and md_path and notes_made < MAX_NOTES_PER_RUN:
+            try:
+                title_for_sum = Path(md_path).stem
+                r = make_summary_for_md(title_for_sum, md_path)
+                if r:
+                    notes_made += 1
+                    _last_scan_details[-1]["result"] += "（含摘要）"
+            except Exception as e:
+                log(f"  ⚠️ 摘要產生失敗: {e}")
+
     state[state_key] = {
         "last_video_id": entries[0].get("id", ""),
         "last_check": datetime.now().isoformat(),
@@ -660,7 +705,8 @@ def scan_all_channels():
             try:
                 n = scan_playlist(source, kb_dir, langs, state, max_initial=max_init, channel_name=name,
                                    burn_subs=pl.get("burn_subs", ch.get("burn_subs", False)),
-                                   note=pl.get("note", ch.get("note", False)))
+                                   note=pl.get("note", ch.get("note", False)),
+                                   summary=pl.get("summary", ch.get("summary", False)))
                 total += n
             except Exception as e:
                 log(f"  [錯誤] {source[:30]}: {e}")
@@ -704,7 +750,7 @@ def show_status():
     print()
 
 
-def process_youtube_url(url, burn_sub=False, save_to_kb=True, langs=None, note=False):
+def process_youtube_url(url, burn_sub=False, save_to_kb=True, langs=None, note=False, summary=False):
     """處理單一 YouTube 網址（供 GUI 呼叫）
     
     支援格式：
@@ -767,6 +813,8 @@ def process_youtube_url(url, burn_sub=False, save_to_kb=True, langs=None, note=F
                 processed_count += 1
                 if note:
                     make_note_for_md(kb_basename(title, date_prefix), video_info["kb_path"], kb_dir)
+                if summary:
+                    make_summary_for_md(kb_basename(title, date_prefix), video_info["kb_path"], kb_dir)
             else:
                 log(f"  無 YouTube 字幕，啟動 Pipeline...")
                 video_path = download_yt_video(vid, title, date_prefix=date_prefix)
@@ -788,6 +836,8 @@ def process_youtube_url(url, burn_sub=False, save_to_kb=True, langs=None, note=F
                             processed_count += 1
                             if note:
                                 make_note_for_md(kb_basename(title, date_prefix), video_info["kb_path"], kb_dir)
+                            if summary:
+                                make_summary_for_md(kb_basename(title, date_prefix), video_info["kb_path"], kb_dir)
                         else:
                             log(f"  找不到 SRT 輸出")
                     else:

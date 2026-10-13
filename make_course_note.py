@@ -26,6 +26,9 @@ MAX_OUTPUT_TOKENS = 20000
 ROOT = Path(os.path.dirname(os.path.abspath(__file__)))
 # 續傳快取一律放 working/（gitignored），不可寫進 out_dir（避免污染知識庫）
 NOTE_PARTS_DIR = ROOT / "working" / "_note_parts" / "course"
+SUMMARY_PARTS_DIR = ROOT / "working" / "_note_parts" / "summary"
+# 摘要 prompt 版本：改動 prompt 時遞增，讓舊快取自動失效（檔名帶版本）
+SUMMARY_PROMPT_VER = "v3"
 
 
 def load_gemini_key() -> str:
@@ -421,6 +424,143 @@ def generate_note(title, md_sources, out_dir, template=None, chunk_chars=0,
     return md_out, docx_out
 
 
+def gemini_summary(transcript: str, api_key: str) -> str:
+    """逐字稿段落 → 結構化重點摘要（交易導向：個股/族群務必逐檔保留）"""
+    from google import genai
+
+    system = ("你是專業的投資／交易課程摘要編輯，擅長從語音逐字稿中精準提取可操作的重點，"
+              "尤其重視「個股與族群分析」的完整保留。")
+    user = f"""這是某堂投資／交易課程（或直播）某一部分的逐字稿。請產出「結構化重點摘要」，繁體中文、全形標點。
+
+最高原則：
+- **忠實且具體**：所有出現的股票（名稱或代號）、族群、指數、指標、數字、價位、條件、訊號，都要保留，不得含糊帶過或省略。
+- 交易內容的**核心是個股／族群分析**：務必逐檔列出，不可只談大盤而漏掉個股；同一檔若有多項資訊，整合成一行。
+- **不得臆測股票代號**：逐字稿未明確講出代號時，**只寫名稱、不要自行補代號**；名稱一律以逐字稿實際出現者為準，嚴禁張冠李戴。
+- 省略寒暄、離題與口頭贅詞；逐字稿錯字依上下文修正；不要流水帳。
+- 篇幅依內容多寡自適應，**寧詳勿略**，但不要重複或灌水。
+
+請依內容選用下列小節（**沒有該類內容就略過**，不要硬湊）：
+### 大盤與行情觀點
+### 個股與族群
+（每檔一行，格式：「**名稱／代號**：多空方向 — 依據／理由 — 關鍵價位或條件 — 風險或停損」）
+### 操作策略與條件
+（進出場時機、停損、加減碼、倉位、突破確認、需觀察的訊號等）
+### 關鍵數據與指標
+（融資維持率、均線、量能基準、籌碼、法人等具體數字）
+### 關鍵結論
+（明確結論、口訣或金句；以 **粗體** 保留原意）
+
+只輸出摘要本身，不加前言或結語。
+
+===== 逐字稿 =====
+{transcript}
+====="""
+    client = genai.Client(api_key=api_key)
+    resp = _gemini_call(client, system, user, 8000)
+    return (resp.text or "").strip()
+
+
+def gemini_summary_merge(parts_text: str, api_key: str) -> str:
+    """多段／多來源摘要草稿 → 合併收斂成單一份結構化重點摘要"""
+    from google import genai
+
+    system = ("你是專業的投資／交易課程摘要編輯，擅長把多段草稿合併成一份連貫、"
+              "不重複、資訊完整且以個股分析為核心的重點摘要。")
+    user = f"""以下同一份內容（可能因長度被切成多段，或由多支逐字稿）各自產出的重點摘要草稿。這些草稿之間**有大量重複**（相同的大盤觀點、相同的個股會反覆出現）。請合併成**唯一一份**結構化重點摘要，繁體中文、全形標點。
+
+硬性要求：
+- 最終文件的**每個小節標題只能出現一次**，順序固定為：### 大盤與行情觀點 → ### 個股與族群 → ### 操作策略與條件 → ### 關鍵數據與指標 → ### 關鍵結論（無內容者略過）。
+- **個股全部整併到單一「### 個股與族群」清單**：同一檔個股只能出現**一次**，把它在各段草稿的資訊整合成**一行**（格式：「**名稱／代號**：多空方向 — 依據／理由 — 關鍵價位或條件 — 風險或停損」）；名稱或代號相同者視為同一檔，只留一筆，嚴禁同一檔出現兩次。
+- **徹底去重**：相同的觀點、策略、數據只保留一份。最終篇幅應**明顯短於**所有草稿的總和（約為其 60%～80%）。
+- 不得因合併而遺漏任何個股／族群、關鍵數字、價位與條件；**股票代號以草稿中實際出現者為準，不得臆測或新增代號**。
+- 只輸出摘要本身，不加前言或結語。
+
+===== 各段摘要草稿 =====
+{parts_text}
+====="""
+    client = genai.Client(api_key=api_key)
+    resp = _gemini_call(client, system, user, 8000)
+    return (resp.text or "").strip()
+
+
+def generate_summary(title, md_sources, out_dir, template=None, chunk_chars=8000,
+                     preview=0, progress=None):
+    """逐字稿 md（可多支）→ 摘要報告 (.md + .docx)。
+
+    回傳 (md_out, docx_out)。已存在同名檔案不會自動略過（由呼叫端決定）。
+    """
+    def _p(msg):
+        if progress:
+            try:
+                progress(msg)
+            except Exception:
+                pass
+
+    api_key = load_gemini_key()
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    safe_title = re.sub(r'[\\/:*?"<>|]', "_", title)
+
+    md_sources = [str(m) for m in md_sources]
+    if preview > 0:
+        _p("[試做模式] 只處理第一支的前 {} 字".format(preview))
+        md_sources = md_sources[:1]
+
+    parts_dir = SUMMARY_PARTS_DIR / safe_title
+    parts_dir.mkdir(parents=True, exist_ok=True)
+
+    all_parts = []
+    for i, mdp in enumerate(md_sources):
+        _p(f"[{i+1}/{len(md_sources)}] 摘錄 → {Path(mdp).name} ...")
+        raw = Path(mdp).read_text(encoding="utf-8", errors="replace")
+        body = strip_meta(raw)
+        if preview > 0 and len(body) > preview:
+            body = body[:preview] + "\n…（試做截斷，其餘部分正式摘要時補上）…"
+        chunk = 0 if preview > 0 else chunk_chars
+        segs = split_body(body, chunk)
+        if len(segs) > 1:
+            _p(f"        （長逐字稿分段：{len(segs)} 段）")
+        for k, seg in enumerate(segs):
+            part = parts_dir / f"{SUMMARY_PROMPT_VER}-{i:02d}-{k:02d}.md"
+            if part.exists():
+                body_sum = part.read_text(encoding="utf-8").split("\n", 1)[-1].strip()
+                _p(f"          [{k+1}/{len(segs)}] 載入暫存（{len(body_sum):,} 字元）")
+            else:
+                if len(segs) > 1:
+                    _p(f"          - 第 {k+1}/{len(segs)} 段（{len(seg):,} 字）...")
+                body_sum = gemini_summary(seg, api_key)
+                part.write_text(Path(mdp).name + f" #{k+1}\n" + body_sum, encoding="utf-8")
+            if body_sum.strip():
+                all_parts.append(body_sum.strip())
+        _p(f"        ✓ {Path(mdp).name} 完成（{len(segs)} 段）")
+
+    lines = [f"# {title}", ""]
+    lines.append("> 摘要（整理自逐字稿，供快速掌握重點；需要細節時可另產「課程筆記」）。")
+    lines.append(f"> 整理日期：{datetime.now().strftime('%Y-%m-%d')}")
+    lines.append("")
+    # 多段／多來源時，合併收斂成單一份（去重、整併個股、標題不重複）
+    if len(all_parts) > 1:
+        _p(f"        → 合併收斂 {len(all_parts)} 段摘要（去重、整併個股）...")
+        merged_body = gemini_summary_merge("\n\n".join(all_parts), api_key)
+        body = merged_body.strip() if merged_body.strip() else "\n\n".join(all_parts)
+        _p(f"        ✓ 合併完成（{len(body):,} 字元）")
+    else:
+        body = all_parts[0] if all_parts else ""
+    lines.append(body)
+    md_text = "\n".join(lines)
+
+    md_out = out_dir / f"{safe_title} 摘要.md"
+    if preview:
+        md_out = out_dir / f"_preview_{safe_title} 摘要.md"
+    md_out.write_text(md_text, encoding="utf-8")
+    _p(f"[OK] {md_out}")
+
+    docx_out = md_out.with_suffix(".docx")
+    build_docx(md_text, docx_out, template=template)
+    _p(f"[OK] {docx_out}")
+    return md_out, docx_out
+
+
 def main():
     ap = argparse.ArgumentParser(description="課程逐字稿 → 詳細課程筆記")
     ap.add_argument("--title", type=str, help="課程名稱（檔案主檔名）")
@@ -430,6 +570,8 @@ def main():
                     help="試做模式：只取第一支逐字稿前 N 字，輸出 _preview 檔")
     ap.add_argument("--chunk-chars", type=int, default=0, dest="chunk_chars",
                     help="長逐字稿分段字數（0＝不分段，建議 8000）")
+    ap.add_argument("--summary", action="store_true",
+                    help="改產「摘要報告」{stem} 摘要.md（而非詳細課程筆記）")
     ap.add_argument("--template", type=Path, default=None,
                     help="docx 樣板（保留其頁碼/排版設定，清空內容重填）")
     ap.add_argument("--from-md", type=Path, default=None,
@@ -446,6 +588,11 @@ def main():
 
     if not args.title or not args.mds:
         ap.print_help()
+        return
+    if args.summary:
+        generate_summary(args.title, args.mds, args.out, template=args.template,
+                         chunk_chars=args.chunk_chars, preview=args.preview,
+                         progress=print)
         return
     generate_note(args.title, args.mds, args.out, template=args.template,
                   chunk_chars=args.chunk_chars, preview=args.preview,
