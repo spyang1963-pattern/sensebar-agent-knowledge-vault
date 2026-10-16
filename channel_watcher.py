@@ -154,6 +154,11 @@ def download_yt_sub(video_id, langs, temp_dir):
 YT_DL_FORMAT = ("bestvideo[height<=1080][ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/"
                 "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/"
                 "best[ext=mp4]/best")
+# 直播等長片用 720p（檔案較小、燒字幕快）：config 該來源設 format: "720"
+YT_DL_FORMAT_720 = ("bestvideo[height<=720][ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/"
+                    "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/"
+                    "best[height<=720][ext=mp4]/best")
+FORMAT_PRESETS = {"720": YT_DL_FORMAT_720, "1080": YT_DL_FORMAT}
 
 
 def download_yt_video(video_id, title, format_spec=YT_DL_FORMAT, date_prefix=None):
@@ -301,6 +306,48 @@ def burn_subtitles(video_path, srt_path, output_path, font_size=18, margin_v=15,
     return os.path.exists(output_path)
 
 
+# ── 去重索引：video_id → KB 條目路徑（日後掃描遇同支影片不重複收成）──
+# 只以「影片 ID 精確比對」去重（不用標題模糊比對，避免誤判）。
+_VIDEO_ID_RE = re.compile(r"(?:youtube\.com/watch\?v=|youtu\.be/)([A-Za-z0-9_-]{11})")
+_KB_VIDEO_INDEX = None
+
+
+def _build_kb_video_index(kb_root=None):
+    """掃描 KB 建立 {video_id: md路徑}。來源：.md 開頭 8KB（連結寫在表頭）＋ .link.txt 全文。
+    .link.txt 若對應 .md 存在則記 md 路徑（較易辨識），否則記連結檔。"""
+    root = Path(kb_root) if kb_root else KB_ROOT
+    idx = {}
+    for p in root.rglob("*.md"):
+        try:
+            with open(p, "r", encoding="utf-8", errors="replace") as f:
+                head = f.read(8192)
+        except Exception:
+            continue
+        m = _VIDEO_ID_RE.search(head)
+        if m:
+            idx.setdefault(m.group(1), str(p))
+    for p in root.rglob("*.link.txt"):
+        try:
+            txt = p.read_text(encoding="utf-8", errors="replace")[:400]
+        except Exception:
+            continue
+        m = _VIDEO_ID_RE.search(txt)
+        if m and m.group(1) not in idx:
+            md = p.with_name(p.name[:-len(".link.txt")] + ".md")
+            idx[m.group(1)] = str(md if md.exists() else p)
+    return idx
+
+
+def kb_video_index(kb_root=None, refresh=False, update=None):
+    """回傳（必要時才建立）KB video_id 索引；update= 可即時補入剛建好的條目。"""
+    global _KB_VIDEO_INDEX
+    if _KB_VIDEO_INDEX is None or refresh:
+        _KB_VIDEO_INDEX = _build_kb_video_index(kb_root)
+    if update:
+        _KB_VIDEO_INDEX.update(update)
+    return _KB_VIDEO_INDEX
+
+
 def create_kb_entry(video_id, title, transcript, srt_path, video_path, kb_dir, burned_path=None, date_prefix=None):
     """建立知識庫條目
     - kb_dir/{date_prefix_}{title}.md：逐字稿 + 連結（含燒字幕影片路徑，若有產出）
@@ -441,9 +488,10 @@ def make_summary_for_md(title, md_path, out_dir=None):
 
 # ── 核心邏輯 ──
 
-def process_has_subs(video_id, title, langs, kb_dir, burn_subs=False):
+def process_has_subs(video_id, title, langs, kb_dir, burn_subs=False, format_spec=None):
     """有字幕路徑：下載字幕 → KB 條目。成功回傳 md_path，失敗回傳 None。
-    burn_subs=True：即使有官方字幕，也下載影片並把字幕燒進去（依頻道規則）。"""
+    burn_subs=True：即使有官方字幕，也下載影片並把字幕燒進去（依頻道規則）。
+    format_spec：燒字幕時的下載格式（None=預設 1080p）。"""
     temp_dir = WORKING / "channel-watcher-temp"
     temp_dir.mkdir(parents=True, exist_ok=True)
 
@@ -459,7 +507,7 @@ def process_has_subs(video_id, title, langs, kb_dir, burn_subs=False):
     burned_path = None
     if burn_subs:
         log("  [燒字幕] 依規則下載搭配影片並燒字幕...")
-        video_path = download_yt_video(video_id, title, date_prefix=date_prefix)
+        video_path = download_yt_video(video_id, title, format_spec=format_spec or YT_DL_FORMAT, date_prefix=date_prefix)
         if video_path:
             bp = Path(video_path).with_name(Path(video_path).stem + "_字幕.mp4")
             if burn_subtitles(video_path, srt_path, bp):
@@ -472,12 +520,12 @@ def process_has_subs(video_id, title, langs, kb_dir, burn_subs=False):
     return md_path
 
 
-def process_no_subs(video_id, title, langs, kb_dir):
+def process_no_subs(video_id, title, langs, kb_dir, format_spec=None):
     """無字幕路徑：下載影片 → Pipeline → 燒字幕 → KB 條目。成功回傳 md_path，失敗回傳 None"""
     log("  [轉錄] 無 YouTube 字幕，啟動離線 Pipeline...")
 
     date_prefix = get_video_date(video_id)
-    video_path = download_yt_video(video_id, title, date_prefix=date_prefix)
+    video_path = download_yt_video(video_id, title, format_spec=format_spec or YT_DL_FORMAT, date_prefix=date_prefix)
     if not video_path:
         log("  [轉錄] 影片下載失敗")
         return None
@@ -505,7 +553,7 @@ def process_no_subs(video_id, title, langs, kb_dir):
     return md_path
 
 
-def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未知頻道", burn_subs=False, note=False, summary=False):
+def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未知頻道", burn_subs=False, note=False, summary=False, format_spec=None, dedup=True):
     """掃描單一播放清單，處理新影片
     source: playlist_id 或 YouTube URL
     max_initial: 初次掃描最多處理幾支
@@ -513,6 +561,8 @@ def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未
     burn_subs: 即使有官方字幕也下載影片並燒字幕
     note: 收成後自動產生課程筆記（預設關）
     summary: 收成後自動產生摘要報告（預設關；摘要優先，需要時再補詳細筆記）
+    format_spec: 燒字幕影片下載格式（None=預設 1080p）
+    dedup: 同一 video_id 已在 KB 任一目錄即略過（防止直播/清單重複收成，預設開）
     """
     global _last_scan_details
     label = source[:40] if "youtube.com" in source else source
@@ -524,6 +574,7 @@ def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未
         return 0
 
     state_key = source  # 用 source 字串當狀態鍵
+    index = kb_video_index() if dedup else {}
 
     last_id = state.get(state_key, {}).get("last_video_id", "")
     is_first_scan = not last_id
@@ -567,9 +618,31 @@ def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未
         log(f"      https://www.youtube.com/watch?v={vid}")
 
         md_path = None
-        md_path = process_has_subs(vid, title, langs, kb_dir, burn_subs=burn_subs)
+
+        # 精準去重：同一 video_id 已在 KB 任一目錄 → 略過（直播／播放清單重複收成）
+        existing = index.get(vid)
+        if existing:
+            log(f"  ⏭️ 去重：同支影片已在知識庫，略過 → {existing}")
+            _last_scan_details.append({
+                "channel": channel_name,
+                "title": title,
+                "video_id": vid,
+                "result": "⏭️ 已在知識庫，略過（去重）",
+                "kb": existing,
+            })
+            # 仍須推進游標並存檔（不可用 continue 略過存檔，否則下次又當新片掃）
+            state[state_key] = {
+                "last_video_id": vid,
+                "last_check": datetime.now().isoformat(),
+                "last_process_time": datetime.now().isoformat(),
+            }
+            save_channel_state(state)
+            continue
+
+        md_path = process_has_subs(vid, title, langs, kb_dir, burn_subs=burn_subs, format_spec=format_spec)
         if md_path:
             processed += 1
+            index[vid] = str(md_path)  # 即時更新索引：同批其他清單也遇同支即去重
             log(f"  ✅ 有字幕處理完成")
             _last_scan_details.append({
                 "channel": channel_name,
@@ -579,7 +652,7 @@ def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未
                 "kb": str(md_path),
             })
         else:
-            md_path = process_no_subs(vid, title, langs, kb_dir)
+            md_path = process_no_subs(vid, title, langs, kb_dir, format_spec=format_spec)
             if md_path:
                 processed += 1
                 log(f"  ✅ 離線轉錄完成")
@@ -681,6 +754,7 @@ def scan_all_channels():
     state = load_channel_state()
     channels = get_watched_channels()
     total = 0
+    kb_video_index(refresh=True)  # 重建 video_id 索引（含外部工具新建的條目），供本次去重
 
     if not channels:
         log("[WARN] config.yaml 中未設定 watched_channels")
@@ -699,6 +773,7 @@ def scan_all_channels():
             kb_rel = pl.get("kb_dir", "")
             kb_dir = KB_ROOT / kb_rel
             max_init = pl.get("max_initial", 3)
+            fmt = FORMAT_PRESETS.get(str(pl.get("format", "")), None)
 
             if not source:
                 continue
@@ -706,7 +781,8 @@ def scan_all_channels():
                 n = scan_playlist(source, kb_dir, langs, state, max_initial=max_init, channel_name=name,
                                    burn_subs=pl.get("burn_subs", ch.get("burn_subs", False)),
                                    note=pl.get("note", ch.get("note", False)),
-                                   summary=pl.get("summary", ch.get("summary", False)))
+                                   summary=pl.get("summary", ch.get("summary", False)),
+                                   format_spec=fmt)
                 total += n
             except Exception as e:
                 log(f"  [錯誤] {source[:30]}: {e}")

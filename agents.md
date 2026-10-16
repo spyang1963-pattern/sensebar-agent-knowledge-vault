@@ -174,6 +174,26 @@ output:
     - "en"
 ```
 
+### watched_channels（channel_watcher 監控清單）
+
+```yaml
+watched_channels:
+  - name: "三師爸"
+    channel_url: "https://www.youtube.com/@sensebar"   # 目前「不會被掃描」，僅供紀錄
+    note: true                                          # 預設收成後產課程筆記
+    subtitle_langs: ["zh-Hant", "zh-TW", "zh", "en"]
+    playlists:
+      - id: "PLkNQUBglz8..."                            # 播放清單：只用 id
+        kb_dir: "人工智慧/AI agent-三師爸/AI Agent 基本功"
+      - url: "https://www.youtube.com/@sensebar/streams" # 直播：必填，漏了就不會掃直播
+        kb_dir: "人工智慧/AI agent-三師爸/直播"
+        max_initial: 4        # 首次掃描處理支數（= 要補的支數 + 1~2 緩衝）
+        burn_subs: true       # 有字幕也下載影片並燒字幕
+        format: "720"         # 影片下載解析度預設（1080／720）；只影響要燒字幕的下載
+```
+
+**必知**：`channel_url` 目前**沒有任何作用**，真正被掃的只有 `playlists`（`id` 或 `url` 皆可）。`kb_dir.name == "直播"` 的來源會**自動**呼叫直播報告產生器；`format` 只供燒字幕下載用（預設 1080p H.264，`YT_DL_FORMAT_720` 為 720p）。
+
 ### 自動排程（已設定）
 
 Windows 排程任務 `SensebarAutoUpdate`：
@@ -262,16 +282,22 @@ Clipping/
 3. **`--once` 超過 10 分鐘無輸出**：多半是 PowerShell 管線緩衝假象，不代表卡住。判別法：另開視窗看 `logs\channel_watcher.log` 是否持續進展；執行時建議 `python -u ... --once *> 檔` 重導輸出。
 4. **執行中途被中止的後果**：state 倒退 → 下次掃描重處理已完成的支。校正法：把該頻道 `last_video_id` 設為該清單**列表第一個** `id`（即「假裝全部處理過」→ 掃描時 0 新片）。20VTA streams 列表排序非直覺（首支未必最新上傳），但以此校正仍安全。
 5. **Groq chat completions 在此環境回 403/404**（models 可用但 chat 被拒，疑似 region 限制）。直播摘要改用 **Gemini**：key 在 `~/.gemini_api_key`（deep_report.py 同款讀法），模型 `gemini-3.5-flash-lite`。
+6. **漏掃直播的根因：設定只寫播放清單、沒寫 `/streams`（2026-10-16 實踩）**：`scan_all_channels()` 只逐一掃 `watched_channels[].playlists`，**`channel_url` 設了卻完全沒被使用**。三師爸（`@sensebar`）原本只有 7 個課程播放清單、沒有 `/streams` → 直播**一支都沒掃過**（當時 `@sensebar/streams` 有 142 支，KB 只有 11 支對應檔）。作者的習慣是「直播後才再歸類到清單上，有時不歸類」，所以**只監控清單必然漏片**；20VTA 之所以沒漏，是因為它有 `@20VTA/streams` 這個條目。**新頻道務必確認 `playlists` 裡有 `/streams`**。注意：用 **video_id** 比對「是否已收成」會大量失準——作者歸類的是「重新上傳/另一支」的影片，ID 與直播版不同（本次 131 支 ID 看似缺漏，實際只缺 4 支），判斷要以**標題＋上片日期**核對。
+7. **首次掃描上限 `max_initial` 會決定補哪幾支**：`scan_playlist` 在「無 `last_video_id`／找不到上次 ID」時只取 `entries[:max_initial]`，並把游標跳到清單最前（最新）。若把 `max_initial` 設太大，會把**已收成過的舊片**再抓一遍（本次從 6 改成 4：`/streams` 最新 4 支正是唯一缺的 4 支，第 5 支起其內容早已存在）。首次掃描值 = 「要補的支數 + 1~2 支緩衝」，不要直接給 30。
 
-### 直播報告（20VTA）
+8. **日後掃描「精準去重」＝只用 video_id（2026-10-16 實作，勿改成標題比對）**：`channel_watcher.kb_video_index()` 掃 KB 建 `{video_id: 條目路徑}`，`scan_playlist(dedup=True)` 對每支新片先查；命中即在 KB 任一目錄就**略過並仍推進游標存檔**（不可用 `continue` 跳過存檔，見陷阱 2）。命中訊息記入通知明細（`⏭️ 已在知識庫，略過`）。索引在 `scan_all_channels()` 開場 `refresh=True` 重建（warm 0.7s），同批新建條目即時回寫索引（跨清單重複也擋）。**為何不用標題去重**（實測後否決）：(a) 2133 筆舊條目表頭只有 `# YouTube Metadata`，真標題只在**檔名**（含 `YYYY-MM-DD_` 前綴、`:`→`_`）；(b) 正規化標題精確比對 142 支 `/streams` 只命中 22 支，作者歸類是**改標題重新上傳**；(c) 同標題不同影片的實例一堆（例：`週三 呂佳霖盤後分析與關鍵報告` 跨 2020-04-29／05-06 是不同集）→ 標題去重會誤略過真新片。**結論：標題／模糊比對一律不做；僅 video_id 精確去重。** 舊條目（無 id、無連結）無法精準去重，改以 `max_initial` 小值（1~4）當緩衝降低風險。
+
+### 直播報告（各頻道通用）
 
 - 產生器：`make_live_report.py`（逐字稿 md → Gemini 摘要 → python-docx 產 Word）
-- 輸出：`knowledge-base\20VTA 頻道\直播\直播報告\*.docx`
-- 格式參考：`【波段王子 廖崧沂】命中大盤轉折 42006！...doc`
-  （一、影片資訊；二、摘要；三、主要重點與操作策略（大盤/技術/操作系統/個股/建議）；四、重點與提醒事項；五、結語）
-- `channel_watcher.py` 在處理 20VTA 直播（`kb_dir.name=="直播"`）完成後自動呼叫 `make_live_report.make_report(md_path)`。
+- **輸出目錄預設為「逐字稿同層的 `直播報告\`」**（2026-10-16 修正：原本 `make_report(out_dir=REPORT_DIR)` 寫死 `20VTA 頻道\直播\直播報告`，導致三師爸的 4 份直播報告被寫進 20VTA 資料夾。`--out` 預設也改 `None`）。各頻道各有自己的 `直播報告\`。
+- **版型依頻道自動切換（2026-10-16）**：路徑含 `20VTA` → 沿用財經版型（講師硬寫「廖崧沂（波段王子、點靈）」、章節含大盤/技術/個股）；否則走**通用版型**，講師取 yt-dlp `uploader`（三師爸=「三師爸Sense Bar」），章節改為「三、主要重點」，並禁止套用與內容不符的財經小節。
+- 格式參考（20VTA）：`【波段王子 廖崧沂】命中大盤轉折 42006！...doc`
+  （一、影片資訊；二、摘要；三、主要重點與操作策略；四、重點與提醒事項；五、結語）
+- `channel_watcher.py` 在 `kb_dir.name=="直播"` 完成後自動呼叫 `make_live_report.make_report(md_path)`（不指定 `out_dir` → 落在同層）。
 - 補做缺報告：`python make_live_report.py --all`（已存在 .doc/.docx 會 SKIP）。
 - 日期來源：`.link.txt` 的 video_id → yt-dlp `extract_flat` 取 upload_date。
+- **Gemini 會偶發 503 UNAVAILABLE（高需求）**：`generate_content` 的 tenacity 重試仍可能耗盡而拋 `ServerError`，長批次請**包一層外層重試**（等待後重呼）。
 
 ## 文件內嵌圖片 OCR 工作流（E，2026-10-12）
 
