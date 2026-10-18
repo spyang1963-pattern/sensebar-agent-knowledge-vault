@@ -15,8 +15,14 @@
   .col{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}
   .col h2{font-size:15px;margin:0 0 12px;padding-bottom:8px;border-bottom:2px solid var(--sage);display:flex;justify-content:space-between}
   .col h2 span{font-weight:400;color:var(--sage);font-size:12px}
-  .pillar{margin-bottom:14px}
-  .pillar .ph{font-size:13px;font-weight:700;color:var(--sage);margin:10px 0 6px}
+  .pillar{margin-bottom:10px}
+  .pillar .ph{font-size:13px;font-weight:700;color:var(--sage);margin:0;padding:8px 6px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;border-radius:8px}
+  .pillar .ph:hover{background:var(--soft)}
+  .pillar .ph .cv{display:inline-block;transition:transform .15s;font-size:10px;color:#9aa3a0}
+  .pillar.open .ph .cv{transform:rotate(90deg)}
+  .pillar .ph .cnt{margin-left:auto;font-weight:400;color:#8a938f;font-size:11.5px;white-space:nowrap}
+  .pillar .pbody{display:none;padding-top:4px}
+  .pillar.open .pbody{display:block}
   .topic{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:start;padding:8px;border-radius:9px;background:var(--soft);margin-bottom:6px}
   .topic.star{background:#eef2f0;border-left:3px solid var(--sage)}
   .topic input[type=text]{border:1px solid var(--line);border-radius:6px;padding:5px 8px;width:100%;font:inherit;font-size:13px;background:#fff}
@@ -54,7 +60,21 @@
   @media(max-width:900px){.wrap{grid-template-columns:1fr}.sys{grid-column:1}}
   .outbar{display:flex;gap:10px;align-items:center;margin-bottom:10px}
   .hint{font-size:12.5px;color:var(--sage)}
+  #colQueue,#outCol{display:flex;flex-direction:column;height:calc(100vh - 170px);min-height:340px}
+  #colQueue>h2,#outCol>h2,.outbar,.addrow{flex:0 0 auto}
+  #queue{flex:1;min-height:0;overflow:auto;padding-right:4px;-webkit-overflow-scrolling:touch}
   .outgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:10px}
+  .outgrid,.outlist{flex:1;min-height:0;overflow:auto;padding-right:2px;-webkit-overflow-scrolling:touch}
+  .viewtog{cursor:pointer;font-size:12px;padding:5px 9px;border-radius:7px;border:1px solid var(--line);color:#8a938f;background:#fff;user-select:none;display:inline-block}
+  .viewtog.on{background:var(--sage);color:#fff;border-color:var(--sage)}
+  .outlist{display:flex;flex-direction:column}
+  .outrow{display:flex;gap:10px;align-items:center;padding:7px 6px;border-bottom:1px solid var(--line);cursor:pointer}
+  .outrow:hover{background:var(--soft)}
+  .outrow .th{width:44px;height:78px;object-fit:cover;border-radius:6px;background:#151A1B;flex:0 0 auto}
+  .outrow .th.ph{display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;text-align:center}
+  .outrow .rt{flex:1;min-width:0}
+  .outrow .ot{font-weight:700;font-size:13px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .outrow .os{color:#6b6b6b;font-size:11.5px;margin-top:3px}
   .outcard{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;cursor:pointer;display:flex;flex-direction:column;transition:box-shadow .15s}
   .outcard:hover{box-shadow:0 4px 16px rgba(21,26,27,.16)}
   .outcard img{width:100%;aspect-ratio:9/16;object-fit:cover;background:#151A1B;display:block}
@@ -80,7 +100,7 @@
 </div>
 <div class="wrap">
   <section class="col" id="colQueue">
-    <h2>① 許願池<span>點 ★ 表示本週想優先</span></h2>
+    <h2>① 許願池<span>點 ★ 表優先 · 點標題展開／收起</span></h2>
     <div id="queue"></div>
     <div class="addrow">
       <select id="newPillar" style="border:1px solid var(--line);border-radius:6px;padding:7px 6px;font:inherit;font-size:12.5px"></select>
@@ -97,6 +117,9 @@
     <h2>② 產出庫<span>點卡片直接播放</span></h2>
     <div class="outbar">
       <span id="outCount" class="hint"></span>
+      <span style="margin-left:auto"></span>
+      <span class="viewtog" id="vCard" onclick="setOutView('card')">▦ 卡片</span>
+      <span class="viewtog" id="vList" onclick="setOutView('list')">☰ 清單</span>
       <button class="mini" onclick="loadOutputs()">↻ 重新整理</button>
     </div>
     <div id="outGrid" class="outgrid"></div>
@@ -116,12 +139,21 @@
         <select id="sStyle" style="border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit;font-size:12.5px"></select>
       </span>
     </div>
+    <div class="settings" style="gap:10px">
+      <span style="font-weight:700">＋ 背景音樂</span>
+      <button class="mini" onclick="document.getElementById('bgmFile').click()">⬆ 匯入音檔</button>
+      <input type="file" id="bgmFile" accept="audio/*" style="display:none" onchange="importBgm(this)">
+      <span class="volwrap">生成
+        <select id="genMood" style="border:1px solid var(--line);border-radius:6px;padding:5px 6px;font:inherit;font-size:12.5px"></select>
+        <input id="genSecs" type="number" value="60" min="20" max="180" style="width:56px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font:inherit"> 秒
+        <button class="mini" onclick="genBgm()">♪ 生成</button>
+      </span>
+    </div>
     <div class="runbar" id="runbar">
       <button class="run" id="runBtn" onclick="runWeek()">▶ 執行本週排程</button>
       <button class="run" id="scriptBtn" onclick="genScripts()" style="background:var(--sage)">✎ 產腳本（本週★）</button>
       <span id="runhint" style="font-size:12.5px;color:var(--sage)"></span>
     </div>
-    <div class="gaps" id="gaps"></div>
     <div class="gaps" id="gaps"></div>
     <pre id="log" style="display:none"></pre>
   </section>
@@ -148,20 +180,23 @@
 
 <script>
 let Q=null; let S=null; let SETFILES=null; let META={styles:[],presets:[],structures:[],versions:{}};
-let PACKS=[]; let MODE='queue';
+let PACKS=[]; let MODE='queue'; let expanded=null;
 const PICK={};
 const $=(s)=>document.querySelector(s);
 
 async function load(){
   Q=await (await fetch('/api/queue')).json();
+  if(expanded===null){
+    expanded=new Set(Q.pillars.filter(p=>Q.topics.some(t=>t.pillar===p.id&&t.star)).map(p=>p.id));
+    if(Q.topics.some(t=>!Q.pillars.some(p=>p.id===t.pillar))) expanded.add('__loose');
+  }
   const s=await (await fetch('/api/runstatus')).json();
   const st=await (await fetch('/api/settings')).json();
   META=await (await fetch('/api/meta')).json();
   const pk=await (await fetch('/api/packs')).json();
   PACKS=pk.packs||[];
   S=st.settings; SETFILES=st;
-  $('#newPillar').innerHTML=Q.pillars.map(p=>`<option value="${p.id}">${p.id} ${p.name}</option>`).join('')
-    +'<option value="">（未分類）</option>';
+  fillPillarSelect();
   renderSettings();
   fillPacks();
   render();
@@ -181,21 +216,42 @@ async function loadOutputs(){
   renderOutputs();
 }
 
+let OUTVIEW='card';
+function setOutView(v){OUTVIEW=v;renderOutputs();}
+
 function renderOutputs(){
   $('#outCount').textContent=`共 ${OUTPUTS.length} 支`;
+  $('#vCard').className='viewtog'+(OUTVIEW==='card'?' on':'');
+  $('#vList').className='viewtog'+(OUTVIEW==='list'?' on':'');
+  if(!OUTPUTS.length){$('#outGrid').className='outgrid';$('#outGrid').innerHTML='<div class="hint">還沒有成品。跑一支就會出現在這裡。</div>';return;}
+  const meta=(o)=>{
+    const tags=[o.style,o.date].filter(Boolean).map(x=>`<span class="tag">${x}</span>`).join('');
+    const dur=o.duration_sec?`${o.duration_sec}s`:'';
+    const pk=o.pack_name?`<span class="tag">${o.pack_name}</span>`:'';
+    return `${pk}${tags}${dur}`;
+  };
+  if(OUTVIEW==='list'){
+    $('#outGrid').className='outlist';
+    $('#outGrid').innerHTML=OUTPUTS.map((o,i)=>{
+      const th=o.cover?`<img class="th" src="/file?path=${encodeURIComponent(o.cover)}" loading="lazy" alt="">`
+                      :`<div class="th ph">${esc((o.title||'').slice(0,6))}</div>`;
+      return `<div class="outrow" onclick="playVid(${i})" title="點一下播放">
+        ${th}<div class="rt"><div class="ot">${esc(o.title)}</div><div class="os">${meta(o)}</div></div>
+        <span class="mini">▶</span></div>`;
+    }).join('');
+    return;
+  }
+  $('#outGrid').className='outgrid';
   $('#outGrid').innerHTML=OUTPUTS.map((o,i)=>{
     const cover=o.cover
       ? `<img src="/file?path=${encodeURIComponent(o.cover)}" loading="lazy" alt="">`
       : `<div class="ph">${o.title}</div>`;
-    const tags=[o.style,o.date].filter(Boolean).map(x=>`<span class="tag">${x}</span>`).join('');
-    const dur=o.duration_sec?`${o.duration_sec}s`:'';
-    const pk=o.pack_name?`<span class="tag">${o.pack_name}</span>`:'';
     return `<div class="outcard" onclick="playVid(${i})" title="點一下播放">
         ${cover}
         <div class="om"><div class="ot">${o.title}</div>
-          <div class="os">${pk}${tags}${dur}</div></div>
+          <div class="os">${meta(o)}</div></div>
       </div>`;
-  }).join('')||'<div class="hint">還沒有成品。跑一支就會出現在這裡。</div>';
+  }).join('');
 }
 
 function playVid(i){
@@ -216,6 +272,9 @@ function renderSettings(){
   $('#sVol').value=S.bgm_volume; $('#volVal').textContent=Number(S.bgm_volume).toFixed(2);
   $('#sChars').innerHTML=SETFILES.char_dirs.map(c=>`<option ${c===S.char_dir?'selected':''}>${c}</option>`).join('');
   $('#sStyle').innerHTML=(META.styles||[]).map(s=>`<option value="${s.key}">${s.name}</option>`).join('');
+  const moods=(SETFILES&&SETFILES.bgm_moods)||['warm','calm','playful','upbeat'];
+  $('#genMood').innerHTML=moods.map(m=>`<option value="${m}">${m}</option>`).join('');
+  $('#sBgm').disabled=false;
 }
 
 function fillPacks(){
@@ -261,6 +320,40 @@ async function saveSettings(){
   await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(S)});
 }
 
+function applyBgmFiles(files, pick){
+  files=files||[];
+  SETFILES=SETFILES||{}; SETFILES.bgm_files=files;
+  const cur=pick||$('#sBgm').value;
+  $('#sBgm').innerHTML=files.map(f=>`<option value="${f}" ${f===cur?'selected':''}>${f}</option>`).join('');
+  if(pick) $('#sBgm').value=pick;
+}
+
+async function importBgm(el){
+  const f=el.files&&el.files[0]; if(!f)return;
+  $('#sBgm').disabled=true;
+  try{
+    const r=await fetch('/api/bgm?name='+encodeURIComponent(f.name),
+      {method:'POST',headers:{'Content-Type':'application/octet-stream'},body:f});
+    const j=await r.json();
+    if(!j.ok){alert('匯入失敗：'+(j.error||''));return;}
+    applyBgmFiles(j.bgm_files, j.file); saveSettings();
+  }catch(e){alert('匯入失敗：'+e.message);}
+  finally{el.value='';$('#sBgm').disabled=false;}
+}
+
+async function genBgm(){
+  const mood=$('#genMood').value, secs=parseInt($('#genSecs').value||'60',10);
+  $('#sBgm').disabled=true;
+  try{
+    const r=await fetch('/api/bgm_gen',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({mood,duration:secs})});
+    const j=await r.json();
+    if(!j.ok){alert('生成失敗：'+(j.error||''));return;}
+    applyBgmFiles(j.bgm_files, j.file); saveSettings();
+  }catch(e){alert('生成失敗：'+e.message);}
+  finally{$('#sBgm').disabled=false;}
+}
+
 function topicRow(t){
   const mat=t.material==='shot'
     ? '<span class="tag shot">有實拍</span>'
@@ -294,13 +387,65 @@ function topicRow(t){
   </div>`;
 }
 
+function group(id,ph,ts){
+  const rows=ts.map(topicRow).join('');
+  const starc=ts.filter(t=>t.star).length;
+  const open=expanded&&expanded.has(id);
+  const cnt=(starc?`★${starc} · `:'')+`${ts.length} 題`;
+  return `<div class="pillar ${open?'open':''}">
+    <div class="ph" onclick="togglePillar('${id}')"><span class="cv">▶</span><span>${ph}</span><span class="cnt">${cnt}</span></div>
+    <div class="pbody">${rows||'<div style="color:#9aa3a0;font-size:12px;padding:4px 8px">（尚無題目）</div>'}</div>
+  </div>`;
+}
+
 function render(){
-  const html=Q.pillars.map(p=>{
-    const rows=Q.topics.filter(t=>t.pillar===p.id).map(topicRow).join('');
-    return `<div class="pillar"><div class="ph">${p.id} ${p.name}（${p.funnel}）— ${p.goal}</div>${rows}</div>`;
-  }).join('');
-  const loose=Q.topics.filter(t=>!Q.pillars.some(p=>p.id===t.pillar)).map(topicRow).join('');
-  $('#queue').innerHTML=html+(loose?`<div class="pillar"><div class="ph">未分類</div>${loose}</div>`:'');
+  if(expanded===null) expanded=new Set();
+  let html=Q.pillars.map(p=>group(p.id,`${p.id} ${p.name}（${p.funnel}）— ${p.goal}`,Q.topics.filter(t=>t.pillar===p.id))).join('');
+  html+=addPillarCard();
+  $('#queue').innerHTML=html;
+}
+
+function addPillarCard(){
+  const open=expanded&&expanded.has('__new');
+  const looseTs=Q.topics.filter(t=>!Q.pillars.some(p=>p.id===t.pillar));
+  const ip='border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit;font-size:12.5px';
+  return `<div class="pillar ${open?'open':''}">
+    <div class="ph" onclick="togglePillar('__new')"><span class="cv">▶</span><span>＋ 新增分類</span><span class="cnt">自訂</span></div>
+    <div class="pbody">
+      <div style="display:flex;flex-direction:column;gap:6px;padding:2px 6px 6px">
+        <input id="npName" type="text" placeholder="分類名稱（如 老屋翻新）" style="${ip}">
+        <input id="npFunnel" type="text" placeholder="漏斗位置（如 靈感 / 轉換）" style="${ip}">
+        <input id="npGoal" type="text" placeholder="這個分類的目標…" style="${ip}">
+        <button class="mini" style="align-self:flex-start" onclick="addPillar()">＋ 新增這個分類</button>
+      </div>
+      ${looseTs.length?`<div style="border-top:1px dashed var(--line);margin:2px 6px;padding-top:6px">
+        <div class="ph" style="cursor:default;color:#9aa3a0;font-size:12px">未指定分類</div>
+        ${looseTs.map(topicRow).join('')}</div>`:''}
+    </div>
+  </div>`;
+}
+
+function fillPillarSelect(){
+  $('#newPillar').innerHTML=Q.pillars.map(p=>`<option value="${p.id}">${p.id} ${p.name}</option>`).join('')
+    +'<option value="">（未分類）</option>';
+}
+
+async function addPillar(){
+  const name=$('#npName').value.trim();
+  if(!name){alert('請填分類名稱。');return;}
+  const body={name,funnel:$('#npFunnel').value.trim(),goal:$('#npGoal').value.trim()};
+  const r=await (await fetch('/api/pillar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
+  if(!r.ok){alert('新增失敗：'+(r.error||''));return;}
+  Q.pillars=r.pillars;
+  if(expanded) expanded.add(r.id);
+  fillPillarSelect();
+  render();
+}
+
+function togglePillar(id){
+  if(expanded===null) expanded=new Set();
+  if(expanded.has(id)) expanded.delete(id); else expanded.add(id);
+  render();
 }
 
 function renderReviews(items){

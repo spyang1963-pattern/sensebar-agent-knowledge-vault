@@ -50,6 +50,7 @@ SETTINGS_JSON = LEZHI / "settings.json"
 MAKE_DIALOG = LEZHI / "tools" / "make_dialog.py"
 MAKE_COMIC = LEZHI / "tools" / "make_comic.py"   # 對話劇正式版型（2026-10-18 定案）
 ADHOC = ENGINE / "core" / "adhoc.py"            # 即興型產片（Pack 驅動）
+MAKE_BGM = ROOT / "make_bgm.py"                 # 程序化背景音樂（numpy）
 ENGINE = LEZHI.parent / "engine"
 if str(ENGINE) not in sys.path:
     sys.path.insert(0, str(ENGINE))
@@ -87,10 +88,21 @@ def load_settings():
     return s
 
 
+BGM_EXTS = ("*.wav", "*.mp3", "*.m4a", "*.aac", "*.ogg", "*.flac")
+
+
+def _safe_stem(name):
+    keep = "".join(c if (c.isalnum() or c in "-_") else "_" for c in (name or "").strip())
+    return keep[:40].strip("_") or "clip"
+
+
 def bgm_files():
     if not BGM_DIR.exists():
         return []
-    return sorted(p.name for p in BGM_DIR.glob("*.wav"))
+    found = []
+    for e in BGM_EXTS:
+        found += list(BGM_DIR.glob(e))
+    return sorted(p.name for p in found)
 
 
 def packs_list():
@@ -483,7 +495,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"items": scan_reviews()})
         elif p == "/api/settings":
             self._json({"settings": load_settings(), "bgm_files": bgm_files(),
-                        "char_dirs": ["characters", "characters_ai"]})
+                        "char_dirs": ["characters", "characters_ai"],
+                        "bgm_moods": ["warm", "calm", "playful", "upbeat"]})
         elif p == "/api/runstatus":
             with _LOCK:
                 self._json(dict(_RUN))
@@ -556,6 +569,54 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": True})
             except Exception as e:
                 self._json({"ok": False, "error": str(e)})
+        elif p == "/api/pillar":
+            q = load_queue()
+            name = (data.get("name") or "").strip()
+            if not name:
+                self._json({"ok": False, "error": "請填分類名稱"})
+                return
+            nums = []
+            for pl in q["pillars"]:
+                d = "".join(c for c in str(pl.get("id", "")) if c.isdigit())
+                if d:
+                    nums.append(int(d))
+            nid = "p%d" % ((max(nums) + 1) if nums else 1)
+            q["pillars"].append({"id": nid, "name": name,
+                                 "funnel": (data.get("funnel") or "").strip(),
+                                 "goal": (data.get("goal") or "").strip()})
+            q["updated"] = time.strftime("%Y-%m-%d")
+            _write_json(QUEUE_JSON, q)
+            QUEUE_MD.write_text(queue_to_md(q), encoding="utf-8")
+            self._json({"ok": True, "id": nid, "name": name, "pillars": q["pillars"]})
+        elif p == "/api/bgm":
+            qs = parse_qs(urlparse(self.path).query)
+            fname = (qs.get("name") or ["upload.wav"])[0]
+            ext = Path(fname).suffix.lower()
+            if ext not in (".wav", ".mp3", ".m4a", ".aac", ".ogg", ".flac"):
+                self._json({"ok": False, "error": "不支援的格式（wav / mp3 / m4a）"})
+                return
+            dest = BGM_DIR / ("bgm_%s%s" % (_safe_stem(Path(fname).stem), ext))
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(raw)
+            self._json({"ok": True, "file": dest.name, "bgm_files": bgm_files()})
+        elif p == "/api/bgm_gen":
+            mood = (data.get("mood") or "warm").lower()
+            if mood not in ("warm", "calm", "playful", "upbeat"):
+                mood = "warm"
+            try:
+                dur = int(data.get("duration") or 60)
+            except Exception:
+                dur = 60
+            dur = max(20, min(dur, 180))
+            name = _safe_stem(data.get("name") or mood)
+            dest = BGM_DIR / ("bgm_%s.wav" % name)
+            proc = subprocess.run([sys.executable, "-X", "utf8", str(MAKE_BGM),
+                                   "--out", str(dest), "--duration", str(dur), "--mood", mood],
+                                  capture_output=True, text=True, encoding="utf-8", errors="replace")
+            if proc.returncode != 0 or not dest.exists():
+                self._json({"ok": False, "error": ((proc.stderr or "").strip()[-300:]) or "生成失敗"})
+                return
+            self._json({"ok": True, "file": dest.name, "bgm_files": bgm_files()})
         else:
             self._send(404, b"not found", "text/plain")
 
