@@ -1,0 +1,74 @@
+{
+  "brand": {
+    "name": "樂之",
+    "name_en": "LE Interior Design",
+    "designer": "楊樂之",
+    "location": "高雄",
+    "service_area": [
+      "高雄",
+      "屏東"
+    ],
+    "contact": {
+      "email": "kse49210@gmail.com",
+      "phone": "0988-813-511"
+    },
+    "education": "國立臺北教育大學 藝術與造形設計學系 (2012-2016)"
+  },
+  "services": [
+    "到府丈量",
+    "平面配置",
+    "簡報製作",
+    "施工圖繪製",
+    "預算製作",
+    "工程發包",
+    "現場監工",
+    "Sketchup 3D建模+Enscape渲染"
+  ],
+  "pricing_note": "平面配置設計費依實際坪數計價 3000 元/坪",
+  "positioning": [
+    "專注私宅室內設計",
+    "小宅坪效與收納是強項",
+    "南部地區（高雄/屏東）為主"
+  ],
+  "voice": {
+    "tone": "專業、溫和、接地氣；不堆砌行話嚇人",
+    "persona": "年輕但扎實、會站在屋主立場想的設計師",
+    "avoid": [
+      "過度誇大",
+      "行話堆砌",
+      "貶低同業"
+    ]
+  },
+  "palette": {
+    "bg": "#FCFCFC",
+    "surface": "#E7E9E8",
+    "accent": "#758985",
+    "ink": "#151A1B"
+  },
+  "typography": {
+    "font": "Microsoft JhengHei",
+    "note": "標題用粗體，內文清晰為先"
+  },
+  "format": {
+    "master": "1080x1920 (9:16) @30fps",
+    "source_note": "橫式原圖以 Ken Burns 斜移填滿直式",
+    "duration_s": "30-60",
+    "subtitles": "逐句字幕、燒進畫面、避開安全邊界"
+  },
+  "cta": {
+    "primary": "高雄/屏東室內設計，免費諮詢",
+    "secondary": "私訊詢問平面配置與報價",
+    "channels": [
+      "IG 私訊",
+      "email",
+      "電話"
+    ]
+  },
+  "prohibitions": [
+    "不承諾保證工期或價格",
+    "不批評同業或特定品牌",
+    "不使用未經同意的他人作品或圖片",
+    "不誇大「一定省錢/一定好看」",
+    "不對結構安全做絕對斷言"
+  ]
+}

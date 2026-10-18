@@ -1,0 +1,221 @@
+{
+  "studio": "押忍室內裝修設計有限公司",
+  "updated": "2026-10-18",
+  "pillars": [
+    {
+      "id": "p1",
+      "name": "避坑直擊",
+      "funnel": "信任",
+      "goal": "讓人覺得你懂行、不坑人"
+    },
+    {
+      "id": "p2",
+      "name": "知識科普",
+      "funnel": "權威",
+      "goal": "教會屋主看門道"
+    },
+    {
+      "id": "p3",
+      "name": "案例開箱",
+      "funnel": "渴望",
+      "goal": "讓人想要「我家也這樣」"
+    },
+    {
+      "id": "p4",
+      "name": "風格美學",
+      "funnel": "靈感",
+      "goal": "建立審美標竿"
+    },
+    {
+      "id": "p5",
+      "name": "人設幕後",
+      "funnel": "連結",
+      "goal": "認識你這個人"
+    },
+    {
+      "id": "p6",
+      "name": "互動引流",
+      "funnel": "轉換",
+      "goal": "促成諮詢"
+    }
+  ],
+  "topics": [
+    {
+      "id": "h-time_18ping",
+      "title": "18 坪小宅完工開箱｜華友聯 H-TIME",
+      "pillar": "p3",
+      "direction": "完成試片，可再優化",
+      "material": "shot",
+      "star": false,
+      "script": "h-time_18ping.json",
+      "status": "done",
+      "format": "narr"
+    },
+    {
+      "id": "quote_checklist",
+      "title": "裝潢報價單，這 5 項沒問清楚一定後悔",
+      "pillar": "p1",
+      "direction": "用實際報價單項目示範「為什麼這項會追加」",
+      "material": "no_shot",
+      "star": false,
+      "script": "quote_checklist.json",
+      "status": "done",
+      "format": "narr"
+    },
+    {
+      "id": "storage_liters",
+      "title": "18 坪一家三口，收納要幾公升才夠？",
+      "pillar": "p2",
+      "direction": "用 H-TIME 案例算給觀眾看",
+      "material": "shot",
+      "star": false,
+      "script": "storage_liters.json",
+      "status": "todo",
+      "format": "narr"
+    },
+    {
+      "id": "small_house_mistakes",
+      "title": "小宅最容易做錯的 3 種設計",
+      "pillar": "p1",
+      "direction": "",
+      "material": "no_shot",
+      "star": true,
+      "script": "small_house_mistakes__comic.json",
+      "status": "done",
+      "format": "dialog",
+      "style": "comic"
+    },
+    {
+      "id": "design_fee_why",
+      "title": "為什麼設計費比統包貴？差別在哪",
+      "pillar": "p1",
+      "direction": "",
+      "material": "no_shot",
+      "star": false,
+      "script": "design_fee_why.json",
+      "status": "todo",
+      "format": "dialog"
+    },
+    {
+      "id": "traffic_triangle",
+      "title": "動線怎麼規劃？記住「三角形原則」",
+      "pillar": "p2",
+      "direction": "",
+      "material": "no_shot",
+      "star": false,
+      "script": null,
+      "status": "todo"
+    },
+    {
+      "id": "light_layers",
+      "title": "燈光做三層次，家立刻高級起來",
+      "pillar": "p2",
+      "direction": "",
+      "material": "no_shot",
+      "star": false,
+      "script": null,
+      "status": "todo"
+    },
+    {
+      "id": "mingsui_33ping",
+      "title": "33 坪大戶人家怎麼做｜太普明日匯",
+      "pillar": "p3",
+      "direction": "",
+      "material": "shot",
+      "star": false,
+      "script": null,
+      "status": "todo"
+    },
+    {
+      "id": "liuli_20ping",
+      "title": "20 坪單身宅的極簡收納｜琉璃園",
+      "pillar": "p3",
+      "direction": "",
+      "material": "shot",
+      "star": false,
+      "script": null,
+      "status": "todo"
+    },
+    {
+      "id": "glory_40ping",
+      "title": "40 坪台北案，大理石與水磨石的搭配｜榮耀世紀",
+      "pillar": "p3",
+      "direction": "",
+      "material": "shot",
+      "star": false,
+      "script": null,
+      "status": "todo"
+    },
+    {
+      "id": "cream_vs_wabi",
+      "title": "奶油風 vs 侘寂風，小宅適合哪一種？",
+      "pillar": "p4",
+      "direction": "",
+      "material": "no_shot",
+      "star": false,
+      "script": null,
+      "status": "todo"
+    },
+    {
+      "id": "color_formula",
+      "title": "一個配色公式，讓家不敢俗氣",
+      "pillar": "p4",
+      "direction": "用工作室色盤：白／鼠尾草綠／炭黑",
+      "material": "no_shot",
+      "star": false,
+      "script": null,
+      "status": "todo"
+    },
+    {
+      "id": "designer_24h",
+      "title": "一個室內設計師的 24 小時",
+      "pillar": "p5",
+      "direction": "",
+      "material": "shot",
+      "star": false,
+      "script": null,
+      "status": "todo"
+    },
+    {
+      "id": "flooring_pick",
+      "title": "選材現場：我怎麼挑超耐磨木地板",
+      "pillar": "p5",
+      "direction": "",
+      "material": "shot",
+      "star": false,
+      "script": null,
+      "status": "todo"
+    },
+    {
+      "id": "cta_estimate",
+      "title": "高雄、屏東想裝潢？留言「坪數」我幫你粗估",
+      "pillar": "p6",
+      "direction": "",
+      "material": "no_shot",
+      "star": false,
+      "script": null,
+      "status": "todo"
+    },
+    {
+      "id": "cta_free_plan",
+      "title": "免費平面配置諮詢，本週開放 3 個名額",
+      "pillar": "p6",
+      "direction": "",
+      "material": "no_shot",
+      "star": false,
+      "script": null,
+      "status": "todo"
+    },
+    {
+      "id": "tmvcg7lsx",
+      "title": "實地參觀",
+      "pillar": "",
+      "direction": "",
+      "material": "no_shot",
+      "star": false,
+      "script": "tmvcg7lsx.json",
+      "status": "done",
+      "format": "narr"
+    }
+  ]
+}

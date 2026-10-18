@@ -1,0 +1,35 @@
+{
+  "_doc": "版面插槽：畫面上元素怎麼擺的模板。asset 為 Pack 可覆寫的素材路徑（可留空由 Pack 提供）。",
+  "layouts": [
+    {
+      "key": "photo_full",
+      "name": "照片滿版",
+      "desc": "實拍照滿版鋪底",
+      "status": "implemented"
+    },
+    {
+      "key": "photo_card",
+      "name": "照片＋文字卡",
+      "desc": "照片為主，角標／標題文字卡疊加",
+      "status": "planned"
+    },
+    {
+      "key": "text_card",
+      "name": "文字卡",
+      "desc": "純文字重點卡（無照片場合）",
+      "status": "implemented"
+    },
+    {
+      "key": "quote_card",
+      "name": "引言卡",
+      "desc": "金句／結論大字卡",
+      "status": "planned"
+    },
+    {
+      "key": "split",
+      "name": "上下分割",
+      "desc": "上圖下文（或反之）",
+      "status": "planned"
+    }
+  ]
+}

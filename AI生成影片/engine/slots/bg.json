@@ -1,0 +1,11 @@
+{
+  "_doc": "背景插槽。kind=procedural（程式化線條）/ image（插畫或 AI 圖，file 指向 pack 或 engine 的圖）/ color（純色）。",
+  "backgrounds": [
+    {"key": "plain", "name": "素色", "kind": "procedural", "renderer": "comic.draw_bg", "status": "implemented"},
+    {"key": "living", "name": "客廳", "kind": "procedural", "renderer": "comic.draw_bg", "status": "implemented"},
+    {"key": "cafe", "name": "咖啡廳", "kind": "procedural", "renderer": "comic.draw_bg", "status": "implemented"},
+    {"key": "site", "name": "工地", "kind": "procedural", "renderer": "comic.draw_bg", "status": "implemented"},
+    {"key": "kitchen", "name": "廚房", "kind": "procedural", "renderer": "comic.draw_bg", "status": "implemented"},
+    {"key": "studio", "name": "工作室", "kind": "procedural", "renderer": "comic.draw_bg", "status": "planned"}
+  ]
+}

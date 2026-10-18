@@ -1,0 +1,42 @@
+{
+  "title": "18 坪小宅完工開箱｜華友聯 H-TIME",
+  "voice": "zh-TW-HsiaoChenNeural",
+  "style": "",
+  "scenes": [
+    {
+      "narration": "誰說18坪扣掉公設，客廳一定擠到不能呼吸？",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\hook.png",
+      "zoom": "in"
+    },
+    {
+      "narration": "高雄華友聯這間18坪小宅，開門視野直接通到底。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\crops\\02_h-time_a__r0c0.jpg",
+      "zoom": "in"
+    },
+    {
+      "narration": "灰色布沙發不靠死牆，替客廳留下舒服的呼吸走道。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\crops\\02_h-time_a__r1c1.jpg",
+      "zoom": "out"
+    },
+    {
+      "narration": "一路延伸到餐廳的整合櫃，把生活雜物全部俐落收納。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\crops\\03_h-time_b__r1c0.jpg",
+      "zoom": "in"
+    },
+    {
+      "narration": "赤腳踩上超耐磨木地板，能感受那份溫潤扎實的腳感。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\crops\\03_h-time_b__r0c0.jpg",
+      "zoom": "out"
+    },
+    {
+      "narration": "坪數雖然不大，但回家的放鬆感一點都沒打折。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_h-time_18ping_4.png",
+      "zoom": "in"
+    },
+    {
+      "narration": "換作是你，這間18坪小宅最吸引你的是哪裡？",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\endcard.png",
+      "zoom": "out"
+    }
+  ]
+}

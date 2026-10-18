@@ -1,0 +1,15 @@
+{
+  "key": "interior_lezhi",
+  "name": "樂之室內設計",
+  "root": "lezhi",
+  "engine_format_default": "dialog",
+  "style_default": "comic",
+  "characters": ["ren", "le"],
+  "modules": ["topic_planning", "schedule", "distribution", "audit_feedback", "glossary"],
+  "brand_file": "brand/profile.json",
+  "assets_dir": "assets",
+  "topics_file": "topics/queue.json",
+  "scripts_dir": "scripts",
+  "output_dir": "output",
+  "settings_file": "settings.json"
+}

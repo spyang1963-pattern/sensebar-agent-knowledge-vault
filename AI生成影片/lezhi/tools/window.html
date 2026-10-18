@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>押忍工作室 · 內容窗口</title>
+<style>
+  :root{--bg:#FCFCFC;--sage:#758985;--ink:#151A1B;--line:#e3e6e5;--soft:#f2f4f3;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Microsoft JhengHei","微軟正黑體",system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+  header{position:sticky;top:0;background:var(--ink);color:#fff;padding:14px 22px;display:flex;align-items:center;gap:16px;z-index:10}
+  header h1{font-size:18px;margin:0;font-weight:700}
+  header .stat{margin-left:auto;font-size:13px;color:#cfe0db}
+  .wrap{display:grid;grid-template-columns:1fr 1fr;gap:18px;padding:18px;max-width:1400px;margin:0 auto}
+  .col{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}
+  .col h2{font-size:15px;margin:0 0 12px;padding-bottom:8px;border-bottom:2px solid var(--sage);display:flex;justify-content:space-between}
+  .col h2 span{font-weight:400;color:var(--sage);font-size:12px}
+  .pillar{margin-bottom:14px}
+  .pillar .ph{font-size:13px;font-weight:700;color:var(--sage);margin:10px 0 6px}
+  .topic{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:start;padding:8px;border-radius:9px;background:var(--soft);margin-bottom:6px}
+  .topic.star{background:#eef2f0;border-left:3px solid var(--sage)}
+  .topic input[type=text]{border:1px solid var(--line);border-radius:6px;padding:5px 8px;width:100%;font:inherit;font-size:13px;background:#fff}
+  .topic .title{font-size:13.5px;font-weight:600;line-height:1.4}
+  .topic .dir{margin-top:5px}
+  .tag{font-size:11px;padding:2px 7px;border-radius:20px;white-space:nowrap}
+  .tag.shot{background:#dcece4;color:#2f5a44}
+  .tag.no_shot{background:#eceee9;color:#6b6f66}
+  .tag.done{background:#151A1B;color:#fff}
+  .star-btn{cursor:pointer;border:none;background:none;font-size:17px;line-height:1;padding:2px 4px}
+  .starred{color:var(--sage)}
+  .unstarred{color:#c8cdcb}
+  .review{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);border-radius:9px;margin-bottom:8px;font-size:13px}
+  .review .nm{font-weight:600;flex:1}
+  .review .st{font-size:11px;color:#fff;background:var(--sage);border-radius:20px;padding:2px 8px}
+  .btn{cursor:pointer;border:none;border-radius:8px;padding:7px 12px;font:inherit;font-size:13px;font-weight:600}
+  .pass{background:var(--sage);color:#fff}
+  .revise{background:#fff;color:var(--ink);border:1px solid var(--line)}
+  .decided{font-size:12px;font-weight:700}
+  .decided.pass{color:#2f5a44}
+  .decided.revise{color:#a3502a}
+  .sys{grid-column:1/3;margin:0}
+  .runbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .run{background:var(--ink);color:#fff;font-size:14px;padding:10px 20px}
+  .run:disabled{opacity:.5;cursor:default}
+  .gaps{font-size:12.5px;color:#7a5a2a;background:#fdf6e8;border:1px solid #f0e2c2;border-radius:9px;padding:9px 12px;margin-top:10px}
+  pre{background:#0f1416;color:#cfe0db;border-radius:10px;padding:12px;font-size:12px;max-height:240px;overflow:auto;white-space:pre-wrap;margin:12px 0 0}
+  .addrow{display:flex;gap:8px;margin-top:10px}
+  button.mini{background:var(--sage);color:#fff;font-size:12px;padding:6px 10px;cursor:pointer;border:none;border-radius:7px}
+  .settings{display:flex;gap:16px;align-items:center;flex-wrap:wrap;font-size:12.5px;color:#3d4744;
+    background:var(--soft);border:1px solid var(--line);border-radius:9px;padding:9px 12px;margin-bottom:12px}
+  .settings .ck{display:flex;align-items:center;gap:6px;font-weight:600}
+  .volwrap{display:flex;align-items:center;gap:6px}
+  .volwrap input[type=range]{width:110px}
+  @media(max-width:900px){.wrap{grid-template-columns:1fr}.sys{grid-column:1}}
+  .outbar{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+  .hint{font-size:12.5px;color:var(--sage)}
+  .outgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:10px}
+  .outcard{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;cursor:pointer;display:flex;flex-direction:column;transition:box-shadow .15s}
+  .outcard:hover{box-shadow:0 4px 16px rgba(21,26,27,.16)}
+  .outcard img{width:100%;aspect-ratio:9/16;object-fit:cover;background:#151A1B;display:block}
+  .outcard .ph{width:100%;aspect-ratio:9/16;background:linear-gradient(135deg,#758985,#151A1B);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;text-align:center;padding:8px;box-sizing:border-box}
+  .outcard .om{padding:7px 9px;font-size:12px}
+  .outcard .ot{font-weight:700;line-height:1.3;max-height:2.6em;overflow:hidden}
+  .outcard .os{color:#6b6b6b;margin-top:3px;font-size:11px}
+  .tag{display:inline-block;background:#eef2f0;color:#3c5a4f;border-radius:4px;padding:0 5px;font-size:10.5px;margin-right:4px}
+  .vidmodal{display:none;position:fixed;inset:0;background:rgba(8,10,11,.9);z-index:50;align-items:center;justify-content:center}
+  .vidmodal.on{display:flex}
+  .vidmodal video{max-width:92vw;max-height:92vh;border-radius:8px;background:#000}
+</style>
+</head>
+<body>
+<header>
+  <h1>押忍工作室 · 內容窗口</h1>
+  <div class="stat" id="stat">載入中…</div>
+</header>
+<div class="packbar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 22px;border-bottom:1px solid var(--line);background:#fff">
+  <span style="font-size:12.5px;color:var(--sage)">領域包</span>
+  <select id="sPack" onchange="onPackChange()" style="border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit;font-size:12.5px"></select>
+  <span id="packHint" style="font-size:12px;color:var(--sage)"></span>
+</div>
+<div class="wrap">
+  <section class="col" id="colQueue">
+    <h2>① 許願池<span>點 ★ 表示本週想優先</span></h2>
+    <div id="queue"></div>
+    <div class="addrow">
+      <select id="newPillar" style="border:1px solid var(--line);border-radius:6px;padding:7px 6px;font:inherit;font-size:12.5px"></select>
+      <select id="newMaterial" style="border:1px solid var(--line);border-radius:6px;padding:7px 6px;font:inherit;font-size:12.5px">
+        <option value="no_shot">無需實拍</option>
+        <option value="shot">有實拍</option>
+      </select>
+      <input id="newTitle" type="text" placeholder="想到什麼，打一行…" style="flex:1;border:1px solid var(--line);border-radius:6px;padding:7px 9px;font:inherit;font-size:13px">
+      <button class="mini" onclick="addTopic()">＋ 新增題目</button>
+    </div>
+  </section>
+
+  <section class="col" id="outCol">
+    <h2>② 產出庫<span>點卡片直接播放</span></h2>
+    <div class="outbar">
+      <span id="outCount" class="hint"></span>
+      <button class="mini" onclick="loadOutputs()">↻ 重新整理</button>
+    </div>
+    <div id="outGrid" class="outgrid"></div>
+  </section>
+
+  <section class="col sys">
+    <h2>③ 狀態列</h2>
+    <div class="settings">
+      <label class="ck"><input type="checkbox" id="sBgmOn" onchange="saveSettings()"> 背景音樂</label>
+      <select id="sBgm" onchange="saveSettings()" style="border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit;font-size:12.5px"></select>
+      <span class="volwrap">音量 <input type="range" id="sVol" min="0" max="0.4" step="0.02" onchange="saveSettings()">
+        <b id="volVal">0.16</b></span>
+      <span class="volwrap">角色畫風
+        <select id="sChars" onchange="saveSettings()" style="border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit;font-size:12.5px"></select>
+      </span>
+      <span class="volwrap">產出風格
+        <select id="sStyle" style="border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit;font-size:12.5px"></select>
+      </span>
+    </div>
+    <div class="runbar" id="runbar">
+      <button class="run" id="runBtn" onclick="runWeek()">▶ 執行本週排程</button>
+      <button class="run" id="scriptBtn" onclick="genScripts()" style="background:var(--sage)">✎ 產腳本（本週★）</button>
+      <span id="runhint" style="font-size:12.5px;color:var(--sage)"></span>
+    </div>
+    <div class="gaps" id="gaps"></div>
+    <div class="gaps" id="gaps"></div>
+    <pre id="log" style="display:none"></pre>
+  </section>
+
+  <section class="col" id="adhocCol" style="display:none">
+    <h2>④ 即興產片<span>選主題、填幾欄，一鍵出片</span></h2>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <input id="aOccasion" type="text" placeholder="場合（如 母親節、生日、開幕）" style="border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:inherit;font-size:13px">
+      <input id="aTo" type="text" placeholder="對象（如 媽媽、阿宏）" style="border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:inherit;font-size:13px">
+      <input id="aRelation" type="text" placeholder="關係（如 母子、朋友、客戶）" style="border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:inherit;font-size:13px">
+      <textarea id="aWish" rows="3" placeholder="想說的話／重點（可留空，AI 會自行發揮）" style="border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:inherit;font-size:13px;resize:vertical"></textarea>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="volwrap" style="font-size:12.5px">句數 <input id="aLines" type="number" value="8" min="4" max="16" style="width:56px;border:1px solid var(--line);border-radius:6px;padding:5px 6px;font:inherit"></span>
+        <span class="volwrap" style="font-size:12.5px">風格 <select id="aStyle" style="border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit;font-size:12.5px"></select></span>
+        <button class="run" id="adhocBtn" onclick="runAdhoc()">🎬 一鍵產片</button>
+      </div>
+    </div>
+    <div class="gaps" id="adhocHint" style="font-size:12.5px;color:var(--sage)"></div>
+    <pre id="adhocLog" style="display:none"></pre>
+  </section>
+</div>
+
+<div id="vidModal" class="vidmodal" onclick="closeVid(event)"><video id="vidPlayer" controls autoplay playsinline></video></div>
+
+<script>
+let Q=null; let S=null; let SETFILES=null; let META={styles:[],presets:[],structures:[],versions:{}};
+let PACKS=[]; let MODE='queue';
+const PICK={};
+const $=(s)=>document.querySelector(s);
+
+async function load(){
+  Q=await (await fetch('/api/queue')).json();
+  const s=await (await fetch('/api/runstatus')).json();
+  const st=await (await fetch('/api/settings')).json();
+  META=await (await fetch('/api/meta')).json();
+  const pk=await (await fetch('/api/packs')).json();
+  PACKS=pk.packs||[];
+  S=st.settings; SETFILES=st;
+  $('#newPillar').innerHTML=Q.pillars.map(p=>`<option value="${p.id}">${p.id} ${p.name}</option>`).join('')
+    +'<option value="">（未分類）</option>';
+  renderSettings();
+  fillPacks();
+  render();
+  renderStatus();
+  loadOutputs();
+  if(s.log){$('#log').style.display='block';$('#log').textContent=s.log;}
+  if(s.running)startPoll();
+}
+
+let OUTPUTS=[];
+
+async function loadOutputs(){
+  try{
+    const r=await (await fetch('/api/outputs')).json();
+    OUTPUTS=r.items||[];
+  }catch(e){ OUTPUTS=[]; }
+  renderOutputs();
+}
+
+function renderOutputs(){
+  $('#outCount').textContent=`共 ${OUTPUTS.length} 支`;
+  $('#outGrid').innerHTML=OUTPUTS.map((o,i)=>{
+    const cover=o.cover
+      ? `<img src="/file?path=${encodeURIComponent(o.cover)}" loading="lazy" alt="">`
+      : `<div class="ph">${o.title}</div>`;
+    const tags=[o.style,o.date].filter(Boolean).map(x=>`<span class="tag">${x}</span>`).join('');
+    const dur=o.duration_sec?`${o.duration_sec}s`:'';
+    const pk=o.pack_name?`<span class="tag">${o.pack_name}</span>`:'';
+    return `<div class="outcard" onclick="playVid(${i})" title="點一下播放">
+        ${cover}
+        <div class="om"><div class="ot">${o.title}</div>
+          <div class="os">${pk}${tags}${dur}</div></div>
+      </div>`;
+  }).join('')||'<div class="hint">還沒有成品。跑一支就會出現在這裡。</div>';
+}
+
+function playVid(i){
+  const o=OUTPUTS[i]; if(!o)return;
+  $('#vidPlayer').src='/file?path='+encodeURIComponent(o.video);
+  $('#vidModal').classList.add('on');
+}
+
+function closeVid(e){
+  if(e.target.id!=='vidModal')return;
+  const v=$('#vidPlayer'); v.pause(); v.removeAttribute('src'); v.load();
+  $('#vidModal').classList.remove('on');
+}
+
+function renderSettings(){
+  $('#sBgmOn').checked=!!S.bgm_enabled;
+  $('#sBgm').innerHTML=SETFILES.bgm_files.map(f=>`<option ${f===S.bgm?'selected':''}>${f}</option>`).join('');
+  $('#sVol').value=S.bgm_volume; $('#volVal').textContent=Number(S.bgm_volume).toFixed(2);
+  $('#sChars').innerHTML=SETFILES.char_dirs.map(c=>`<option ${c===S.char_dir?'selected':''}>${c}</option>`).join('');
+  $('#sStyle').innerHTML=(META.styles||[]).map(s=>`<option value="${s.key}">${s.name}</option>`).join('');
+}
+
+function fillPacks(){
+  $('#sPack').innerHTML=PACKS.map(p=>`<option value="${p.key}">${p.name}</option>`).join('');
+  $('#aStyle').innerHTML=(META.styles||[]).map(s=>`<option value="${s.key}">${s.name}</option>`).join('');
+  onPackChange();
+}
+
+function currentPack(){
+  const k=$('#sPack').value;
+  return PACKS.find(p=>p.key===k)||PACKS[0]||{key:'',name:'',modules:[]};
+}
+
+function onPackChange(){
+  const p=currentPack();
+  MODE=(p.modules||[]).includes('topic_planning')?'queue':'adhoc';
+  if(MODE==='adhoc'&&p.style_default) $('#aStyle').value=p.style_default;
+  const q=MODE==='queue';
+  $('#colQueue').style.display=q?'':'none';
+  $('#adhocCol').style.display=q?'none':'';
+  $('#runbar').style.display=q?'':'none';
+  $('#gaps').style.display=q?'':'none';
+  $('#packHint').textContent=q?'（營運型：佇列＋蓋章）':'（即興型：填欄位一鍵出片）';
+}
+
+async function runAdhoc(){
+  const p=currentPack();
+  const f={pack:p.key,occasion:$('#aOccasion').value.trim(),to:$('#aTo').value.trim(),
+           relation:$('#aRelation').value.trim(),wish:$('#aWish').value.trim(),
+           lines:parseInt($('#aLines').value||'8',10),style:$('#aStyle').value||null};
+  if(!f.occasion||!f.to){alert('請至少填「場合」和「對象」。');return;}
+  if(!confirm(`為「${f.to}」產一支「${f.occasion}」影片？\n（會呼叫 Gemini 產腳本＋渲染，約 1-2 分鐘）`))return;
+  $('#adhocBtn').disabled=true;$('#log').style.display='block';$('#log').textContent='啟動中…';
+  const r=await (await fetch('/api/adhoc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(f)})).json();
+  if(!r.ok){$('#adhocBtn').disabled=false;alert('目前有任務在跑，請稍候。');return;}
+  startPoll();
+}
+
+async function saveSettings(){
+  S={bgm_enabled:$('#sBgmOn').checked, bgm:$('#sBgm').value,
+     bgm_volume:parseFloat($('#sVol').value), char_dir:$('#sChars').value};
+  $('#volVal').textContent=S.bgm_volume.toFixed(2);
+  await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(S)});
+}
+
+function topicRow(t){
+  const mat=t.material==='shot'
+    ? '<span class="tag shot">有實拍</span>'
+    : '<span class="tag no_shot">無需實拍</span>';
+  const done=t.status==='done'?'<span class="tag done">已完成</span>':'';
+  const stName=(META.styles.find(s=>s.key===t.style)||{}).name
+    || (t.format==='dialog'?'對話劇':'旁白');
+  const fmt=t.script?`<span class="tag" style="background:#e7ecf6;color:#3a4a6b">${esc(stName)}</span>`:'';
+  const vers=(META.versions[t.id]||[]);
+  let vsel='';
+  if(vers.length){
+    const cur=PICK[t.id]||vers[vers.length-1].file;
+    PICK[t.id]=cur;
+    const opts=vers.map(v=>`<option value="${v.file}" ${v.file===cur?'selected':''}>${v.file}</option>`).join('');
+    vsel=`<div class="dir" style="margin-top:5px"><select style="border:1px solid var(--line);border-radius:6px;padding:4px 6px;font:inherit;font-size:11.5px;color:#3a4a6b"
+       onchange="setPick('${t.id}',this.value)">${opts}</select></div>`;
+  }
+  const opts=Q.pillars.map(p=>`<option value="${p.id}" ${p.id===t.pillar?'selected':''}>${p.id} ${p.name}</option>`).join('');
+  return `<div class="topic ${t.star?'star':''}">
+    <button class="star-btn ${t.star?'starred':'unstarred'}" onclick="toggleStar('${t.id}')">★</button>
+    <div>
+      <div class="title">${esc(t.title)} ${mat} ${done} ${fmt}</div>
+      <div class="dir"><input type="text" placeholder="一句方向（選填）" value="${esc(t.direction||'')}"
+         onchange="setDir('${t.id}',this.value)"></div>
+      <div class="dir" style="margin-top:5px"><select style="border:1px solid var(--line);border-radius:6px;padding:4px 6px;font:inherit;font-size:12px;color:var(--sage)"
+         onchange="setPillar('${t.id}',this.value)">${opts}
+         <option value="" ${!t.pillar?'selected':''}>（未分類）</option></select></div>
+      ${vsel}
+    </div>
+    <button class="star-btn unstarred" title="刪除" onclick="delTopic('${t.id}')">✕</button>
+  </div>`;
+}
+
+function render(){
+  const html=Q.pillars.map(p=>{
+    const rows=Q.topics.filter(t=>t.pillar===p.id).map(topicRow).join('');
+    return `<div class="pillar"><div class="ph">${p.id} ${p.name}（${p.funnel}）— ${p.goal}</div>${rows}</div>`;
+  }).join('');
+  const loose=Q.topics.filter(t=>!Q.pillars.some(p=>p.id===t.pillar)).map(topicRow).join('');
+  $('#queue').innerHTML=html+(loose?`<div class="pillar"><div class="ph">未分類</div>${loose}</div>`:'');
+}
+
+function renderReviews(items){
+  if(!items.length){$('#reviews').innerHTML='<div style="color:#9aa3a0;font-size:13px">目前沒有待蓋章的項目。</div>';return;}
+  $('#reviews').innerHTML=items.map(it=>{
+    const dec=it.decision;
+    const right=dec
+      ? `<span class="decided ${dec}">${dec==='pass'?'○ 已通過':'△ 已退回'}</span>`
+      : `<button class="btn pass" onclick="decide('${it.key}','pass')">○ 通過</button>
+         <button class="btn revise" onclick="decide('${it.key}','revise')">△ 退回</button>`;
+    return `<div class="review"><span class="st">關卡 ${it.stage}</span>
+      <span class="nm">${esc(it.name)}</span>${right}</div>`;
+  }).join('');
+}
+
+function renderStatus(){
+  const starred=Q.topics.filter(t=>t.star);
+  const run=starred.filter(t=>t.script);
+  const nos=starred.filter(t=>!t.script);
+  $('#stat').textContent=`本週優先 ${starred.length} 支｜可執行 ${run.length}｜需先產腳本 ${nos.length}`;
+  $('#runhint').textContent=run.length?`將執行：${run.map(t=>t.title).join('、')}`:'（本週勾選的題目都還沒有分鏡）';
+  const gaps=Q.topics.filter(t=>t.material==='shot'&&t.status!=='done').map(t=>t.title);
+  $('#gaps').innerHTML=gaps.length
+    ? `⚠ 素材缺口（需補實拍）：${gaps.slice(0,8).map(esc).join('、')}`
+    : '✅ 目前沒有素材缺口';
+}
+
+function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+async function save(){
+  await fetch('/api/queue',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Q)});
+  renderStatus();
+}
+function toggleStar(id){const t=Q.topics.find(x=>x.id===id);t.star=!t.star;save().then(render);}
+function setDir(id,v){Q.topics.find(x=>x.id===id).direction=v;save();}
+function setPillar(id,v){Q.topics.find(x=>x.id===id).pillar=v;save().then(render);}
+function setPick(id,f){PICK[id]=f;}
+function delTopic(id){if(!confirm('刪除這題？'))return;Q.topics=Q.topics.filter(x=>x.id!==id);save().then(render);}
+function addTopic(){
+  const v=$('#newTitle').value.trim();if(!v)return;
+  const id='t'+Date.now().toString(36);
+  Q.topics.push({id,title:v,pillar:$('#newPillar').value,direction:'',
+                 material:$('#newMaterial').value,star:true,script:null,status:'todo'});
+  $('#newTitle').value='';save().then(render);
+}
+async function decide(key,d){
+  await fetch('/api/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,decision:d})});
+  const r=await (await fetch('/api/reviews')).json();renderReviews(r.items);
+}
+async function runWeek(){
+  const picked=Q.topics.filter(t=>t.star&&t.script);
+  const ids=picked.map(t=>t.id);
+  if(!ids.length){alert('本週勾選的題目都還沒有分鏡，先按「✎ 產腳本」。');return;}
+  const script_map={};
+  picked.forEach(t=>{const cur=PICK[t.id]||t.script; if(cur)script_map[t.id]=cur;});
+  $('#runBtn').disabled=true;$('#scriptBtn').disabled=true;$('#log').style.display='block';$('#log').textContent='啟動中…';
+  await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids,script_map})});
+  startPoll();
+}
+async function genScripts(){
+  const style=$('#sStyle').value||null;
+  if(!confirm(`為本週 ★ 且尚無腳本的題目產生腳本？（風格：${style||'預設'}，會呼叫 Gemini，約數十秒）`))return;
+  $('#runBtn').disabled=true;$('#scriptBtn').disabled=true;$('#log').style.display='block';$('#log').textContent='產腳本中…';
+  await fetch('/api/script',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({starred:true,style})});
+  startPoll();
+}
+let poll=null;
+function startPoll(){
+  $('#runBtn').disabled=true;$('#scriptBtn').disabled=true;$('#adhocBtn').disabled=true;
+  clearInterval(poll);
+  poll=setInterval(async()=>{
+    const s=await (await fetch('/api/runstatus')).json();
+    $('#log').textContent=s.log||'';
+    $('#log').scrollTop=$('#log').scrollHeight;
+    if(!s.running){clearInterval(poll);$('#runBtn').disabled=false;$('#scriptBtn').disabled=false;$('#adhocBtn').disabled=false;load();}
+  },1500);
+}
+load();
+</script>
+</body>
+</html>

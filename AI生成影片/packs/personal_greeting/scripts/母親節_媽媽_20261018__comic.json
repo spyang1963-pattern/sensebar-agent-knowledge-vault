@@ -1,0 +1,49 @@
+{
+  "title": "換我照顧妳的母親節",
+  "format": "dialog",
+  "topic_id": "母親節_媽媽_20261018",
+  "style": "comic",
+  "version": 1,
+  "scenes": [
+    {
+      "speaker": "ren",
+      "text": "媽，母親節快樂！今天換我煮給妳吃。",
+      "expr": "happy"
+    },
+    {
+      "speaker": "le",
+      "text": "哎唷，今天太陽打西邊出來啦？",
+      "expr": "surprise"
+    },
+    {
+      "speaker": "ren",
+      "text": "想到以前妳天天早起做便當，真的很偉大。",
+      "expr": "happy"
+    },
+    {
+      "speaker": "le",
+      "text": "傻孩子，看你健康長大，我就滿足了。",
+      "expr": "happy"
+    },
+    {
+      "speaker": "ren",
+      "text": "謝謝您這些年的照顧，您真的辛苦了。",
+      "expr": "normal"
+    },
+    {
+      "speaker": "le",
+      "text": "只要你常回家陪我吃飯，我就不辛苦。",
+      "expr": "happy"
+    },
+    {
+      "speaker": "ren",
+      "text": "沒問題！媽，我愛您，天天都要快樂喔。",
+      "expr": "happy"
+    },
+    {
+      "speaker": "le",
+      "text": "好啦，媽媽也最愛你了，快來吃飯！",
+      "expr": "happy"
+    }
+  ]
+}

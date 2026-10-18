@@ -1,0 +1,13 @@
+{
+  "key": "personal_greeting",
+  "name": "個人問候",
+  "root": null,
+  "engine_format_default": "dialog",
+  "style_default": "comic",
+  "characters": ["ren", "le"],
+  "character_labels": {"ren": "我", "le": "對方"},
+  "modules": [],
+  "assets_dir": "assets",
+  "scripts_dir": "scripts",
+  "output_dir": "output"
+}

@@ -1,0 +1,112 @@
+[
+  {
+    "id": "h-time",
+    "name": "華友聯 H-TIME",
+    "type": "私宅",
+    "area": "18坪 / 60 sq.m",
+    "year": 2022,
+    "city": "高雄",
+    "materials": [
+      "美耐板",
+      "系統塑合板",
+      "鍍鈦飾條",
+      "冷烤漆",
+      "超耐磨木地板"
+    ],
+    "plates": [
+      "02_h-time_a",
+      "03_h-time_b"
+    ],
+    "crops": [
+      "02_h-time_a__r0c0.jpg",
+      "02_h-time_a__r1c1.jpg",
+      "03_h-time_b__r0c0.jpg",
+      "03_h-time_b__r1c0.jpg"
+    ],
+    "photo_count": 4
+  },
+  {
+    "id": "taipu-mingrihui",
+    "name": "太普 明日匯",
+    "type": "私宅",
+    "area": "33坪 / 109 sq.m",
+    "year": 2021,
+    "city": "高雄",
+    "materials": [
+      "大理石",
+      "人造石",
+      "美耐板",
+      "系統塑合板",
+      "鍍鈦飾條",
+      "黑灰茶鏡",
+      "烤漆鐵件",
+      "繃布",
+      "超耐磨木地板"
+    ],
+    "plates": [
+      "04_taipu_mingrihui_a",
+      "05_taipu_mingrihui_b",
+      "06_taipu_mingrihui_c"
+    ],
+    "crops": [
+      "04_taipu_mingrihui_a__r0c1.jpg",
+      "04_taipu_mingrihui_a__r1c0.jpg",
+      "04_taipu_mingrihui_a__r1c1.jpg",
+      "05_taipu_mingrihui_b__r0c0.jpg",
+      "05_taipu_mingrihui_b__r1c0.jpg",
+      "06_taipu_mingrihui_c__r0c0.jpg"
+    ],
+    "photo_count": 6
+  },
+  {
+    "id": "liuli-yuan",
+    "name": "琉璃園",
+    "type": "私宅",
+    "area": "20坪 / 66 sq.m",
+    "year": 2022,
+    "city": "高雄",
+    "materials": [
+      "人造石",
+      "美耐板",
+      "系統塑合板",
+      "鍍鈦飾條",
+      "烤漆鐵件",
+      "超耐磨木地板"
+    ],
+    "plates": [
+      "07_liuli_yuan"
+    ],
+    "crops": [
+      "07_liuli_yuan__r0c0.jpg",
+      "07_liuli_yuan__r0c1.jpg",
+      "07_liuli_yuan__r1c1.jpg"
+    ],
+    "photo_count": 3
+  },
+  {
+    "id": "rongyao-shiji",
+    "name": "榮耀世紀",
+    "type": "私宅",
+    "area": "40坪 / 132 sq.m",
+    "year": 2023,
+    "city": "台北",
+    "materials": [
+      "大理石",
+      "原石",
+      "天然實木皮",
+      "鍍鈦板",
+      "特殊塗料",
+      "水磨石",
+      "海島型木地板"
+    ],
+    "plates": [
+      "08_rongyao_shiji"
+    ],
+    "crops": [
+      "08_rongyao_shiji__r0c0.jpg",
+      "08_rongyao_shiji__r0c1.jpg",
+      "08_rongyao_shiji__r1c1.jpg"
+    ],
+    "photo_count": 3
+  }
+]

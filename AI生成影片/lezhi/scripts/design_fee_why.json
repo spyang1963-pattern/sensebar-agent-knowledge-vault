@@ -1,0 +1,61 @@
+{
+  "title": "為什麼設計費比統包貴？差別在哪",
+  "format": "dialog",
+  "char_dir": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\characters",
+  "voice_map": {
+    "ren": "zh-TW-YunJheNeural",
+    "le": "zh-TW-HsiaoYuNeural"
+  },
+  "scenes": [
+    {
+      "speaker": "le",
+      "text": "統包免費畫圖，你收一坪六千是搶劫吧？",
+      "expr": "smug"
+    },
+    {
+      "speaker": "ren",
+      "text": "統包是聽你許願，我是幫你現場避坑啊！",
+      "expr": "worry"
+    },
+    {
+      "speaker": "le",
+      "text": "避什麼坑？磚不都同一批泥作師傅貼的？",
+      "expr": "surprise"
+    },
+    {
+      "speaker": "ren",
+      "text": "統包照做，冰箱擺進去才發現插座被擋死！",
+      "expr": "worry"
+    },
+    {
+      "speaker": "le",
+      "text": "現場發現，再叫水電師傅改位子不行嗎？",
+      "expr": "normal"
+    },
+    {
+      "speaker": "ren",
+      "text": "打掉磁磚重拉管線，追加工資當場噴兩萬。",
+      "expr": "smug"
+    },
+    {
+      "speaker": "le",
+      "text": "差這麼多？所以設計師到底貴在哪裡？",
+      "expr": "surprise"
+    },
+    {
+      "speaker": "ren",
+      "text": "貴在三十張圖，連坐馬桶撞不撞門都先算好。",
+      "expr": "normal"
+    },
+    {
+      "speaker": "le",
+      "text": "原來設計費是買保險，不用讓工班通靈！",
+      "expr": "surprise"
+    },
+    {
+      "speaker": "ren",
+      "text": "沒錯！想避開裝修追加款，留言領避坑清單。",
+      "expr": "happy"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "bgm_enabled": true,
+  "bgm": "bgm_playful.wav",
+  "bgm_volume": 0.16,
+  "char_dir": "characters_ai"
+}

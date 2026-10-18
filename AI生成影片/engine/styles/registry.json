@@ -1,0 +1,25 @@
+{
+  "_doc": "風格登錄表：一個風格 = 一個 renderer 檔 + 一行。UI 的風格下拉由此自動生成。script 路徑相對於 workspace 根目錄解析。",
+  "styles": [
+    {
+      "key": "narr",
+      "name": "旁白式",
+      "format": "narr",
+      "kind": "cli",
+      "script": "make_short.py",
+      "supports": ["layout", "bg", "motion", "voice", "caption"],
+      "defaults": {"layout": "photo_full", "motion": "kenburns_in", "caption": "bottom_bar"},
+      "status": "implemented"
+    },
+    {
+      "key": "comic",
+      "name": "漫畫對話劇",
+      "format": "dialog",
+      "kind": "cli",
+      "script": "AI生成影片/lezhi/tools/make_comic.py",
+      "supports": ["bg", "voice", "caption", "expression"],
+      "defaults": {"bg": "living", "caption": "speech_bubble"},
+      "status": "implemented"
+    }
+  ]
+}

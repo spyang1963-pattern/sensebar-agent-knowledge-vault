@@ -1,0 +1,42 @@
+{
+  "title": "裝潢報價單，這 5 項沒問清楚一定後悔",
+  "voice": "zh-TW-HsiaoChenNeural",
+  "style": "",
+  "scenes": [
+    {
+      "narration": "合約簽完才發現，預算至少多噴二十萬。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\hook.png",
+      "zoom": "in"
+    },
+    {
+      "narration": "第一，保護工程，電梯走道公設有沒有包？",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_quote_checklist_0.png",
+      "zoom": "in"
+    },
+    {
+      "narration": "第二，拆除清運，是以車計價還是整場全包？",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_quote_checklist_1.png",
+      "zoom": "out"
+    },
+    {
+      "narration": "第三，水電插座，新增一個算一千五還是連線換？",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_quote_checklist_2.png",
+      "zoom": "in"
+    },
+    {
+      "narration": "第四，油漆只刷過，還是有批土摸起來才平？",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_quote_checklist_3.png",
+      "zoom": "out"
+    },
+    {
+      "narration": "第五，櫃子五金，關門會不會卡卡帶有怪聲音。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_quote_checklist_4.png",
+      "zoom": "in"
+    },
+    {
+      "narration": "你家報價單中哪幾項？留言幫你看。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\endcard.png",
+      "zoom": "out"
+    }
+  ]
+}

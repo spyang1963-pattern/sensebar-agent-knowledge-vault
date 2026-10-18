@@ -1,0 +1,64 @@
+{
+  "title": "小宅最容易做錯的 3 種設計",
+  "format": "dialog",
+  "char_dir": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\characters",
+  "voice_map": {
+    "ren": "zh-TW-YunJheNeural",
+    "le": "zh-TW-HsiaoYuNeural"
+  },
+  "scenes": [
+    {
+      "speaker": "le",
+      "text": "房子才12坪，櫃子當然要頂天立地做滿啊！",
+      "expr": "smug"
+    },
+    {
+      "speaker": "ren",
+      "text": "做滿進門像走進倉庫，連呼吸都覺得好擠。",
+      "expr": "worry"
+    },
+    {
+      "speaker": "le",
+      "text": "那我就買超酷的五合一變形折疊床！",
+      "expr": "surprise"
+    },
+    {
+      "speaker": "ren",
+      "text": "相信我，那種笨重鐵架你翻兩次就嫌累。",
+      "expr": "smug"
+    },
+    {
+      "speaker": "le",
+      "text": "那客廳跟房間總要砌一道實體牆分開吧？",
+      "expr": "normal"
+    },
+    {
+      "speaker": "ren",
+      "text": "牆一砌採光全死，12坪秒變兩間小牢房。",
+      "expr": "worry"
+    },
+    {
+      "speaker": "le",
+      "text": "完蛋，我筆記本裡這三種全部都畫了！",
+      "expr": "surprise"
+    },
+    {
+      "speaker": "ren",
+      "text": "改用玻璃拉門跟懸空矮櫃，空間放大三成。",
+      "expr": "happy"
+    },
+    {
+      "speaker": "le",
+      "text": "你這張嘴，是想騙我找你重新客變吧？",
+      "expr": "smug"
+    },
+    {
+      "speaker": "ren",
+      "text": "把格局圖私訊我，我幫你免費抓出地雷！",
+      "expr": "happy"
+    }
+  ],
+  "topic_id": "small_house_mistakes",
+  "style": "comic",
+  "version": 1
+}

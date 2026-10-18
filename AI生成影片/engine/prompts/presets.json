@@ -1,0 +1,18 @@
+{
+  "_doc": "腳本提示詞登錄表。最終 prompt = 基礎預設 + 風格預設（可選）+ 情節規格（可選）+ 自訂提示（可選）。",
+  "presets": [
+    {"key": "base", "name": "基礎（預設）", "text": "", "status": "implemented"},
+    {"key": "sharp", "name": "犀利吐槽", "text": "語氣犀利、直白、帶點吐槽與反問，戳破常見迷思，句短有力。", "status": "planned"},
+    {"key": "warm", "name": "溫暖專業", "text": "語氣溫暖、專業、像朋友在旁提醒，不誇大、給具體建議。", "status": "planned"},
+    {"key": "hook", "name": "懸念開場", "text": "開頭 3 秒丟出反直覺的懸念或問題，勾住觀眾往下看。", "status": "planned"},
+    {"key": "numbers", "name": "數字權威", "text": "多用具體數字、價格、坪數、工期，建立可信度。", "status": "planned"},
+    {"key": "story", "name": "故事化", "text": "用一個真實情境/客戶案例貫穿，有起承轉合。", "status": "planned"}
+  ],
+  "structure_options": [
+    {"key": "case", "name": "含案例", "text": "至少帶入一個具體案例（對象、狀況、結果）。", "status": "planned"},
+    {"key": "numbers", "name": "含數字", "text": "關鍵處給出具體數字（價格/坪數/工期/比例）。", "status": "planned"},
+    {"key": "counter", "name": "含反例", "text": "指出常見錯誤做法並說明後果。", "status": "planned"},
+    {"key": "twist", "name": "含轉折", "text": "中段安排一次意料之外的轉折。", "status": "planned"},
+    {"key": "cta", "name": "含行動呼籲", "text": "結尾給明確 CTA（留言/私訊/預約）。", "status": "planned"}
+  ]
+}

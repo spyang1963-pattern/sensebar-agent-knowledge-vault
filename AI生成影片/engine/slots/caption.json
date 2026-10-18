@@ -1,0 +1,13 @@
+{
+  "_doc": "字幕插槽。style 為 ffmpeg force_style 片段（ASS 樣式）；comic 為氣泡式（程式繪製）。",
+  "captions": [
+    {"key": "bottom_bar", "name": "底部字幕", "kind": "ffmpeg_ass",
+     "style": "FontName=Microsoft JhengHei,FontSize=12,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=0,MarginV=40,Alignment=2",
+     "status": "implemented"},
+    {"key": "speech_bubble", "name": "對話氣泡", "kind": "procedural", "renderer": "comic.bubble", "status": "implemented"},
+    {"key": "top_center", "name": "上方置中", "kind": "ffmpeg_ass",
+     "style": "FontName=Microsoft JhengHei,FontSize=12,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=0,MarginV=220,Alignment=8",
+     "status": "planned"},
+    {"key": "karaoke", "name": "逐字上字", "kind": "procedural", "status": "planned"}
+  ]
+}

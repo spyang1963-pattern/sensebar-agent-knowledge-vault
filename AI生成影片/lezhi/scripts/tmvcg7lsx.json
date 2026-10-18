@@ -1,0 +1,42 @@
+{
+  "title": "實地參觀",
+  "voice": "zh-TW-HsiaoChenNeural",
+  "style": "",
+  "scenes": [
+    {
+      "narration": "去看裝潢完工現場，千萬別只顧著拍照。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\hook.png",
+      "zoom": "in"
+    },
+    {
+      "narration": "走進去第一件事，把所有抽屜連推3次。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_tmvcg7lsx_0.png",
+      "zoom": "in"
+    },
+    {
+      "narration": "聽有沒有刺耳金屬摩擦聲，這決定五金壽命。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_tmvcg7lsx_1.png",
+      "zoom": "out"
+    },
+    {
+      "narration": "脫鞋赤腳走一圈，腳趾最懂木地板接縫平不平。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_tmvcg7lsx_2.png",
+      "zoom": "in"
+    },
+    {
+      "narration": "再彎腰看一下，一般插座離地有沒有30公分。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_tmvcg7lsx_3.png",
+      "zoom": "out"
+    },
+    {
+      "narration": "很多施工瑕疵，都藏在肉眼晃過去的死角。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_tmvcg7lsx_4.png",
+      "zoom": "in"
+    },
+    {
+      "narration": "你去參觀新家現場，第一步會先檢查哪裡？",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\endcard.png",
+      "zoom": "out"
+    }
+  ]
+}

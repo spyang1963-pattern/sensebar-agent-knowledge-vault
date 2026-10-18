@@ -1,0 +1,10 @@
+{
+  "_doc": "配音插槽。provider=edge-tts 為目前實作。未來新增 provider（gemini-tts/elevenlabs/minimax/克隆）＝加一段 provider 區塊 + lib 模組，不動主流程。",
+  "provider": "edge-tts",
+  "voices": [
+    {"key": "narr", "name": "旁白（女）", "voice": "zh-TW-HsiaoChenNeural", "rate": 0, "pitch": 0, "status": "implemented"},
+    {"key": "ren", "name": "阿忍（男）", "voice": "zh-TW-YunJheNeural", "rate": 0, "pitch": 0, "status": "implemented"},
+    {"key": "le", "name": "小樂（女）", "voice": "zh-TW-HsiaoYuNeural", "rate": 0, "pitch": 0, "status": "implemented"},
+    {"key": "narr_male", "name": "旁白（男）", "voice": "zh-TW-YunJheNeural", "rate": 0, "pitch": 0, "status": "planned"}
+  ]
+}
