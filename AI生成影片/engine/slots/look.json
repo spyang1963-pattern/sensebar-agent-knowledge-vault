@@ -1,0 +1,9 @@
+{
+  "_doc": "畫風色調插槽。目前由 comic renderer（make_comic.apply_look）支援：改變背景分級與墨/紙/品牌色。narr renderer 忽略此欄位（留檔供未來風格）。",
+  "looks": [
+    {"key": "warm", "name": "暖日光（預設）", "renderer": "comic.apply_look", "status": "implemented"},
+    {"key": "night", "name": "夜燈（深色牆＋暖光）", "renderer": "comic.apply_look", "status": "implemented"},
+    {"key": "sage", "name": "品牌鼠尾草綠", "renderer": "comic.apply_look", "status": "implemented"},
+    {"key": "ink", "name": "灰階線稿調", "renderer": "comic.apply_look", "status": "implemented"}
+  ]
+}

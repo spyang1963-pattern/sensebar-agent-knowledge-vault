@@ -90,6 +90,64 @@ HARD_RULES_DIALOG = """【硬規則】
 - 不要旁白式說明、不要喊口號、不要鋪陳背景。
 - 每個具體數字只能來自提供資料或業界通用常識，不得假造案名。"""
 
+MOTION_RULES = """【畫面運鏡 motion（scenes 每一句都要填，一個字都不能漏）】
+可用值與意思：
+- kenburns_in 緩慢推近（強調數字、結論、鉤子）
+- kenburns_out 緩慢拉遠（收尾、退場、留白）
+- pan_left 畫面往左平移（換話題、講空間或動線）
+- pan_right 畫面往右平移（承接、並列、列舉）
+- pan_up 畫面往上平移（抬頭、層高、向上想像）
+- shake_soft 輕微晃動（情緒激動、吐槽、反轉）
+- none 靜止（鋪陳、安靜的對比句）
+規則：相鄰兩句不可填同一個值；依句子的情緒與內容選，不要一路排隊輪替。"""
+
+LOOK_RULES = """【全片畫風 look（整支只填一個 key）】
+可用值：
+- warm 暖日光：日常、案例、質感、實拍感（預設）
+- night 夜燈：情緒、反差、深夜吐槽、下班後
+- sage 鼠尾草綠：品牌、專業、結論、信任感
+- ink 灰階線稿：知識、避坑、科普、算數字
+依本片題目與支柱挑最合的一個。"""
+
+FALLBACK_BG = ["living", "cafe", "site", "kitchen", "plain"]
+FALLBACK_MOTION = ["kenburns_in", "pan_right", "kenburns_out", "pan_left"]
+FALLBACK_LOOK = ["warm"]
+MOTION_ALIAS = {"in": "kenburns_in", "out": "kenburns_out",
+                "kenburns-in": "kenburns_in", "kenburns-out": "kenburns_out"}
+
+
+def slot_keys_of(name, fallback):
+    """Implemented keys of an engine slot; fixed fallback when engine absent."""
+    if reg is not None:
+        try:
+            keys = reg.slot_keys(name)
+            if keys:
+                return keys
+        except Exception:
+            pass
+    return list(fallback)
+
+
+def slot_labels(name, fallback):
+    """Prompt-ready 'key 名稱' lines for a slot registry."""
+    opts = [(k, k) for k in fallback]
+    if reg is not None:
+        try:
+            opts = [(e["key"], e.get("name") or e["key"])
+                    for e in reg.slot_entries(name) if e.get("key")] or opts
+        except Exception:
+            pass
+    return "\n".join(f"- {k} {n}" for k, n in opts)
+
+
+def bg_rules():
+    """Background slot block, always reflecting engine/slots/bg.json."""
+    return f"""【場景背景 bg（scenes 每一句都要填）】
+可用背景：
+{slot_labels('bg', FALLBACK_BG)}
+選法：報價、合約、簽約、預算 → plain；材質、收納、動線、生活感 → living；輕鬆閒聊、吐槽、開場鉤子 → cafe；施工、工期、追加、現場問題 → site；廚房設備、水電、瓦斯 → kitchen。
+規則：依句子講的內容選，不要一路輪替；相鄰兩句盡量換場景，只有同一個話題延續時才可連續相同。"""
+
 
 def to_trad(s: str) -> str:
     try:
@@ -166,18 +224,20 @@ def build_prompt(topic, pillar, brand, project, photo_files, labels):
 
 {HARD_RULES}
 
+{MOTION_RULES}
+
 【輸出】只輸出 JSON，不要任何其他文字、不要 markdown 圍籬：
 {{
   "deliver": ["本片保證一定要講出來的具體內容（數字或清單項目），逐條列出"],
   "hook": "第一句，≤18字，必為鉤子",
   "scenes": [
-    {{"narration": "中段旁白（must 交付 deliver 的內容）", "photo": 0, "card": null}},
-    {{"narration": "中段旁白", "photo": null, "card": "短句（≤10字）"}}
+    {{"narration": "中段旁白（must 交付 deliver 的內容）", "photo": 0, "card": null, "motion": "kenburns_in"}},
+    {{"narration": "中段旁白", "photo": null, "card": "短句（≤10字）", "motion": "pan_right"}}
   ],
   "cta": "最後一句（引流或留鉤子）"
 }}
 說明：scenes 是中段 3～6 句（不含 hook 與 cta）。有合適照片就填該照片編號，否則 photo 填 null 並給 card 短句。
-自我檢查：deliver 裡的每一項，都要真的出現在某個 scene 的 narration 裡；標題的數字要和 deliver 的數量一致。
+自我檢查：deliver 裡的每一項，都要真的出現在某個 scene 的 narration 裡；標題的數字要和 deliver 的數量一致；每句都有 motion 且相鄰兩句不重複。
 """
 
 
@@ -203,28 +263,58 @@ def build_dialog_prompt(topic, pillar, brand):
 
 {HARD_RULES_DIALOG}
 
+{bg_rules()}
+
+{LOOK_RULES}
+
 【輸出】只輸出 JSON，不要任何其他文字、不要 markdown 圍籬：
 {{
+  "look": "warm",
   "deliver": ["本片一定要講出來的具體內容（數字或清單），逐條列出"],
   "scenes": [
-    {{"speaker": "le", "text": "第一句鉤子（小樂吐槽）", "expr": "smug"}},
-    {{"speaker": "ren", "text": "阿忍回應", "expr": "normal"}}
+    {{"speaker": "le", "text": "第一句鉤子（小樂吐槽）", "expr": "smug", "bg": "cafe"}},
+    {{"speaker": "ren", "text": "阿忍回應", "expr": "normal", "bg": "plain"}}
   ]
 }}
-自我檢查：deliver 每一項都要真的被某句台詞講到；標題的數字要和實際講到的一致。
+自我檢查：deliver 每一項都要真的被某句台詞講到；標題的數字要和實際講到的一致；look 只有一個；每句都有 bg 且相鄰盡量不同。
 """
 
 
+def pick_motion(raw, i, motions, prev=None):
+    """Validate one motion slot value; invalid/missing falls back to a cycle.
+
+    Consecutive duplicates are replaced by a different motion from the
+    default cycle, so shots never repeat regardless of what the LLM returned.
+    """
+    m = MOTION_ALIAS.get((raw or "").strip(), (raw or "").strip())
+    if m not in motions:
+        pool = [k for k in FALLBACK_MOTION if k in motions] or list(motions)
+        m = pool[i % len(pool)]
+    if prev is not None and m == prev and len(motions) > 1:
+        alt = [k for k in FALLBACK_MOTION if k in motions and k != prev] or \
+              [k for k in motions if k != prev]
+        m = alt[i % len(alt)]
+    return m
+
+
 def assemble_dialog(topic, data, brand, char_dir):
+    bgs = slot_keys_of("bg", FALLBACK_BG)
+    looks = slot_keys_of("look", FALLBACK_LOOK)
+    look = data.get("look")
+    if look not in looks:
+        look = looks[0]
     scenes = []
-    for s in data.get("scenes", []):
+    for i, s in enumerate(data.get("scenes", [])):
         text = to_trad((s.get("text") or "").strip())
         if not text:
             continue
         who = s.get("speaker") if s.get("speaker") in ("ren", "le") else "ren"
         expr = s.get("expr") if s.get("expr") in ("normal", "surprise", "happy", "worry", "smug") else "normal"
-        scenes.append({"speaker": who, "text": text, "expr": expr})
-    return {"title": topic["title"], "format": "dialog",
+        bg = s.get("bg")
+        if bg not in bgs:
+            bg = bgs[i % len(bgs)]
+        scenes.append({"speaker": who, "text": text, "expr": expr, "bg": bg})
+    return {"title": topic["title"], "format": "dialog", "look": look,
             "char_dir": str(char_dir),
             "voice_map": {"ren": "zh-TW-YunJheNeural", "le": "zh-TW-HsiaoYuNeural"},
             "scenes": scenes}
@@ -237,9 +327,10 @@ def write_dialog_md(topic, pillar, data, script, path):
              f"- 支柱：{pillar['name']}（{pillar['funnel']}）",
              f"- 方向：{topic.get('direction') or '（自訂）'}",
              f"- 句數：{len(script['scenes'])}｜總字數：{sum(len(s['text']) for s in script['scenes'])}",
+             f"- 畫風 look：{script.get('look') or 'warm'}",
              "", "## 對白", ""]
     for i, s in enumerate(script["scenes"], 1):
-        lines.append(f"{i}. **{NAME.get(s['speaker'], s['speaker'])}**（{s['expr']}）：{s['text']}")
+        lines.append(f"{i}. **{NAME.get(s['speaker'], s['speaker'])}**（{s['expr']}／bg:{s.get('bg','—')}）：{s['text']}")
     lines += ["", "## 保證交付", ""]
     for x in data.get("deliver", []):
         lines.append(f"- {x}")
@@ -266,9 +357,12 @@ def parse_json(text):
 
 def assemble(topic, data, project, photo_files, brand):
     title = topic["title"]
+    motions = slot_keys_of("motion", FALLBACK_MOTION)
     scenes = []
+    hook_motion = pick_motion("kenburns_in", 0, motions)
     scenes.append({"narration": to_trad(data["hook"].strip()),
-                   "image_file": str(CARDS / "hook.png"), "zoom": "in"})
+                   "image_file": str(CARDS / "hook.png"), "motion": hook_motion})
+    prev = hook_motion
     for k, s in enumerate(data.get("scenes", [])):
         narration = to_trad((s.get("narration") or "").strip())
         if not narration:
@@ -280,11 +374,13 @@ def assemble(topic, data, project, photo_files, brand):
             card = to_trad((s.get("card") or narration[:8]).strip())
             from make_cards import scene_card
             img = str(scene_card(card, f"c_{topic['id']}_{k}"))
-        scenes.append({"narration": narration, "image_file": img,
-                       "zoom": "out" if k % 2 else "in"})
+        m = pick_motion(s.get("motion"), k, motions, prev)
+        prev = m
+        scenes.append({"narration": narration, "image_file": img, "motion": m})
     cta = to_trad((data.get("cta") or "").strip())
     if cta:
-        scenes.append({"narration": cta, "image_file": str(CARDS / "endcard.png"), "zoom": "out"})
+        scenes.append({"narration": cta, "image_file": str(CARDS / "endcard.png"),
+                       "motion": pick_motion("kenburns_out", len(scenes), motions, prev)})
     return {"title": title, "voice": "zh-TW-HsiaoChenNeural", "style": "", "scenes": scenes}
 
 
@@ -298,7 +394,7 @@ def write_review_md(topic, pillar, data, project, photo_files, script, path):
     for i, s in enumerate(script["scenes"], 1):
         vis = Path(s["image_file"]).name
         lines.append(f"{i}. {s['narration']}")
-        lines.append(f"   - 畫面：{vis}")
+        lines.append(f"   - 畫面：{vis}｜運鏡：{s.get('motion', '—')}")
     lines += ["", "## 張力檢查", "",
               f"- 鉤子：{data.get('hook','')}",
               f"- 結尾：{data.get('cta','')}",
@@ -364,7 +460,8 @@ def run_topic(tid, queue, brand, projects, labels, model, fmt="narr", char_dir=N
         write_dialog_md(topic, pillar, data, script, mp)
         print(f"  -> {jp.name}（{len(script['scenes'])} 句）＋ {mp.name}")
         for i, s in enumerate(script["scenes"], 1):
-            print(f"     {i}. [{s['speaker']}/{s['expr']}] {s['text']}")
+            print(f"     {i}. [{s['speaker']}/{s['expr']}/bg:{s.get('bg','—')}] {s['text']}")
+        print(f"     look = {script.get('look')}")
         return script
     project, photo_files = pick_photos(topic, projects, labels)
     print(f"[編劇] {topic['title']}｜照片候選 {len(photo_files)} 張｜版型 {style_key}")
@@ -375,7 +472,7 @@ def run_topic(tid, queue, brand, projects, labels, model, fmt="narr", char_dir=N
     write_review_md(topic, pillar, data, project, photo_files, script, mp)
     print(f"  -> {jp.name}（{len(script['scenes'])} 鏡）＋ {mp.name}")
     for i, s in enumerate(script["scenes"], 1):
-        print(f"     {i}. {s['narration']}")
+        print(f"     {i}. [{s.get('motion', '—')}] {s['narration']}")
     return script
 
 

@@ -22,6 +22,7 @@ SLOT_FILES = {
     "layout": SLOTS_DIR / "layout.json",
     "bg": SLOTS_DIR / "bg.json",
     "motion": SLOTS_DIR / "motion.json",
+    "look": SLOTS_DIR / "look.json",
     "voice": SLOTS_DIR / "voice.json",
     "caption": SLOTS_DIR / "caption.json",
 }
@@ -70,6 +71,26 @@ def slot(name):
 
 def slots():
     return {name: slot(name) for name in SLOT_FILES}
+
+
+def slot_keys(name, status="implemented"):
+    """Keys of one slot registry, optionally filtered by status.
+
+    status=None returns every key. Prompt builders and renderers should
+    read this instead of hardcoding value lists.
+    """
+    return [e.get("key") for e in slot_entries(name, status)]
+
+
+def slot_entries(name, status="implemented"):
+    entries = _entries(slot(name))
+    if status is None:
+        return entries
+    return [e for e in entries if e.get("status") == status]
+
+
+def slot_entry(name, key):
+    return next((e for e in _entries(slot(name)) if e.get("key") == key), None)
 
 
 def prompts():

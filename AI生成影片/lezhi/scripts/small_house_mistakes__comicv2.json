@@ -1,0 +1,76 @@
+{
+  "title": "小宅最容易做錯的 3 種設計",
+  "format": "dialog",
+  "look": "ink",
+  "char_dir": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\characters",
+  "voice_map": {
+    "ren": "zh-TW-YunJheNeural",
+    "le": "zh-TW-HsiaoYuNeural"
+  },
+  "scenes": [
+    {
+      "speaker": "le",
+      "text": "我家才15坪，櫃子做滿收納才夠吧？",
+      "expr": "smug",
+      "bg": "cafe"
+    },
+    {
+      "speaker": "ren",
+      "text": "錯！第一錯就是做滿，走道剩不到60公分！",
+      "expr": "worry",
+      "bg": "living"
+    },
+    {
+      "speaker": "le",
+      "text": "那房間總要多隔幾間吧，比較有隱私？",
+      "expr": "normal",
+      "bg": "plain"
+    },
+    {
+      "speaker": "ren",
+      "text": "第二錯：實牆隔太碎，整間屋子暗得像地牢。",
+      "expr": "surprise",
+      "bg": "site"
+    },
+    {
+      "speaker": "le",
+      "text": "好吧，那我客廳買個超大軟爛深沙發總行？",
+      "expr": "happy",
+      "bg": "cafe"
+    },
+    {
+      "speaker": "ren",
+      "text": "第三錯！深度超過90公分，茶几都放不下。",
+      "expr": "worry",
+      "bg": "living"
+    },
+    {
+      "speaker": "le",
+      "text": "吼！那小坪數到底要怎麼活啦？",
+      "expr": "surprise",
+      "bg": "plain"
+    },
+    {
+      "speaker": "ren",
+      "text": "用玻璃推門換採光，收納留白搭活動家具。",
+      "expr": "smug",
+      "bg": "living"
+    },
+    {
+      "speaker": "le",
+      "text": "早點說嘛，差點把房子塞成倉庫了！",
+      "expr": "surprise",
+      "bg": "cafe"
+    },
+    {
+      "speaker": "ren",
+      "text": "妳家小宅也踩雷了嗎？留言坪數幫妳健檢！",
+      "expr": "happy",
+      "bg": "plain"
+    }
+  ],
+  "topic_id": "small_house_mistakes",
+  "style": "comic",
+  "version": 2,
+  "pack": "interior_lezhi"
+}

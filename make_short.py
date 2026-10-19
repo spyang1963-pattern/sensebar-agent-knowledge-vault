@@ -135,20 +135,54 @@ def _wrap(text, n):
     return [text[i:i + n] for i in range(0, len(text), n)] or [""]
 
 
-def build_clip(image, out_mp4, dur, fps, w, h, zoom):
-    """單一鏡頭：靜圖 + Ken Burns 運鏡，輸出無聲影片。"""
-    frames = max(1, round(dur * fps))
-    if zoom == "out":
-        zexpr = f"{'1.22'}-0.22*on/{frames}"
+MOTIONS = ("kenburns_in", "kenburns_out", "pan_left", "pan_right",
+           "pan_up", "shake_soft", "none")
+MOTION_ALIAS = {"in": "kenburns_in", "out": "kenburns_out"}
+
+
+def resolve_motion(raw, i=0):
+    """Read a motion slot value (script field `motion`, legacy field `zoom`)."""
+    m = str(raw or "").strip()
+    m = MOTION_ALIAS.get(m, m)
+    return m if m in MOTIONS else ("kenburns_in" if i % 2 == 0 else "kenburns_out")
+
+
+def build_clip(image, out_mp4, dur, fps, w, h, motion="kenburns_in"):
+    """單一鏡頭：靜圖 + 依 motion 插槽運鏡，輸出無聲影片。
+
+    kenburns_in/out＝推近拉遠；pan_left/right/up＝平移；shake_soft＝微晃；none＝靜止。
+    """
+    frames = max(2, round(dur * fps))
+    span = f"({frames}-1)"
+    if motion == "none":
+        vf = (f"scale={2*w}:{2*h}:force_original_aspect_ratio=increase,"
+              f"crop={w}:{h},format=yuv420p")
     else:
-        zexpr = f"1.0+0.22*on/{frames}"
-    vf = (
-        f"scale={2*w}:{2*h}:force_original_aspect_ratio=increase,"
-        f"crop={2*w}:{2*h},"
-        f"zoompan=z='{zexpr}':d={frames}"
-        f":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={w}x{h}:fps={fps},"
-        f"format=yuv420p"
-    )
+        zexpr, xexpr, yexpr = "1.18", "iw/2-(iw/zoom/2)", "ih/2-(ih/zoom/2)"
+        if motion == "kenburns_in":
+            zexpr = f"1.0+0.22*on/{frames}"
+        elif motion == "kenburns_out":
+            zexpr = f"1.22-0.22*on/{frames}"
+        elif motion == "pan_left" or motion == "pan_right" or motion == "pan_up":
+            # normalised 0..1 progress, clamped (zoompan `on` may start at 0 or 1)
+            t = f"((on-1)/{span})"
+            f = f"if(lt({t},0),0,if(gt({t},1),1,{t}))"
+            if motion == "pan_left":     # 畫面內容往左（視角左移）
+                xexpr = f"(iw-iw/zoom)*(1-{f})"
+            elif motion == "pan_right":
+                xexpr = f"(iw-iw/zoom)*{f}"
+            else:
+                yexpr = f"(ih-ih/zoom)*(1-{f})"
+        elif motion == "shake_soft":
+            xexpr = "iw/2-(iw/zoom/2)+18*sin(on*0.8)"
+            yexpr = "ih/2-(ih/zoom/2)+12*cos(on*0.6)"
+        vf = (
+            f"scale={2*w}:{2*h}:force_original_aspect_ratio=increase,"
+            f"crop={2*w}:{2*h},"
+            f"zoompan=z='{zexpr}':d={frames}"
+            f":x='{xexpr}':y='{yexpr}':s={w}x{h}:fps={fps},"
+            f"format=yuv420p"
+        )
     run(["ffmpeg", "-y", "-i", str(image), "-vf", vf, "-frames:v", str(frames),
          "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
          "-pix_fmt", "yuv420p", str(out_mp4)])
@@ -322,8 +356,8 @@ def main():
         narration = sc["narration"]
         img_prompt = sc.get("image", title)
         full_prompt = f"{img_prompt}, {style}" if style else img_prompt
-        zoom = sc.get("zoom", "in" if i % 2 == 0 else "out")
-        log(f"[{i+1}/{len(scenes)}] {narration[:24]}...")
+        motion = resolve_motion(sc.get("motion", sc.get("zoom")), i)
+        log(f"[{i+1}/{len(scenes)}] [{motion}] {narration[:24]}...")
 
         mp3 = assets / f"tts_{i}.mp3"
         bjson = assets / f"bounds_{i}.json"
@@ -357,7 +391,7 @@ def main():
                     fallback_image(title, narration, args.w, args.h, img)
 
         clip = assets / f"clip_{i}.mp4"
-        build_clip(img, clip, scene_dur, args.fps, args.w, args.h, zoom)
+        build_clip(img, clip, scene_dur, args.fps, args.w, args.h, motion)
         aud = assets / f"aud_{i}.m4a"
         build_audio(mp3, aud, scene_dur)
 

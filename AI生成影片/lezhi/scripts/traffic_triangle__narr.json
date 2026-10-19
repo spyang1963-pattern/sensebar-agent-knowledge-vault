@@ -1,0 +1,45 @@
+{
+  "title": "動線怎麼規劃？記住「三角形原則」",
+  "voice": "zh-TW-HsiaoChenNeural",
+  "style": "narr",
+  "scenes": [
+    {
+      "narration": "煮個飯像在跑操場，問題全在動線！",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\hook.png",
+      "motion": "kenburns_in"
+    },
+    {
+      "narration": "每次做飯都手忙腳亂，端著熱湯還差點滑倒。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_traffic_triangle_0.png",
+      "motion": "shake_soft"
+    },
+    {
+      "narration": "那是因為你家廚房，少了黃金三角形。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_traffic_triangle_1.png",
+      "motion": "kenburns_in"
+    },
+    {
+      "narration": "從冰箱拿菜、水槽清洗，到瓦斯爐下鍋開炒。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_traffic_triangle_2.png",
+      "motion": "pan_right"
+    },
+    {
+      "narration": "這三個點連成三角形，彼此走不超過兩步路。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_traffic_triangle_3.png",
+      "motion": "pan_left"
+    },
+    {
+      "narration": "只要順序排對，你幾乎原地轉身就能出菜。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_traffic_triangle_4.png",
+      "motion": "kenburns_out"
+    },
+    {
+      "narration": "你家廚房動線順嗎？留言區我幫你診斷！",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\endcard.png",
+      "motion": "kenburns_in"
+    }
+  ],
+  "topic_id": "traffic_triangle",
+  "version": 1,
+  "pack": "interior_lezhi"
+}

@@ -53,6 +53,56 @@ EMOTE = {"surprise": ("！", (232, 106, 92)), "worry": ("…", (96, 150, 190)),
 MD_MOD = {"normal": (0, 0), "surprise": (34, 30), "happy": (22, 16),
           "worry": (-16, -8), "smug": (-8, -4)}
 
+# ---- look 插槽（engine/slots/look.json）：畫風色調＝背景分級 + 墨/紙/品牌色 ----
+LOOKS = {
+    "warm":  {"ink": (21, 26, 27), "paper": (252, 252, 252), "sage": (117, 137, 133),
+              "mul": (1.0, 1.0, 1.0), "gamma": 1.0, "gray": False},
+    "night": {"ink": (16, 20, 33), "paper": (250, 246, 235), "sage": (232, 176, 72),
+              "mul": (0.52, 0.58, 0.80), "gamma": 1.12, "gray": False},
+    "sage":  {"ink": (24, 34, 31), "paper": (248, 252, 249), "sage": (117, 137, 133),
+              "mul": (0.88, 1.0, 0.94), "gamma": 1.0, "gray": False},
+    "ink":   {"ink": (17, 17, 17), "paper": (253, 253, 253), "sage": (120, 120, 120),
+              "mul": (1.0, 1.0, 1.0), "gamma": 1.0, "gray": True},
+}
+LOOK = "warm"
+
+
+def apply_look(key):
+    """啟用一個畫風：重綁 palette 全域 + 讓背景快取失效（分級是烘焙進快取的）。"""
+    global LOOK, INK, PAPER, SAGE
+    L = LOOKS.get(key)
+    if L is None:
+        key, L = "warm", LOOKS["warm"]
+    LOOK, INK, PAPER, SAGE = key, L["ink"], L["paper"], L["sage"]
+    try:
+        _BG_CACHE.clear()
+    except Exception:
+        pass
+    return LOOK
+
+
+def _grade(img):
+    """把 look 的分級套到背景畫布（warm=原樣）。"""
+    L = LOOKS[LOOK]
+    if L["gray"]:
+        return img.convert("L").convert("RGB")
+    if L["mul"] == (1.0, 1.0, 1.0) and L["gamma"] == 1.0:
+        return img
+    lut = []
+    for m in L["mul"]:
+        lut += [min(255, int(round(255 * ((i / 255) ** L["gamma"]) * m))) for i in range(256)]
+    return img.point(lut)
+
+
+def _grade_rgba(im):
+    """角色 RGBA 灰階化（僅 ink 畫風；其他畫風維持原色）。"""
+    if not LOOKS[LOOK]["gray"]:
+        return im
+    a = im.getchannel("A")
+    g = im.convert("L").convert("RGB")
+    g.putalpha(a)
+    return g
+
 
 def _font(sz, bold=False):
     try:
@@ -173,7 +223,7 @@ _BG_CACHE: dict = {}
 
 def _bg_big(kind):
     if kind not in _BG_CACHE:
-        _BG_CACHE[kind] = draw_bg(kind)
+        _BG_CACHE[kind] = _grade(draw_bg(kind))
     return _BG_CACHE[kind]
 
 
@@ -333,6 +383,7 @@ def render_scene(title, speaker, text, expr, char_dir, dur, fps, idx, bounds, bg
             face = _face_scaled(who, br, ey, mo, e, hgl)
             comp = base.copy()
             comp.alpha_composite(face)
+            comp = _grade_rgba(comp)
             if not is_sp:
                 a = comp.getchannel("A").point(lambda v: int(v * 0.9))
                 comp.putalpha(a)
@@ -417,11 +468,13 @@ def main():
     ap.add_argument("--fps", type=int, default=30)
     ap.add_argument("--subs", action="store_true")
     ap.add_argument("--reuse", action="store_true")
+    ap.add_argument("--look", default=None, help="畫風（engine/slots/look.json；預設讀腳本的 look）")
     ap.add_argument("--sfx", dest="sfx", action="store_true", default=True)
     ap.add_argument("--no-sfx", dest="sfx", action="store_false")
     args = ap.parse_args()
 
     script = json.loads(Path(args.script).read_text(encoding="utf-8"))
+    look = apply_look(args.look or script.get("look") or "warm")
     title = script.get("title", "對話劇")
     info = _film_meta(script, args.script, title)
     stem = info["stem"]
@@ -432,7 +485,7 @@ def main():
     assets = out / "assets"
     assets.mkdir(parents=True, exist_ok=True)
     sfx = md.gen_sfx(assets) if args.sfx else None
-    ms.log(f"漫畫式 v4：{title}｜{len(scenes)} 句｜音效：{'開' if sfx else '關'}")
+    ms.log(f"漫畫式 v4：{title}｜畫風 {look}｜{len(scenes)} 句｜音效：{'開' if sfx else '關'}")
 
     clips, audios, metas = [], [], []
     for i, sc in enumerate(scenes):
@@ -441,7 +494,9 @@ def main():
         expr = sc.get("expr", "normal")
         if expr not in mc.EXPR:
             expr = "normal"
-        bg_kind = sc.get("bg") or BG_KINDS[i % len(BG_KINDS)]
+        bg_kind = sc.get("bg")
+        if bg_kind not in BG_KINDS:
+            bg_kind = BG_KINDS[i % len(BG_KINDS)]
         voice = sc.get("voice") or vmap.get(who, md.VOICE["ren"])
         rate, pitch, volume = _prosody(who, expr, text)
         ms.log(f"[{i+1}/{len(scenes)}] {NAME.get(who,who)}（{expr}/{bg_kind}, {rate}/{pitch}）：{text[:16]}")

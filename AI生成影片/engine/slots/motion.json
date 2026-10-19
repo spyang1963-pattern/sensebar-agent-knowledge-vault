@@ -1,12 +1,12 @@
 {
-  "_doc": "運鏡插槽。params.zoom 為目前 make_short.build_clip 支援的值（in/out）。",
+  "_doc": "運鏡插槽。key 直接傳給 make_short.build_clip（motion 欄位）；legacy 欄位 zoom=in/out 對應 kenburns_in/kenburns_out。",
   "motions": [
-    {"key": "none", "name": "無", "params": {}, "status": "planned"},
+    {"key": "none", "name": "靜止", "params": {}, "status": "implemented"},
     {"key": "kenburns_in", "name": "肯伯恩斯推近", "params": {"zoom": "in"}, "status": "implemented"},
     {"key": "kenburns_out", "name": "肯伯恩斯拉遠", "params": {"zoom": "out"}, "status": "implemented"},
-    {"key": "pan_left", "name": "左平移", "params": {"pan": "left"}, "status": "planned"},
-    {"key": "pan_right", "name": "右平移", "params": {"pan": "right"}, "status": "planned"},
-    {"key": "pan_up", "name": "上平移", "params": {"pan": "up"}, "status": "planned"},
-    {"key": "shake_soft", "name": "微晃", "params": {"shake": 0.5}, "status": "planned"}
+    {"key": "pan_left", "name": "左平移", "params": {"pan": "left"}, "status": "implemented"},
+    {"key": "pan_right", "name": "右平移", "params": {"pan": "right"}, "status": "implemented"},
+    {"key": "pan_up", "name": "上平移", "params": {"pan": "up"}, "status": "implemented"},
+    {"key": "shake_soft", "name": "微晃", "params": {"shake": 0.5}, "status": "implemented"}
   ]
 }
