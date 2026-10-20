@@ -82,31 +82,95 @@ async def tts_scene(text, voice, mp3_path):
     return bounds
 
 
-def fetch_image(prompt, w, h, out_png, seed=None):
-    """Pollinations.AI 免費生圖；含重試退避（匿名有速率限制）。失敗回傳 None。"""
-    import time
-    encoded = urllib.parse.quote(prompt)
-    base = (f"https://image.pollinations.ai/prompt/{encoded}"
-            f"?width={w}&height={h}&model=flux")
-    if seed is not None:
-        base += f"&seed={seed}"
-    delays = [8, 15, 25, 40, 60]
-    for attempt, wait in enumerate([0] + delays):
-        if wait:
-            log(f"  生圖被限流，{wait}s 後重試（第 {attempt} 次）...")
-            time.sleep(wait)
+def fetch_image(prompt, w, h, out_png, seed=None, title="", subtitle=""):
+    """AI 生圖（provider chain）：pollinations → card_fallback。支援快取＋冷卻。失敗回傳 None。"""
+    from pathlib import Path
+    try:
+        from engine.core import providers
+    except Exception:
+        providers = None
+
+    out_p = Path(out_png)
+    if providers is None:
+        # fallback to legacy direct pollinations
+        import time
+        encoded = urllib.parse.quote(prompt)
+        base = (f"https://image.pollinations.ai/prompt/{encoded}"
+                f"?width={w}&height={h}&model=flux")
+        if seed is not None:
+            base += f"&seed={seed}"
+        delays = [8, 15, 25, 40, 60]
+        for attempt, wait in enumerate([0] + delays):
+            if wait:
+                log(f"  生圖被限流，{wait}s 後重試（第 {attempt} 次）...")
+                time.sleep(wait)
+            try:
+                req = urllib.request.Request(base, headers={"User-Agent": "make-short/1.0"})
+                with urllib.request.urlopen(req, timeout=150) as resp:
+                    data = resp.read()
+                if len(data) < 5000:
+                    continue
+                out_p.write_bytes(data)
+                return out_p
+            except Exception as e:
+                log(f"  生圖嘗試 {attempt} 失敗：{e}")
+        log("  生圖最終失敗（改用後備圖）")
+        return None
+
+    key = f"{w}x{h}|{seed or '0'}|{prompt[:80]}"
+    producers = {}
+
+    def _prod_pollinations(target):
+        import time
+        encoded = urllib.parse.quote(prompt)
+        base = (f"https://image.pollinations.ai/prompt/{encoded}"
+                f"?width={w}&height={h}&model=flux")
+        if seed is not None:
+            base += f"&seed={seed}"
+        delays = [8, 15, 25, 40, 60]
+        last = None
+        for attempt, wait in enumerate([0] + delays):
+            if wait:
+                log(f"  生圖被限流，{wait}s 後重試（第 {attempt} 次）...")
+                time.sleep(wait)
+            try:
+                req = urllib.request.Request(base, headers={"User-Agent": "make-short/1.0"})
+                with urllib.request.urlopen(req, timeout=150) as resp:
+                    data = resp.read()
+                if len(data) < 5000:
+                    last = RuntimeError("pollinations: small body")
+                    continue
+                Path(target).write_bytes(data)
+                return target
+            except Exception as e:
+                last = e
+        raise last or RuntimeError("pollinations failed")
+
+    def _prod_card_fallback(target):
+        fallback_image(title or "", subtitle or "", w, h, Path(target))
+        return target
+
+    producers["pollinations"] = _prod_pollinations
+    producers["card_fallback"] = _prod_card_fallback
+
+    res, label = providers.fetch("image", key, ".png", producers, prefer_cached=True)
+    if res is None:
+        log(f"  image chain 無可用供應源（{label}）→ 改用後備圖")
         try:
-            req = urllib.request.Request(base, headers={"User-Agent": "make-short/1.0"})
-            with urllib.request.urlopen(req, timeout=150) as resp:
-                data = resp.read()
-            if len(data) < 5000:
-                continue
-            out_png.write_bytes(data)
-            return out_png
-        except Exception as e:
-            log(f"  生圖嘗試 {attempt} 失敗：{e}")
-    log("  生圖最終失敗（改用後備圖）")
-    return None
+            fallback_image(title or "", subtitle or "", w, h, out_p)
+            return out_p
+        except Exception:
+            return None
+    try:
+        if Path(res) != out_p:
+            out_p.write_bytes(Path(res).read_bytes())
+    except Exception:
+        pass
+    if "(cache)" in str(label):
+        log(f"  image 快取命中：{label}")
+    else:
+        log(f"  image 來源：{label}")
+    return out_p
 
 
 def fallback_image(title, subtitle, w, h, out_png):
@@ -383,11 +447,11 @@ def main():
                     Image.open(src).convert("RGB").save(img)
                 else:
                     log(f"  實拍照不存在，改生成：{src}")
-                    if not fetch_image(full_prompt, args.w, args.h, img):
+                    if not fetch_image(full_prompt, args.w, args.h, img, title=title, subtitle=narration):
                         fallback_image(title, narration, args.w, args.h, img)
             else:
                 log("  生圖中...")
-                if not fetch_image(full_prompt, args.w, args.h, img):
+                if not fetch_image(full_prompt, args.w, args.h, img, title=title, subtitle=narration):
                     fallback_image(title, narration, args.w, args.h, img)
 
         clip = assets / f"clip_{i}.mp4"

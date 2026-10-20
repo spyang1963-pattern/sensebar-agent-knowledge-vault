@@ -1,0 +1,131 @@
+{
+  "_doc": "P5-2 provider registry — 每個插槽一條供應鏈（優先順序＝chain 陣列順序）。status: implemented（程式已接線會用）／pending_key（等金鑰，P5-3）／planned（未接線）／disabled（暫停）。requires: 執行時檢查 env 或 file，缺了就跳過。cooldown_sec: 失敗（429/限流/超時）後冷卻秒數。state/cache 路徑相對於本檔。改這個檔即可增/換來源，不必改程式（engine/core/providers.py 會讀）。",
+  "state": "../working/_provider_state.json",
+  "cache": "../working/_provider_cache",
+  "slots": {
+    "image": {
+      "_doc": "narr 分鏡底圖。已接線：make_short.fetch_image 讀此鏈（快取→冷卻→呼叫→失敗標記）。",
+      "chain": [
+        {
+          "id": "pollinations",
+          "kind": "http",
+          "status": "implemented",
+          "url": "https://image.pollinations.ai/prompt/{prompt}",
+          "cooldown_sec": 900,
+          "note": "免費匿名 flux；限流嚴，429/失敗冷卻 15 分鐘"
+        },
+        {
+          "id": "card_fallback",
+          "kind": "local",
+          "status": "implemented",
+          "note": "make_short.fallback_image：程式化漸層資訊卡（不需網路）"
+        },
+        {
+          "id": "gemini_image",
+          "kind": "http",
+          "status": "disabled",
+          "requires": { "file": "~/.gemini_api_key" },
+          "cooldown_sec": 86400,
+          "note": "Gemini 免費層圖像額度=0（429 limit:0），額度恢復前停用"
+        }
+      ]
+    },
+    "bg": {
+      "_doc": "dialog 情境背景。make_comic.draw_bg 目前全程式化繪製（恆可用）；外部素材來源待 P5-3。",
+      "chain": [
+        {
+          "id": "builtin_drawing",
+          "kind": "local",
+          "status": "implemented",
+          "note": "make_comic.draw_bg：cafe/living/kitchen/site/plain 線條背景＋look 分級"
+        },
+        {
+          "id": "local_photos",
+          "kind": "local",
+          "status": "planned",
+          "path": "assets/photos",
+          "note": "實拍壓暗當背景（尚未接線）"
+        },
+        {
+          "id": "pexels_broll",
+          "kind": "http",
+          "status": "pending_key",
+          "requires": { "env": "PEXELS_API_KEY", "file": "~/.pexels_api_key" },
+          "cooldown_sec": 600,
+          "note": "P5-3：真實 B-roll 素材"
+        }
+      ]
+    },
+    "video_broll": {
+      "_doc": "narr 分鏡的實拍影片素材（P5-3 主體）；card_motion＝現行卡片＋zoompan。",
+      "chain": [
+        {
+          "id": "pexels_video",
+          "kind": "http",
+          "status": "pending_key",
+          "requires": { "env": "PEXELS_API_KEY", "file": "~/.pexels_api_key" },
+          "cooldown_sec": 600,
+          "note": "https://api.pexels.com/videos/search"
+        },
+        {
+          "id": "pixabay_video",
+          "kind": "http",
+          "status": "pending_key",
+          "requires": { "env": "PIXABAY_API_KEY", "file": "~/.pixabay_api_key" },
+          "cooldown_sec": 600,
+          "note": "https://pixabay.com/api/videos/"
+        },
+        {
+          "id": "card_motion",
+          "kind": "local",
+          "status": "implemented",
+          "note": "既有做法：靜態卡＋zoompan 運鏡（7 種 motion）"
+        }
+      ]
+    },
+    "voice": {
+      "_doc": "配音。edge-tts 免費、無額度帳；更高品質 TTS 之後再掛。",
+      "chain": [
+        {
+          "id": "edge_tts",
+          "kind": "local",
+          "status": "implemented",
+          "note": "edge-tts zh-TW（HsiaoChenNeural 等），make_comic/make_short 皆用"
+        },
+        {
+          "id": "groq_tts",
+          "kind": "http",
+          "status": "planned",
+          "requires": { "file": "~/.groq_api_key" },
+          "note": "若 Groq 開放 TTS 端點再接（目前 chat completions 在此環境 403/404）"
+        }
+      ]
+    },
+    "music": {
+      "_doc": "背景音樂。",
+      "chain": [
+        {
+          "id": "bgm_assets",
+          "kind": "local",
+          "status": "implemented",
+          "path": "assets/bgm_*.wav",
+          "note": "既有 warm/playful/upbeat 三首（BGM 下拉選單用）"
+        },
+        {
+          "id": "make_bgm",
+          "kind": "local",
+          "status": "implemented",
+          "note": "make_bgm.py 程序化（warm/calm/playful/upbeat × 任意秒數）"
+        },
+        {
+          "id": "suno_api",
+          "kind": "http",
+          "status": "pending_key",
+          "requires": { "file": "~/.suno_api_key" },
+          "cooldown_sec": 1800,
+          "note": "暫無免費方案，先掛著當登錄項"
+        }
+      ]
+    }
+  }
+}
