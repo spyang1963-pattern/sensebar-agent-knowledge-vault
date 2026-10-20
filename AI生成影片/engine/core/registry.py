@@ -25,6 +25,7 @@ SLOT_FILES = {
     "look": SLOTS_DIR / "look.json",
     "voice": SLOTS_DIR / "voice.json",
     "caption": SLOTS_DIR / "caption.json",
+    "infocard": SLOTS_DIR / "infocard.json",
 }
 
 

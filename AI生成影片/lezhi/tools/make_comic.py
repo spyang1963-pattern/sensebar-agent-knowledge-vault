@@ -330,7 +330,57 @@ def _chrome(title):
     return lay
 
 
-def render_scene(title, speaker, text, expr, char_dir, dur, fps, idx, bounds, bg_kind, env):
+def _draw_infocard(img, kind, data=None):
+    """Draw domain info card overlay (P5-4)."""
+    if not kind or kind == "none":
+        return img
+    data = data or {}
+    ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(ov)
+    f_title = _font(38)
+    f_body = _font(32)
+    # card box top-right
+    cx, cy, cw, ch = W - 520, 80, 460, 190
+    d.rounded_rectangle([cx, cy, cx + cw, cy + ch], radius=28, fill=(18, 24, 38, 235), outline=INK, width=4)
+    if kind == "area":
+        d.text((cx + 28, cy + 18), "坪數", font=f_title, fill=(255, 255, 255))
+        val = data.get("value") or "約 25 坪"
+        d.text((cx + 28, cy + 78), val, font=f_body, fill=(170, 215, 255))
+        note = data.get("note") or "格局建議以實際測量為準"
+        d.text((cx + 28, cy + 128), note, font=f_body, fill=(210, 210, 210))
+    elif kind == "budget":
+        d.text((cx + 28, cy + 18), "預算", font=f_title, fill=(255, 255, 255))
+        val = data.get("value") or "約 60-80 萬"
+        d.text((cx + 28, cy + 78), val, font=f_body, fill=(255, 215, 140))
+        note = data.get("note") or "含設計費、監工、部分建材"
+        d.text((cx + 28, cy + 128), note, font=f_body, fill=(210, 210, 210))
+    elif kind == "material":
+        d.text((cx + 28, cy + 18), "材質建議", font=f_title, fill=(255, 255, 255))
+        items = data.get("items") or ["地板：耐磨SPC", "牆面：乳膠漆", "櫃體：系統板"]
+        y = cy + 78
+        for it in items[:3]:
+            d.text((cx + 28, y), it, font=f_body, fill=(190, 235, 190))
+            y += 38
+    elif kind == "layout":
+        d.text((cx + 28, cy + 18), "動線重點", font=f_title, fill=(255, 255, 255))
+        items = data.get("items") or ["動線：開門→玄關不交叉", "採光：避免遮擋窗戶", "收納：動線盡頭規劃"]
+        y = cy + 78
+        for it in items[:3]:
+            d.text((cx + 28, y), it, font=f_body, fill=(220, 200, 255))
+            y += 38
+    elif kind == "custom":
+        title_c = data.get("title") or "重點"
+        d.text((cx + 28, cy + 18), title_c, font=f_title, fill=(255, 255, 255))
+        items = data.get("items") or ["重點一", "重點二", "重點三"]
+        y = cy + 78
+        for it in items[:3]:
+            d.text((cx + 28, y), it, font=f_body, fill=(235, 235, 235))
+            y += 38
+    out = Image.alpha_composite(img.convert("RGBA"), ov).convert("RGB")
+    return out
+
+
+def render_scene(title, speaker, text, expr, char_dir, dur, fps, idx, bounds, bg_kind, env, infocard=None, infocard_data=None):
     """Yield RGB frames. Mouth is energy-synced; eyes blink; emotion badge shows."""
     other = "le" if speaker == "ren" else "ren"
     big = _bg_big(bg_kind)
@@ -410,6 +460,7 @@ def render_scene(title, speaker, text, expr, char_dir, dur, fps, idx, bounds, bg
                                      int(bbox[1] + bsrc.height * (1 - sc) / 2)))
         else:
             fr.alpha_composite(bl, (0, 0))
+        fr = _draw_infocard(fr, infocard, infocard_data)
         yield fr.convert("RGB")
 
 
@@ -525,7 +576,10 @@ def main():
         env = _energy(mp3, args.fps, nframes)
 
         clip = assets / f"clip_{i}.mp4"
-        frames = render_scene(title, who, text, expr, None, scene_dur, args.fps, i, bounds, bg_kind, env)
+        infocard = sc.get("infocard") or script.get("infocard") or "none"
+        infocard_data = sc.get("infocard_data") or script.get("infocard_data") or {}
+        frames = render_scene(title, who, text, expr, None, scene_dur, args.fps, i, bounds, bg_kind, env,
+                              infocard=infocard, infocard_data=infocard_data)
         encode_frames(frames, clip, args.fps,
                       total=nframes,
                       cover_png=(assets / "cover0.png") if i == 0 else None)

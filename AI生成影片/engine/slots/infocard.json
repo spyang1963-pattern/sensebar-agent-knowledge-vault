@@ -1,0 +1,15 @@
+{
+  "key": "infocard",
+  "label": "領域資訊圖卡",
+  "desc": "室內設計常用資訊圖卡（坪數／預算／材質／動線）",
+  "items": [
+    {"id": "none", "label": "無", "implemented": true},
+    {"id": "area", "label": "坪數", "implemented": true},
+    {"id": "budget", "label": "預算", "implemented": true},
+    {"id": "material", "label": "材質", "implemented": true},
+    {"id": "layout", "label": "動線", "implemented": true},
+    {"id": "custom", "label": "自訂", "implemented": true}
+  ],
+  "default": "none",
+  "fallback": ["none"]
+}
