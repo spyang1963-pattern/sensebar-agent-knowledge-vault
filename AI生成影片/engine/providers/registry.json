@@ -24,7 +24,9 @@
           "id": "gemini_image",
           "kind": "http",
           "status": "disabled",
-          "requires": { "file": "~/.gemini_api_key" },
+          "requires": {
+            "file": "~/.gemini_api_key"
+          },
           "cooldown_sec": 86400,
           "note": "Gemini 免費層圖像額度=0（429 limit:0），額度恢復前停用"
         }
@@ -50,7 +52,10 @@
           "id": "pexels_broll",
           "kind": "http",
           "status": "pending_key",
-          "requires": { "env": "PEXELS_API_KEY", "file": "~/.pexels_api_key" },
+          "requires": {
+            "env": "PEXELS_API_KEY",
+            "file": "~/.pexels_api_key"
+          },
           "cooldown_sec": 600,
           "note": "P5-3：真實 B-roll 素材"
         }
@@ -63,15 +68,21 @@
           "id": "pexels_video",
           "kind": "http",
           "status": "pending_key",
-          "requires": { "env": "PEXELS_API_KEY", "file": "~/.pexels_api_key" },
+          "requires": {
+            "env": "PEXELS_API_KEY",
+            "file": "~/.pexels_api_key"
+          },
           "cooldown_sec": 600,
           "note": "https://api.pexels.com/videos/search"
         },
         {
           "id": "pixabay_video",
           "kind": "http",
-          "status": "pending_key",
-          "requires": { "env": "PIXABAY_API_KEY", "file": "~/.pixabay_api_key" },
+          "status": "implemented",
+          "requires": {
+            "env": "PIXABAY_API_KEY",
+            "file": "~/.pixabay_api_key"
+          },
           "cooldown_sec": 600,
           "note": "https://pixabay.com/api/videos/"
         },
@@ -96,7 +107,9 @@
           "id": "groq_tts",
           "kind": "http",
           "status": "planned",
-          "requires": { "file": "~/.groq_api_key" },
+          "requires": {
+            "file": "~/.groq_api_key"
+          },
           "note": "若 Groq 開放 TTS 端點再接（目前 chat completions 在此環境 403/404）"
         }
       ]
@@ -121,7 +134,9 @@
           "id": "suno_api",
           "kind": "http",
           "status": "pending_key",
-          "requires": { "file": "~/.suno_api_key" },
+          "requires": {
+            "file": "~/.suno_api_key"
+          },
           "cooldown_sec": 1800,
           "note": "暫無免費方案，先掛著當登錄項"
         }
