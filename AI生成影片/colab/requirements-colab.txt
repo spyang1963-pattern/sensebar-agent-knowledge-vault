@@ -1,0 +1,6 @@
+# requirements for Google Colab
+requests
+Pillow
+tqdm
+pyyaml
+# image/video deps optional; add as needed

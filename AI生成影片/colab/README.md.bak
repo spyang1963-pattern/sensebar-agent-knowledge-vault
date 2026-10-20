@@ -1,0 +1,16 @@
+P5-5 Colab Batch Asset Factory - Planning
+========================================
+
+Structure:
+- colab/worker.py        : Colab runner (reads tasks, dispatches, zips outputs)
+- colab/worker.ipynb     : notebook wrapper
+- engine/workers/colab_dispatch.py  : local scheduler
+- engine/workers/colab_harvest.py   : local harvester
+
+Task exchange dir (local):
+- working/_colab_tasks/      (queued tasks JSON)
+- working/_colab_inbox/      (downloaded zips from Colab)
+- working/_colab_out/        (extracted results)
+
+Extensible: add new task_type + handler.
+Targets: image_gen, video_broll_fetch, batch_rebuild.
