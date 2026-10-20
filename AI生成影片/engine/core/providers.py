@@ -19,6 +19,8 @@ import json
 import os
 import sys
 import time
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 ENGINE = Path(__file__).resolve().parents[1]
@@ -141,6 +143,89 @@ def cache_path(slot, pid, key, ext=".bin"):
     d = load()["_cache_dir"] / slot / pid
     d.mkdir(parents=True, exist_ok=True)
     return d / (h + ext)
+
+
+def _read_key_file(name):
+    # try env first, then common files
+    env = os.environ.get(name.upper())
+    if env and env.strip():
+        return env.strip()
+    for cand in [os.path.expanduser(f"~/.{name.lower()}_api_key"), os.path.expanduser(f"~/.{name.lower()}")]:
+        try:
+            p = Path(cand)
+            if p.exists():
+                s = p.read_text(encoding="utf-8", errors="replace").strip()
+                if s:
+                    return s
+        except Exception:
+            pass
+    return None
+
+
+def _download(url, target):
+    req = urllib.request.Request(url, headers={"User-Agent": "lezhi-providers/1.0"})
+    with urllib.request.urlopen(req, timeout=300) as resp:
+        data = resp.read()
+    if len(data) < 1000:
+        raise RuntimeError("too small")
+    Path(target).write_bytes(data)
+    return target
+
+
+def pixabay_video_producer(target, query="interior design", orientation="portrait"):
+    key = _read_key_file("pixabay_api_key")
+    if not key:
+        raise RuntimeError("no key")
+    q = urllib.parse.quote(query)
+    url = f"https://pixabay.com/api/videos/?key={key}&q={q}&video_type=film&per_page=5&orientation={orientation}&safesearch=true"
+    req = urllib.request.Request(url, headers={"User-Agent": "lezhi-providers/1.0"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        data = json.loads(resp.read())
+    hits = data.get("hits") or []
+    if not hits:
+        raise RuntimeError("no results")
+    v = hits[0]
+    vids = v.get("videos") or {}
+    # prefer medium/large/small
+    pick = None
+    for k in ("large", "medium", "small", "tiny"):
+        if vids.get(k):
+            pick = vids[k]
+            break
+    if not pick:
+        raise RuntimeError("no video url")
+    vurl = pick.get("url")
+    if not vurl:
+        raise RuntimeError("no video url")
+    return _download(vurl, target)
+
+
+def pexels_video_producer(target, query="interior design", orientation="portrait"):
+    key = _read_key_file("pexels_api_key")
+    if not key:
+        raise RuntimeError("no key")
+    q = urllib.parse.quote(query)
+    url = f"https://api.pexels.com/videos/search?query={q}&per_page=5&orientation={orientation}&size=medium"
+    req = urllib.request.Request(url, headers={"User-Agent": "lezhi-providers/1.0", "Authorization": key})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        data = json.loads(resp.read())
+    vids = data.get("videos") or []
+    if not vids:
+        raise RuntimeError("no results")
+    files = vids[0].get("video_files") or []
+    pick = None
+    for f in files:
+        if f.get("quality") in ("hd", "sd"):
+            pick = f
+            break
+    if not pick and files:
+        pick = files[0]
+    if not pick:
+        raise RuntimeError("no video file")
+    vurl = pick.get("link")
+    if not vurl:
+        raise RuntimeError("no video link")
+    return _download(vurl, target)
 
 
 def cached(slot, pid, key):
