@@ -44,7 +44,9 @@ SIDE = {"ren": "left", "le": "right"}
 XC = {"ren": 322, "le": 758}
 BASELINE = 1806
 H_ACT, H_INA = 782, 700
-BG_KINDS = ["living", "cafe", "site", "kitchen", "plain"]
+BG_KINDS = ["living", "cafe", "site", "kitchen", "plain",
+            "bedroom", "office", "restaurant", "balcony", "showroom", "outdoor"]
+PHOTO_DIR = LEZHI / "assets" / "backgrounds" / "photo"
 TRANS = ["fade", "smoothleft", "smoothup", "circleclose", "radial",
          "smoothright", "circleopen", "slideup"]
 EMOTE = {"surprise": ("！", (232, 106, 92)), "worry": ("…", (96, 150, 190)),
@@ -212,10 +214,87 @@ def draw_bg(kind):
         d.rectangle([0, 1080, BW, 1180], fill=(150, 160, 156), outline=INK, width=8)
         d.rounded_rectangle([300, 1085, 560, 1178], radius=12, fill=(180, 188, 186), outline=INK, width=6)
         d.line([(360, 1130), (360, 1040), (400, 1040)], fill=INK, width=8)
+    elif kind == "bedroom":
+        img, d = _bg_canvas(wall=(236, 232, 240), floor=(210, 196, 186))
+        _window(d, 130, 420, 380, 340)
+        d.rectangle([120, 1180, 560, 1400], fill=(120, 150, 180), outline=INK, width=8)
+        d.rectangle([120, 1330, 560, 1500], fill=(150, 180, 205), outline=INK, width=8)
+        d.rounded_rectangle([80, 1380, 560, 1500], radius=20, fill=(250, 250, 248), outline=INK, width=8)
+        d.ellipse([700, 980, 1160, 1280], fill=(150, 170, 166), outline=INK, width=8)
+        d.rectangle([760, 1280, 1120, 1500], fill=(150, 170, 166), outline=INK, width=8)
+        _plant(d, 640, 1220, 0.9)
+    elif kind == "office":
+        img, d = _bg_canvas(wall=(226, 228, 232), floor=(190, 184, 176))
+        _window(d, 150, 380, 340, 300)
+        d.rectangle([120, 1180, 1080, 1290], fill=WOOD, outline=INK, width=8)
+        d.rectangle([160, 1290, 260, 1500], fill=WOOD, outline=INK, width=6)
+        d.rectangle([940, 1290, 1040, 1500], fill=WOOD, outline=INK, width=6)
+        d.rounded_rectangle([300, 1080, 620, 1230], radius=16, fill=(90, 96, 100), outline=INK, width=8)
+        d.rectangle([320, 1100, 600, 1210], fill=(190, 220, 250), outline=INK, width=5)
+        d.rounded_rectangle([700, 1040, 1040, 1210], radius=14, fill=(120, 150, 180), outline=INK, width=8)
+    elif kind == "restaurant":
+        img, d = _bg_canvas(wall=(226, 214, 198), floor=(178, 158, 138))
+        for lx in (360, 640, 920):
+            d.line([(lx, 240), (lx, 430)], fill=INK, width=5)
+            d.pieslice([lx - 60, 430, lx + 60, 540], 180, 360, fill=(150, 110, 90), outline=INK, width=6)
+        d.rounded_rectangle([120, 1180, 1080, 1330], radius=16, fill=WOOD, outline=INK, width=8)
+        d.rounded_rectangle([120, 1330, 1080, 1560], radius=10, fill=(150, 120, 96), outline=INK, width=8)
+        for cx in (280, 620, 960):
+            d.ellipse([cx - 40, 1090, cx + 40, 1170], fill=PAPER, outline=INK, width=6)
+            d.arc([cx - 40, 1086, cx + 40, 1140], 200, 340, fill=INK, width=6)
+        d.rounded_rectangle([150, 430, 470, 700], radius=12, fill=(60, 66, 66), outline=INK, width=8)
+        d.text((190, 460), "MENU", font=_font(56, True), fill=(240, 236, 220))
+    elif kind == "balcony":
+        img, d = _bg_canvas(wall=(214, 226, 238), floor=(196, 184, 170))
+        for x in range(80, BW, 120):
+            d.rectangle([x, 380, x + 14, 1200], fill=(190, 196, 190), outline=INK, width=5)
+        d.rectangle([0, 1180, BW, 1210], fill=WOOD, outline=INK, width=6)
+        for px in (300, 680, 1020):
+            _plant(d, px, 900, 0.8)
+        d.ellipse([760, 300, 900, 400], fill=(250, 244, 210), outline=INK, width=6)
+        d.line([(760, 350), (720, 380)], fill=INK, width=5)
+        d.line([(900, 350), (940, 380)], fill=INK, width=5)
+        d.line([(800, 420), (760, 460)], fill=INK, width=5)
+        d.line([(880, 420), (920, 460)], fill=INK, width=5)
+    elif kind == "showroom":
+        img, d = _bg_canvas(wall=(240, 242, 240), floor=(214, 208, 200))
+        d.rectangle([120, 980, 560, 1280], fill=(150, 170, 166), outline=INK, width=8)
+        d.rectangle([150, 1010, 530, 1120], fill=(220, 224, 220), outline=INK, width=5)
+        d.rectangle([640, 1040, 1040, 1260], fill=(186, 172, 150), outline=INK, width=8)
+        d.line([(640, 1040), (840, 1260)], fill=INK, width=5)
+        d.line([(840, 1040), (1040, 1260)], fill=INK, width=5)
+        _plant(d, 300, 1280, 0.9)
+        _plant(d, 940, 1300, 0.9)
+    elif kind == "outdoor":
+        img, d = _bg_canvas(wall=(206, 226, 236), floor=(150, 168, 120), horizon=1420)
+        d.ellipse([820, 200, 960, 340], fill=(250, 244, 210), outline=INK, width=6)
+        for cx, cy, r in ((160, 280, 46), (360, 200, 60), (620, 260, 40)):
+            d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(120, 180, 140), outline=INK, width=6)
+        d.rectangle([150, 1180, 300, 1500], fill=(150, 120, 90), outline=INK, width=8)
+        d.ellipse([110, 900, 340, 1250], fill=(120, 170, 120), outline=INK, width=6)
     else:
         img, d = _bg_canvas()
         d.rectangle([0, 0, BW, 360], fill=(226, 234, 230))
     return img
+
+
+def _photo_bg(name):
+    """Load a real-photo background from lezhi/assets/backgrounds/photo/, fit to BWxBH."""
+    p = PHOTO_DIR / name
+    if not p.exists():
+        for cand in PHOTO_DIR.glob("*"):
+            if cand.stem == name or cand.name == name:
+                p = cand
+                break
+    if not p.exists():
+        return None
+    im = Image.open(p).convert("RGB")
+    # cover-fit to BWxBH (center crop)
+    sc = max(BW / im.width, BH / im.height)
+    im = im.resize((max(BW, int(im.width * sc)), max(BH, int(im.height * sc))), Image.LANCZOS)
+    x = (im.width - BW) // 2
+    y = (im.height - BH) // 2
+    return im.crop((x, y, x + BW, y + BH))
 
 
 _BG_CACHE: dict = {}
@@ -223,6 +302,12 @@ _BG_CACHE: dict = {}
 
 def _bg_big(kind):
     if kind not in _BG_CACHE:
+        if kind.startswith("photo:"):
+            img = _photo_bg(kind[len("photo:"):])
+            if img is not None:
+                _BG_CACHE[kind] = _grade(img)
+                return _BG_CACHE[kind]
+            kind = "living"
         _BG_CACHE[kind] = _grade(draw_bg(kind))
     return _BG_CACHE[kind]
 
@@ -380,11 +465,153 @@ def _draw_infocard(img, kind, data=None):
     return out
 
 
-def render_scene(title, speaker, text, expr, char_dir, dur, fps, idx, bounds, bg_kind, env, infocard=None, infocard_data=None):
-    """Yield RGB frames. Mouth is energy-synced; eyes blink; emotion badge shows."""
+# ---------------------------------------------------------------- camera / fx
+CAMERAS = ("static", "zoom_in", "zoom_out", "pan_l", "pan_r")
+SFX_TEXT = {"surprise": "鏘！", "happy": "哇！", "smug": "哼～", "worry": "嘖…"}
+
+
+def _camera_crop(big, cam, prog, idx, t):
+    """Crop (+ optional zoom/pan) a BWxBH background to a WxH RGBA frame."""
+    BW, BH = big.size
+    z = 1.0
+    if cam == "zoom_in":
+        z = 1.0 + 0.10 * prog
+    elif cam == "zoom_out":
+        z = 1.10 - 0.10 * prog
+    cw, ch = W / z, H / z
+    mx, my = (BW - cw) / 2, (BH - ch) / 2
+    dx = dy = 0
+    if cam in ("pan_l", "pan_r"):
+        s = 1 if cam == "pan_l" else -1
+        dx = mx * (1 - 2 * prog) * s
+    dx += int(26 * math.sin(2 * math.pi * t * 0.03 + idx))
+    dy += int(18 * math.cos(2 * math.pi * t * 0.024 + idx))
+    cx = BW / 2 + dx
+    cy = BH / 2 + dy
+    x0 = max(0.0, min(BW - cw, cx - cw / 2))
+    y0 = max(0.0, min(BH - ch, cy - ch / 2))
+    crop = big.crop((int(x0), int(y0), int(x0 + cw), int(y0 + ch)))
+    if abs(cw - W) > 1 or abs(ch - H) > 1:
+        crop = crop.resize((W, H), Image.LANCZOS)
+    return crop.convert("RGBA")
+
+
+def _gaze(t, who, expr, seed):
+    """Eye direction beyond the base expression: squint / glance / look up."""
+    if expr == "worry":
+        return "squint" if math.sin(t * 1.3 + seed) > 0.55 else "normal"
+    ph = math.sin(2 * math.pi * t * 0.22 + seed)
+    if ph > 0.62:
+        return "look_left" if SIDE[who] == "right" else "look_right"
+    if ph < -0.66:
+        return "look_up"
+    return "normal"
+
+
+def _head_turns(dur, seed):
+    """Discrete head-turn events: (start, angle, hold) — turn, hold, return."""
+    rnd = random.Random(seed)
+    events = []
+    t = rnd.uniform(0.4, 0.9)
+    while t < dur - 0.9:
+        ang = rnd.choice([7.0, -7.0, 5.0, -5.0])
+        hold = rnd.uniform(0.3, 0.55)
+        events.append((t, ang, hold))
+        t += rnd.uniform(1.8, 3.2)
+    return events
+
+
+def _head_angle(t, events):
+    """Current head angle: 0 outside events, ramp in -> hold -> ramp back."""
+    TURN = 0.16
+    for start, ang, hold in events:
+        if start <= t < start + TURN:
+            return ang * (t - start) / TURN
+        if start + TURN <= t < start + TURN + hold:
+            return ang
+        if start + TURN + hold <= t < start + 2 * TURN + hold:
+            return ang * (1 - (t - start - TURN - hold) / TURN)
+    return 0.0
+
+
+HEAD_TOP, HEAD_BOT = 140, 540
+
+
+def _turn_head(comp, angle):
+    """Rotate only the head strip around the neck (body stays still)."""
+    if abs(angle) < 0.3:
+        return comp
+    region = comp.crop((0, HEAD_TOP, comp.width, HEAD_BOT))
+    rot = region.rotate(angle, resample=Image.BILINEAR, expand=False,
+                        center=(comp.width / 2, HEAD_BOT - HEAD_TOP))
+    comp.paste((0, 0, 0, 0), (0, HEAD_TOP, comp.width, HEAD_BOT))
+    comp.alpha_composite(rot, (0, HEAD_TOP))
+    return comp
+
+
+def _draw_sfx_lines(fr, kind, t, seed):
+    """Comic effect lines (burst/speed/focus), drawn behind characters."""
+    if not kind:
+        return
+    d = ImageDraw.Draw(fr)
+    rnd = random.Random(seed)
+    if kind == "burst":
+        cx, cy = W // 2, 660
+        for a in range(0, 360, 22):
+            ang = math.radians(a + t * 50)
+            r1 = 120 + 14 * math.sin(t * 6 + a)
+            r2 = 190 + 14 * math.sin(t * 6 + a)
+            d.line([(cx + r1 * math.cos(ang), cy + r1 * math.sin(ang)),
+                    (cx + r2 * math.cos(ang), cy + r2 * math.sin(ang))],
+                   fill=(96, 96, 104), width=6)
+    elif kind == "speed":
+        for i in range(7):
+            y = 380 + i * 240
+            lx = rnd.uniform(0, W)
+            d.line([(lx, y), (lx + 200, y)], fill=(96, 96, 104), width=4)
+    elif kind == "focus":
+        cx, cy = W // 2, 760
+        for rr in (130, 190, 250):
+            d.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], outline=(80, 80, 88), width=4)
+
+
+def _fx_for_expr(expr):
+    return {"surprise": "burst", "happy": "speed", "worry": "focus"}.get(expr)
+
+
+def _sfx_layer(text):
+    """Pre-render the big sound-effect text ONCE (avoids per-frame text raster)."""
+    if not text:
+        return None
+    ft = _font(110, True)
+    tmp = Image.new("RGBA", (W, 400), (0, 0, 0, 0))
+    td = ImageDraw.Draw(tmp)
+    tw = td.textlength(text, font=ft)
+    td.text(((W - tw) / 2, 20), text, font=ft, fill=(240, 90, 70),
+            stroke_width=6, stroke_fill=INK)
+    return tmp
+
+
+def _composite_sfx(fr, layer, t):
+    if layer is None:
+        return
+    if t < 0.2:
+        sc = 0.7 + 0.3 * (t / 0.2)
+        nw, nh = int(layer.width * sc), int(layer.height * sc)
+        tmp = layer.resize((nw, nh), Image.LANCZOS)
+        fr.alpha_composite(tmp, ((W - nw) // 2, 200))
+    else:
+        fr.alpha_composite(layer, (0, 200))
+
+
+def render_scene(title, speaker, text, expr, char_dir, dur, fps, idx, bounds, bg_kind, env,
+                 infocard=None, infocard_data=None, cam="static", sfx=None):
+    """Yield RGB frames. Mouth is energy-synced; eyes blink/gaze; head sways."""
     other = "le" if speaker == "ren" else "ren"
     big = _bg_big(bg_kind)
     chrome = _chrome(title)
+    if cam not in CAMERAS:
+        cam = "static"
 
     # bubble laid out once
     bl = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -408,16 +635,18 @@ def render_scene(title, speaker, text, expr, char_dir, dur, fps, idx, bounds, bg
 
     blinks_s = _blinks(dur, idx * 7 + 3)
     blinks_o = _blinks(dur, idx * 7 + 11)
+    turns_s = _head_turns(dur, idx * 7 + 5)
+    turns_o = _head_turns(dur, idx * 7 + 13)
     glyph, gcol = EMOTE.get(expr, (None, None))
+    fx = _fx_for_expr(expr)
+    sfx_layer = _sfx_layer(sfx)
     n = max(1, round(dur * fps))
-    px = (BW - W) // 2
-    py = (BH - H) // 2
     for fi in range(n):
         t = fi / fps
-        ox = px + int(26 * math.sin(2 * math.pi * t * 0.03 + idx))
-        oy = py + int(18 * math.cos(2 * math.pi * t * 0.024 + idx))
-        fr = big.crop((ox, oy, ox + W, oy + H)).convert("RGBA")
+        prog = fi / max(1, n - 1)
+        fr = _camera_crop(big, cam, prog, idx, t)
         e_sp = env[fi] if (env is not None and fi < len(env)) else 0.0
+        _draw_sfx_lines(fr, fx, t, idx * 5 + 1)
 
         for who, is_sp in ((other, False), (speaker, True)):
             hgl = H_ACT if is_sp else H_INA
@@ -429,17 +658,27 @@ def render_scene(title, speaker, text, expr, char_dir, dur, fps, idx, bounds, bg
             else:
                 mo = mc.EXPR.get(e, mc.EXPR["normal"])[2]
                 ey = _eye(t, e, blinks_o)
+            base_eye = mc.EXPR.get(e, mc.EXPR["normal"])[1]
+            if ey == base_eye and base_eye == "normal":
+                gz = _gaze(t, who, e, idx * 13 + (7 if is_sp else 3))
+                if gz != "normal":
+                    ey = gz
+            if e == "smug" and not is_sp and math.sin(t * 1.2 + idx * 5) > 0.7:
+                ey = "squint"
             br = _brow(t, e)
             face = _face_scaled(who, br, ey, mo, e, hgl)
             comp = base.copy()
             comp.alpha_composite(face)
             comp = _grade_rgba(comp)
+            ang = _head_angle(t, turns_s if is_sp else turns_o)
+            comp = _turn_head(comp, ang)
             if not is_sp:
                 a = comp.getchannel("A").point(lambda v: int(v * 0.9))
                 comp.putalpha(a)
-            dy = int(2 * math.sin(2 * math.pi * t * 0.5 + (0 if who == "ren" else 1.2)))
-            fr.alpha_composite(comp, (int(XC[who] - comp.width / 2), int(BASELINE - comp.height + dy)))
+            fr.alpha_composite(comp, (int(XC[who] - comp.width / 2), int(BASELINE - comp.height)))
 
+        if sfx_layer is not None:
+            _composite_sfx(fr, sfx_layer, t)
         fr.alpha_composite(chrome)
         # emotion badge near speaker's head (readable symbol)
         if glyph and e_sp > 0.02:
@@ -520,7 +759,7 @@ def main():
     ap.add_argument("--subs", action="store_true")
     ap.add_argument("--reuse", action="store_true")
     ap.add_argument("--look", default=None, help="畫風（engine/slots/look.json；預設讀腳本的 look）")
-    ap.add_argument("--sfx", dest="sfx", action="store_true", default=True)
+    ap.add_argument("--sfx", dest="sfx", action="store_true", default=False)
     ap.add_argument("--no-sfx", dest="sfx", action="store_false")
     args = ap.parse_args()
 
@@ -538,6 +777,11 @@ def main():
     sfx = md.gen_sfx(assets) if args.sfx else None
     ms.log(f"漫畫式 v4：{title}｜畫風 {look}｜{len(scenes)} 句｜音效：{'開' if sfx else '關'}")
 
+    film_bg = script.get("bg") or (scenes[0].get("bg") if scenes else None) or "living"
+    if not (film_bg in BG_KINDS or film_bg.startswith("photo:")):
+        film_bg = "living"
+    ms.log(f"整支背景：{film_bg}")
+
     clips, audios, metas = [], [], []
     for i, sc in enumerate(scenes):
         who = sc.get("speaker", "ren")
@@ -545,9 +789,11 @@ def main():
         expr = sc.get("expr", "normal")
         if expr not in mc.EXPR:
             expr = "normal"
-        bg_kind = sc.get("bg")
-        if bg_kind not in BG_KINDS:
-            bg_kind = BG_KINDS[i % len(BG_KINDS)]
+        bg_kind = film_bg
+        cam = sc.get("camera") or "static"
+        if cam not in CAMERAS:
+            cam = "static"
+        sfx_txt = sc.get("sfx") or SFX_TEXT.get(expr)
         voice = sc.get("voice") or vmap.get(who, md.VOICE["ren"])
         rate, pitch, volume = _prosody(who, expr, text)
         ms.log(f"[{i+1}/{len(scenes)}] {NAME.get(who,who)}（{expr}/{bg_kind}, {rate}/{pitch}）：{text[:16]}")
@@ -579,7 +825,7 @@ def main():
         infocard = sc.get("infocard") or script.get("infocard") or "none"
         infocard_data = sc.get("infocard_data") or script.get("infocard_data") or {}
         frames = render_scene(title, who, text, expr, None, scene_dur, args.fps, i, bounds, bg_kind, env,
-                              infocard=infocard, infocard_data=infocard_data)
+                              infocard=infocard, infocard_data=infocard_data, cam=cam, sfx=sfx_txt)
         encode_frames(frames, clip, args.fps,
                       total=nframes,
                       cover_png=(assets / "cover0.png") if i == 0 else None)

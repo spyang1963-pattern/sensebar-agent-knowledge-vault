@@ -149,6 +149,12 @@
         <button class="mini" onclick="genBgm()">♪ 生成</button>
       </span>
     </div>
+    <div class="settings" style="gap:10px;align-items:flex-start">
+      <span style="font-weight:700">＋ 背景素材（實景）</span>
+      <button class="mini" onclick="document.getElementById('photoFile').click()">⬆ 上傳照片</button>
+      <input type="file" id="photoFile" accept="image/*" style="display:none" onchange="importPhoto(this)">
+      <div id="bgList" style="font-size:12px;line-height:1.7"></div>
+    </div>
     <div class="runbar" id="runbar">
       <button class="run" id="runBtn" onclick="runWeek()">▶ 執行本週排程</button>
       <button class="run" id="scriptBtn" onclick="genScripts()" style="background:var(--sage)">✎ 產腳本（本週★）</button>
@@ -202,6 +208,7 @@ async function load(){
   render();
   renderStatus();
   loadOutputs();
+  loadBackgrounds();
   if(s.log){$('#log').style.display='block';$('#log').textContent=s.log;}
   if(s.running)startPoll();
 }
@@ -352,6 +359,36 @@ async function genBgm(){
     applyBgmFiles(j.bgm_files, j.file); saveSettings();
   }catch(e){alert('生成失敗：'+e.message);}
   finally{$('#sBgm').disabled=false;}
+}
+
+async function loadBackgrounds(){
+  try{
+    const r=await (await fetch('/api/backgrounds')).json();
+    const proc=(r.procedural||[]).map(k=>`<span class="tag">${k}</span>`).join(' ');
+    const photo=(r.photo||[]).map(f=>{
+      const stem=f.replace(/\.[^.]+$/,'');
+      return `<span class="tag" style="background:#fdf0e0;color:#7a4a1a">photo:${esc(stem)}`
+        +` <a href="javascript:void(0)" onclick="delPhoto('${encodeURIComponent(f)}')" style="color:#a3502a;margin-left:3px">✕</a></span>`;
+    }).join(' ');
+    $('#bgList').innerHTML='<span style="color:#8a938f">程式：</span>'+proc
+      +'<br><span style="color:#8a938f">實景：</span>'+(photo||'<span style="color:#c8cdcb">（尚未上傳）</span>');
+  }catch(e){}
+}
+async function importPhoto(el){
+  const f=el.files&&el.files[0]; if(!f)return;
+  try{
+    const r=await fetch('/api/backgrounds?name='+encodeURIComponent(f.name),
+      {method:'POST',headers:{'Content-Type':'application/octet-stream'},body:f});
+    const j=await r.json();
+    if(!j.ok){alert('上傳失敗：'+(j.error||''));return;}
+    loadBackgrounds();
+  }catch(e){alert('上傳失敗：'+e.message);}
+  finally{el.value='';}
+}
+async function delPhoto(name){
+  if(!confirm('刪除這張背景？'))return;
+  await fetch('/api/backgrounds?delete='+encodeURIComponent(name),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  loadBackgrounds();
 }
 
 function topicRow(t){

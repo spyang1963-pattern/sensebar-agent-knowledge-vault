@@ -151,6 +151,18 @@ def _draw_eyes(d, mode):
                 r = math.radians(a)
                 d.line([(ex + 9 * math.cos(r), EY + 9 * math.sin(r)),
                         (ex + 25 * math.cos(r), EY + 25 * math.sin(r))], fill=(250, 250, 250), width=4)
+    elif mode == "squint":
+        for ex in (EX1, EX2):
+            _ell(d, [ex - 22, EY - 22, ex + 22, EY + 26], INK, width=4)
+            _line(d, [(ex - 24, EY - 18), (ex + 24, EY - 18)], width=LW + 1)
+            _ell(d, [ex - 2, EY - 10, ex + 10, EY + 2], (255, 255, 255), outline=None, width=0)
+    elif mode in ("look_left", "look_right", "look_up"):
+        gx = -8 if mode == "look_left" else (8 if mode == "look_right" else 0)
+        gy = -8 if mode == "look_up" else 0
+        for ex in (EX1, EX2):
+            _ell(d, [ex - 22, EY - 28, ex + 22, EY + 26], INK, width=4)
+            _ell(d, [ex - 2 + gx, EY - 20 + gy, ex + 10 + gx, EY - 8 + gy],
+                 (255, 255, 255), outline=None, width=0)
     else:  # normal
         for ex in (EX1, EX2):
             _ell(d, [ex - 22, EY - 28, ex + 22, EY + 26], INK, width=4)

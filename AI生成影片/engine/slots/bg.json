@@ -1,11 +1,18 @@
 {
-  "_doc": "背景插槽。kind=procedural（程式化線條）/ image（插畫或 AI 圖，file 指向 pack 或 engine 的圖）/ color（純色）。",
+  "_doc": "背景插槽。kind=procedural（程式化線條）/ image（實景照片，photo: 前綴指向 lezhi/assets/backgrounds/photo/）/ color（純色）。",
   "backgrounds": [
     {"key": "plain", "name": "素色", "kind": "procedural", "renderer": "comic.draw_bg", "status": "implemented"},
     {"key": "living", "name": "客廳", "kind": "procedural", "renderer": "comic.draw_bg", "status": "implemented"},
     {"key": "cafe", "name": "咖啡廳", "kind": "procedural", "renderer": "comic.draw_bg", "status": "implemented"},
     {"key": "site", "name": "工地", "kind": "procedural", "renderer": "comic.draw_bg", "status": "implemented"},
     {"key": "kitchen", "name": "廚房", "kind": "procedural", "renderer": "comic.draw_bg", "status": "implemented"},
-    {"key": "studio", "name": "工作室", "kind": "procedural", "renderer": "comic.draw_bg", "status": "planned"}
+    {"key": "bedroom", "name": "臥室", "kind": "procedural", "renderer": "comic.draw_bg", "status": "implemented"},
+    {"key": "office", "name": "辦公室", "kind": "procedural", "renderer": "comic.draw_bg", "status": "implemented"},
+    {"key": "restaurant", "name": "餐廳", "kind": "procedural", "renderer": "comic.draw_bg", "status": "implemented"},
+    {"key": "balcony", "name": "陽台", "kind": "procedural", "renderer": "comic.draw_bg", "status": "implemented"},
+    {"key": "showroom", "name": "展間", "kind": "procedural", "renderer": "comic.draw_bg", "status": "implemented"},
+    {"key": "outdoor", "name": "戶外", "kind": "procedural", "renderer": "comic.draw_bg", "status": "implemented"},
+    {"key": "studio", "name": "工作室", "kind": "procedural", "renderer": "comic.draw_bg", "status": "planned"},
+    {"key": "photo:*", "name": "實景照片", "kind": "image", "renderer": "comic._photo_bg", "status": "implemented"}
   ]
 }

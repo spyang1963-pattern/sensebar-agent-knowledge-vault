@@ -109,9 +109,11 @@ LOOK_RULES = """【全片畫風 look（整支只填一個 key）】
 - ink 灰階線稿：知識、避坑、科普、算數字
 依本片題目與支柱挑最合的一個。"""
 
-FALLBACK_BG = ["living", "cafe", "site", "kitchen", "plain"]
+FALLBACK_BG = ["living", "cafe", "site", "kitchen", "plain",
+               "bedroom", "office", "restaurant", "balcony", "showroom", "outdoor"]
 FALLBACK_MOTION = ["kenburns_in", "pan_right", "kenburns_out", "pan_left"]
 FALLBACK_LOOK = ["warm"]
+FALLBACK_CAMERA = ["static", "zoom_in", "zoom_out", "pan_l", "pan_r"]
 MOTION_ALIAS = {"in": "kenburns_in", "out": "kenburns_out",
                 "kenburns-in": "kenburns_in", "kenburns-out": "kenburns_out"}
 
@@ -142,11 +144,18 @@ def slot_labels(name, fallback):
 
 def bg_rules():
     """Background slot block, always reflecting engine/slots/bg.json."""
-    return f"""【場景背景 bg（scenes 每一句都要填）】
-可用背景：
+    return f"""【場景背景 bg（整支影片只要一個，填在最上層，不是每句一個）】
+可用背景（程式繪製）：
 {slot_labels('bg', FALLBACK_BG)}
-選法：報價、合約、簽約、預算 → plain；材質、收納、動線、生活感 → living；輕鬆閒聊、吐槽、開場鉤子 → cafe；施工、工期、追加、現場問題 → site；廚房設備、水電、瓦斯 → kitchen。
-規則：依句子講的內容選，不要一路輪替；相鄰兩句盡量換場景，只有同一個話題延續時才可連續相同。"""
+另有實景照片背景：寫成 "photo:檔名"（例如 "photo:客廳_A"），前提是背景素材庫已有該照片。
+選法：整齣對話劇只挑一個場景貫穿到底。報價、合約、簽約、預算 → plain；材質、收納、動線、生活感 → living；輕鬆閒聊、吐槽、開場鉤子 → cafe；施工、工期、追加、現場問題 → site；廚房設備、水電、瓦斯 → kitchen。
+規則：不要每句換背景，整支固定一個即可。"""
+
+
+def camera_rules():
+    return """【鏡頭運鏡 camera（scenes 每句可選填，不填＝static）】
+可用值：static（固定）、zoom_in（推近，強調重點）、zoom_out（拉遠，開場/轉場）、pan_l（左移）、pan_r（右移）。
+選法：hook 開場常用 zoom_in 或 zoom_out；講重點、算數字用 zoom_in；輕鬆閒聊用 static；偶爾用 pan 增加變化，不要每句都動。"""
 
 
 def to_trad(s: str) -> str:
@@ -267,16 +276,19 @@ def build_dialog_prompt(topic, pillar, brand):
 
 {LOOK_RULES}
 
+{camera_rules()}
+
 【輸出】只輸出 JSON，不要任何其他文字、不要 markdown 圍籬：
 {{
   "look": "warm",
+  "bg": "cafe",
   "deliver": ["本片一定要講出來的具體內容（數字或清單），逐條列出"],
   "scenes": [
-    {{"speaker": "le", "text": "第一句鉤子（小樂吐槽）", "expr": "smug", "bg": "cafe"}},
-    {{"speaker": "ren", "text": "阿忍回應", "expr": "normal", "bg": "plain"}}
+    {{"speaker": "le", "text": "第一句鉤子（小樂吐槽）", "expr": "smug", "camera": "zoom_in"}},
+    {{"speaker": "ren", "text": "阿忍回應", "expr": "normal", "camera": "static"}}
   ]
 }}
-自我檢查：deliver 每一項都要真的被某句台詞講到；標題的數字要和實際講到的一致；look 只有一個；每句都有 bg 且相鄰盡量不同。
+自我檢查：deliver 每一項都要真的被某句台詞講到；標題的數字要和實際講到的一致；look 與 bg 都只有一個（整支固定）；camera 可不填（預設 static）。
 """
 
 
@@ -300,9 +312,13 @@ def pick_motion(raw, i, motions, prev=None):
 def assemble_dialog(topic, data, brand, char_dir):
     bgs = slot_keys_of("bg", FALLBACK_BG)
     looks = slot_keys_of("look", FALLBACK_LOOK)
+    cams = FALLBACK_CAMERA
     look = data.get("look")
     if look not in looks:
         look = looks[0]
+    film_bg = data.get("bg")
+    if not (film_bg and (film_bg in bgs or film_bg.startswith("photo:"))):
+        film_bg = bgs[0]
     scenes = []
     for i, s in enumerate(data.get("scenes", [])):
         text = to_trad((s.get("text") or "").strip())
@@ -310,11 +326,9 @@ def assemble_dialog(topic, data, brand, char_dir):
             continue
         who = s.get("speaker") if s.get("speaker") in ("ren", "le") else "ren"
         expr = s.get("expr") if s.get("expr") in ("normal", "surprise", "happy", "worry", "smug") else "normal"
-        bg = s.get("bg")
-        if bg not in bgs:
-            bg = bgs[i % len(bgs)]
-        scenes.append({"speaker": who, "text": text, "expr": expr, "bg": bg})
-    return {"title": topic["title"], "format": "dialog", "look": look,
+        cam = s.get("camera") if s.get("camera") in cams else "static"
+        scenes.append({"speaker": who, "text": text, "expr": expr, "camera": cam})
+    return {"title": topic["title"], "format": "dialog", "look": look, "bg": film_bg,
             "char_dir": str(char_dir),
             "voice_map": {"ren": "zh-TW-YunJheNeural", "le": "zh-TW-HsiaoYuNeural"},
             "scenes": scenes}

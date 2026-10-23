@@ -45,6 +45,10 @@ OUTPUT = LEZHI / "output"
 CARDS = LEZHI / "assets" / "cards"
 BGM_DIR = LEZHI / "assets"
 BGM = LEZHI / "assets" / "bgm_warm.wav"
+PHOTO_BG_DIR = LEZHI / "assets" / "backgrounds" / "photo"
+IMG_EXTS = ("*.jpg", "*.jpeg", "*.png", "*.webp")
+PROC_BG = ["plain", "living", "cafe", "site", "kitchen", "bedroom",
+           "office", "restaurant", "balcony", "showroom", "outdoor"]
 REVIEW_JSON = LEZHI / "review.json"
 SETTINGS_JSON = LEZHI / "settings.json"
 MAKE_DIALOG = LEZHI / "tools" / "make_dialog.py"
@@ -103,6 +107,19 @@ def bgm_files():
     for e in BGM_EXTS:
         found += list(BGM_DIR.glob(e))
     return sorted(p.name for p in found)
+
+
+def photo_bg_files():
+    if not PHOTO_BG_DIR.exists():
+        return []
+    found = []
+    for e in IMG_EXTS:
+        found += list(PHOTO_BG_DIR.glob(e))
+    return sorted(p.name for p in found)
+
+
+def background_list():
+    return {"procedural": PROC_BG, "photo": photo_bg_files()}
 
 
 def packs_list():
@@ -506,6 +523,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"packs": packs_list()})
         elif p == "/api/outputs":
             self._json({"items": scan_outputs()})
+        elif p == "/api/backgrounds":
+            self._json(background_list())
         elif p == "/file":
             qs = parse_qs(urlparse(self.path).query)
             self._serve_file((qs.get("path") or [""])[0])
@@ -599,6 +618,24 @@ class Handler(BaseHTTPRequestHandler):
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(raw)
             self._json({"ok": True, "file": dest.name, "bgm_files": bgm_files()})
+        elif p == "/api/backgrounds":
+            qs = parse_qs(urlparse(self.path).query)
+            if "delete" in qs:
+                fname = Path((qs.get("delete") or [""])[0]).name
+                target = PHOTO_BG_DIR / fname
+                if target.exists() and target.is_file():
+                    target.unlink()
+                self._json({"ok": True, "backgrounds": background_list()})
+                return
+            fname = (qs.get("name") or ["bg.jpg"])[0]
+            ext = Path(fname).suffix.lower()
+            if ext not in (".jpg", ".jpeg", ".png", ".webp"):
+                self._json({"ok": False, "error": "只支援 jpg / png / webp"})
+                return
+            dest = PHOTO_BG_DIR / ("%s%s" % (_safe_stem(Path(fname).stem), ext))
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(raw)
+            self._json({"ok": True, "file": dest.name, "backgrounds": background_list()})
         elif p == "/api/bgm_gen":
             mood = (data.get("mood") or "warm").lower()
             if mood not in ("warm", "calm", "playful", "upbeat"):
