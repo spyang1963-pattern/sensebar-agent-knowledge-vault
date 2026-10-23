@@ -1,0 +1,775 @@
+由於要用純程式碼（如 Python Turtle）完全刻畫出這種精緻細膩的日系漫畫風格會非常繁複，以下為你提供兩個部分：
+
+AI 繪圖核心提示詞（Prompt）：可用於各大 AI 繪圖工具（如 Midjourney、Stable Diffusion、DALL-E 3）來生成同款風格。
+
+網頁互動展示程式碼（HTML/CSS/SVG）：可以讓你把這個角色包裝成一個專屬的設計師個人檔案卡片網頁。
+
+1. AI 繪圖核心提示詞 (Prompt)
+如果你想再次生成或微調這個畫面，可以參考以下指令：
+
+A handsome young interior designer with an elegant face, stylish layered brown hair, wearing a high-neck ivory turtleneck, an olive green tailored blazer, grey trousers, and holding a sketchbook and a pen. Standing in a bright, modern design studio filled with architectural blueprints, color swatches, mood boards, and lush green potted plants. Fine manga style, clean line art, soft digital watercolor shading, professional and sophisticated aesthetic, highly detailed, 8k resolution.
+
+2. 青年室內設計師個人檔案網頁程式碼 (HTML + CSS)
+這段程式碼可以讓你建立一個精美的設計師介紹卡片，適合用來展示他的個人特色：
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>青年室內設計師 - 檔案卡片</title>
+    <style>
+        body {
+            background-color: #f4f6f5;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .designer-card {
+            background: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+            width: 350px;
+            overflow: hidden;
+            text-align: center;
+            border: 1px solid #e0e6df;
+        }
+        .card-header {
+            background: #4a5d4e;
+            color: white;
+            padding: 20px;
+        }
+        .card-header h2 {
+            margin: 0;
+            font-size: 22px;
+            letter-spacing: 1px;
+        }
+        .card-header p {
+            margin: 5px 0 0;
+            font-size: 14px;
+            opacity: 0.85;
+        }
+        .card-body {
+            padding: 25px;
+            color: #333;
+        }
+        .feature-list {
+            text-align: left;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 20px;
+            padding-left: 20px;
+        }
+        .feature-list li {
+            margin-bottom: 8px;
+            color: #555;
+        }
+        .btn {
+            background-color: #4a5d4e;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+        .btn:hover {
+            background-color: #3b4c3e;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="designer-card">
+        <div class="card-header">
+            <h2>Ethan 艾森</h2>
+            <p>資深青年室內設計師</p>
+        </div>
+        <div class="card-body">
+            <ul class="feature-list">
+                <li><strong>風格專長：</strong> 現代簡約、日式侘寂、輕奢自然</li>
+                <li><strong>穿搭特色：</strong> 質感高領針織衫搭配墨綠西裝外套</li>
+                <li><strong>核心理念：</strong> 將光影與植物融入日常居住空間</li>
+            </ul>
+            <button class="btn" onclick="alert('聯絡預約諮詢成功！')">預約設計諮詢</button>
+        </div>
+    </div>
+
+</body>
+</html>
+
+你可以將這段 HTML 程式碼儲存為 .html 檔案（例如 designer.html）並用瀏覽器打開，就能看到這張設計師的專屬互動卡片！
+
+
+
+若要用極簡的「線條風格（Line Art / Minimalist Sketch）」勾勒出這位氣質優雅的青年室內設計師，關鍵在於抓取核心視覺特徵：
+
+髮型：流暢的微捲中分/側分線條，展現層次感與蓬鬆度。
+
+臉型與五官：俐落的顎線（Jawline）、溫和優雅的杏眼與微笑嘴唇。
+
+特色穿搭：雙線勾勒的「高領領口」與大氣俐落的「西裝領片」。
+
+職業符號：簡約的手稿板、簡約鋼筆或圖紙線條。
+
+1. 極簡線條 Vector SVG 程式碼
+這裡為你寫一段 SVG Vector 程式碼，你可以直接將它複製並存成 designer.svg 或放在 HTML 中，瀏覽器就能直接繪製出極簡線條版的設計師插圖：
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 500" width="100%" height="100%">
+  <defs>
+    <style>
+      .line { fill: none; stroke: #2C3E50; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+      .hair { fill: none; stroke: #2C3E50; stroke-width: 3.5; stroke-linecap: round; }
+      .detail { fill: none; stroke: #7F8C8D; stroke-width: 1.5; stroke-linecap: round; }
+      .bg-circle { fill: #EAECEE; }
+      .accent { fill: none; stroke: #82E0AA; stroke-width: 2; }
+    </style>
+  </defs>
+
+  <!-- 背景柔和圓圈背景 -->
+  <circle class="bg-circle" cx="200" cy="220" r="150" />
+
+  <!-- 背景極簡植物線條 (室內設計師元素) -->
+  <path class="detail" d="M 310 320 Q 330 250 350 180" />
+  <path class="detail" d="M 330 250 Q 300 240 300 220 C 310 200 330 220 330 250" />
+  <path class="detail" d="M 340 210 Q 360 190 370 210 C 360 220 345 220 340 210" />
+
+  <!-- 人物輪廓：臉型與頸部 -->
+  <path class="line" d="M 160 170 Q 155 200 175 220 Q 200 235 225 220 Q 245 200 240 170" /> <!-- 下巴輪廓 -->
+  <path class="line" d="M 175 210 L 175 245" /> <!-- 脖子左 -->
+  <path class="line" d="M 225 210 L 225 245" /> <!-- 脖子右 -->
+
+  <!-- 五官：優雅眼神與微笑 -->
+  <!-- 左眼 -->
+  <path class="line" d="M 170 165 Q 180 160 190 166" />
+  <circle cx="180" cy="168" r="2.5" fill="#2C3E50" />
+  <path class="detail" d="M 170 158 Q 180 155 190 158" /> <!-- 眉毛 -->
+  
+  <!-- 右眼 -->
+  <path class="line" d="M 210 166 Q 220 160 230 165" />
+  <circle cx="220" cy="168" r="2.5" fill="#2C3E50" />
+  <path class="detail" d="M 210 158 Q 220 155 230 158" /> <!-- 眉毛 -->
+
+  <!-- 鼻子與嘴巴 -->
+  <path class="line" d="M 200 170 L 198 185 L 203 186" />
+  <path class="line" d="M 190 200 Q 200 208 210 200" /> <!-- 微笑 -->
+
+  <!-- 髮型：層次蓬鬆微捲髮 -->
+  <path class="hair" d="M 150 165 C 140 130 170 110 200 115 C 230 110 260 130 250 165" />
+  <path class="hair" d="M 200 115 Q 185 135 160 145" /> <!-- 劉海線條1 -->
+  <path class="hair" d="M 200 115 Q 215 135 240 145" /> <!-- 劉海線條2 -->
+  <path class="hair" d="M 155 140 C 145 150 145 170 150 180" /> <!-- 左側鬢角 -->
+  <path class="hair" d="M 245 140 C 255 150 255 170 250 180" /> <!-- 右側鬢角 -->
+  <path class="detail" d="M 180 125 Q 190 135 170 150" /> <!-- 頭頂髮絲細節 -->
+
+  <!-- 穿搭：高領針織衫 -->
+  <path class="line" d="M 170 235 C 170 225 230 225 230 235 L 230 255 C 230 260 170 260 170 255 Z" />
+  <path class="detail" d="M 175 240 L 175 250 M 185 240 L 185 250 M 195 240 L 195 250 M 205 240 L 205 250 M 215 240 L 215 250 M 225 240 L 225 250" /> <!-- 高領坑條紋路 -->
+
+  <!-- 穿搭：西裝外套剪裁 -->
+  <path class="line" d="M 170 255 L 120 280 L 100 420" /> <!-- 左肩線 -->
+  <path class="line" d="M 230 255 L 280 280 L 300 420" /> <!-- 右肩線 -->
+  
+  <!-- 西裝領片 -->
+  <path class="line" d="M 150 270 L 185 330 L 195 420" /> <!-- 左領邊緣 -->
+  <path class="line" d="M 250 270 L 215 330 L 205 420" /> <!-- 右領邊緣 -->
+  <path class="line" d="M 150 270 L 180 285 L 170 310" /> <!-- 左領缺口 (Notch Lapel) -->
+  <path class="line" d="M 250 270 L 220 285 L 230 310" /> <!-- 右領缺口 -->
+
+  <!-- 手持配件：設計圖畫板與筆 -->
+  <path class="line" d="M 110 350 L 170 330 L 190 410 L 130 430 Z" /> <!-- 圖紙板 -->
+  <path class="detail" d="M 120 360 L 160 348 M 125 375 L 155 365" /> <!-- 板上的圖紙線條 -->
+  <path class="line" d="M 240 360 L 260 400" /> <!-- 握筆手勢線條簡示 -->
+</svg>
+
+
+2. Python (Turtle) 自動繪畫程式碼
+如果你希望用程式碼「看著電腦一步步把它畫出來」，可以使用 Python 標準庫自帶的 turtle：
+import turtle
+
+def draw_designer():
+    screen = turtle.Screen()
+    screen.setup(width=600, height=700)
+    screen.title("簡易線條 - 青年室內設計師")
+    screen.bgcolor("#F8F9FA")
+
+    t = turtle.Turtle()
+    t.speed(3)
+    t.pensize(3)
+    t.color("#2C3E50")
+
+    # --- 1. 畫臉型輪廓 ---
+    t.penup()
+    t.goto(-50, 50)
+    t.pendown()
+    t.setheading(-60)
+    t.circle(60, 60) # 左臉頰
+    t.circle(30, 60) # 下巴
+    t.circle(60, 60) # 右臉頰
+
+    # --- 2. 畫高領與脖子 ---
+    t.penup()
+    t.goto(-30, -5)
+    t.pendown()
+    t.setheading(-90)
+    t.forward(30) # 左脖
+    
+    t.penup()
+    t.goto(30, -5)
+    t.pendown()
+    t.forward(30) # 右脖
+
+    # 高領橫線
+    t.penup()
+    t.goto(-35, -35)
+    t.pendown()
+    t.setheading(0)
+    t.forward(70)
+    t.penup()
+    t.goto(-35, -50)
+    t.pendown()
+    t.forward(70)
+
+    # --- 3. 畫西裝肩膀與領片 ---
+    # 左肩膀
+    t.penup()
+    t.goto(-35, -50)
+    t.pendown()
+    t.setheading(200)
+    t.forward(100)
+    
+    # 右肩膀
+    t.penup()
+    t.goto(35, -50)
+    t.pendown()
+    t.setheading(-20)
+    t.forward(100)
+
+    # 西裝V領
+    t.penup()
+    t.goto(-20, -50)
+    t.pendown()
+    t.goto(0, -150)
+    t.goto(20, -50)
+
+    # --- 4. 畫五官（微笑與眼神）---
+    # 左眼
+    t.penup()
+    t.goto(-30, 70)
+    t.pendown()
+    t.setheading(0)
+    t.circle(8, 180)
+
+    # 右眼
+    t.penup()
+    t.goto(10, 70)
+    t.pendown()
+    t.circle(8, 180)
+
+    # 微笑
+    t.penup()
+    t.goto(-15, 25)
+    t.pendown()
+    t.setheading(-60)
+    t.circle(18, 120)
+
+    # --- 5. 蓬鬆髮型線條 ---
+    t.penup()
+    t.goto(-55, 80)
+    t.pendown()
+    t.setheading(80)
+    t.circle(-60, 100) # 頭頂弧線
+    t.circle(-40, 80)
+
+    # 劉海造型
+    t.penup()
+    t.goto(0, 125)
+    t.pendown()
+    t.goto(-25, 85) # 中分左劉海
+    t.penup()
+    t.goto(0, 125)
+    t.pendown()
+    t.goto(25, 85)  # 中分右劉海
+
+    t.hideturtle()
+    screen.mainloop()
+
+if __name__ == "__main__":
+    draw_designer()
+
+
+設計亮點解析
+簡約而不簡單：線條風格去除了繁複的色彩與陰影，僅靠幾筆關鍵線條（高領、西裝領、蓬鬆劉海）就能帶出時尚、俐落且具設計感的專業氣質。
+
+靈活延伸：這種向量 SVG 或線條畫法非常適合做成個人 Logotype、名片插圖或是建築/室內設計事務所的品牌視覺！
+
+
+能再多設計一個全身的圖像?
+
+I will now generate a full-body character design illustration for the elegant young interior designer in a minimalist line-art style with soft pastel accents, presented as an interactive profile card layout.
+
+
+
+
+
+
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>全身立繪 - 青年室內設計師</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0b1329;
+        }
+
+        /* Feature Highlight Interactive Transitions */
+        .feature-target {
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .feature-target:hover {
+            stroke-width: 4px;
+            filter: drop-shadow(0px 0px 8px rgba(52, 211, 153, 0.8));
+        }
+
+        .annotation-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 0;
+            transform: translateY(10px) scale(0.95);
+            pointer-events: none;
+        }
+
+        .annotation-card.active {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            pointer-events: auto;
+        }
+
+        /* Gentle Floating Animation */
+        @keyframes subtleFloat {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-6px); }
+        }
+        .animate-float {
+            animation: subtleFloat 6s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="min-h-screen text-slate-100 flex items-center justify-center p-3 sm:p-6">
+
+    <!-- Main Container -->
+    <div class="max-w-4xl w-full bg-slate-900/90 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden backdrop-blur-2xl grid grid-cols-1 md:grid-cols-12 relative">
+        
+        <!-- Ambient Decorative Glows -->
+        <div class="absolute -top-32 -left-32 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute -bottom-32 -right-32 w-64 h-64 bg-teal-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Left Column: Full-Body Vector SVG Character (MD: 7 cols) -->
+        <div class="md:col-span-7 p-4 sm:p-6 flex flex-col justify-between items-center bg-gradient-to-b from-slate-900/60 to-slate-950/80 border-b md:border-b-0 md:border-r border-slate-800/80 relative min-h-[560px]">
+            
+            <!-- Top Tag -->
+            <div class="w-full flex justify-between items-center mb-2 z-10">
+                <span class="text-[11px] font-semibold tracking-widest text-emerald-400 uppercase bg-emerald-950/80 border border-emerald-800/60 px-3 py-1 rounded-full shadow-sm">
+                    Full-Body Character Concept
+                </span>
+                <span class="text-xs text-slate-400 flex items-center gap-1">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    點擊部位查看設計筆記
+                </span>
+            </div>
+
+            <!-- SVG Container -->
+            <div class="w-full max-w-[340px] h-full flex items-center justify-center relative animate-float py-2">
+                
+                <svg id="characterSvg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 720" class="w-full h-auto max-h-[580px] drop-shadow-2xl">
+                    <defs>
+                        <!-- Soft Pastel Accents Gradients & Colors -->
+                        <linearGradient id="bgPastel" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#34d399" stop-opacity="0.12"/>
+                            <stop offset="50%" stop-color="#059669" stop-opacity="0.05"/>
+                            <stop offset="100%" stop-color="#0f172a" stop-opacity="0"/>
+                        </linearGradient>
+
+                        <linearGradient id="oliveJacket" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#40533c" stop-opacity="0.5"/>
+                            <stop offset="100%" stop-color="#2a3827" stop-opacity="0.7"/>
+                        </linearGradient>
+
+                        <linearGradient id="ivoryShirt" x1="0%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" stop-color="#f8fafc" stop-opacity="0.25"/>
+                            <stop offset="100%" stop-color="#e2e8f0" stop-opacity="0.1"/>
+                        </linearGradient>
+
+                        <linearGradient id="charcoalPants" x1="0%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" stop-color="#334155" stop-opacity="0.5"/>
+                            <stop offset="100%" stop-color="#1e293b" stop-opacity="0.7"/>
+                        </linearGradient>
+
+                        <!-- SVG Line Styles -->
+                        <style>
+                            .line-main { fill: none; stroke: #f1f5f9; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+                            .line-thick { fill: none; stroke: #f8fafc; stroke-width: 3.8; stroke-linecap: round; stroke-linejoin: round; }
+                            .line-detail { fill: none; stroke: #94a3b8; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+                            .line-accent { fill: none; stroke: #34d399; stroke-width: 2.2; stroke-linecap: round; }
+                            .line-leather { fill: none; stroke: #fb923c; stroke-width: 2; stroke-linecap: round; }
+                            .line-gold { fill: none; stroke: #fbbf24; stroke-width: 2; stroke-linecap: round; }
+                        </style>
+                    </defs>
+
+                    <!-- Background Soft Vertical Oval Glow -->
+                    <ellipse cx="180" cy="360" rx="130" ry="320" fill="url(#bgPastel)" />
+                    <ellipse cx="180" cy="360" rx="120" ry="300" class="line-accent" stroke-dasharray="4 8" opacity="0.25" />
+
+                    <!-- Shadow Base -->
+                    <ellipse cx="180" cy="685" rx="75" ry="10" fill="#020617" opacity="0.6" />
+
+                    <!-- ================= 1. SHOES (Leather Oxford/Loafers) ================= -->
+                    <g id="part-shoes" class="feature-target" data-part="shoes">
+                        <!-- Left Shoe -->
+                        <path class="line-main" d="M 135 650 Q 125 660 120 675 C 120 682 145 685 158 680 Q 162 665 152 650 Z" fill="#291e18" />
+                        <path class="line-leather" d="M 125 675 Q 140 678 156 675" /> <!-- Sole Accent -->
+                        <path class="line-detail" d="M 135 662 Q 145 665 152 660" /> <!-- Stitching -->
+
+                        <!-- Right Shoe -->
+                        <path class="line-main" d="M 225 650 Q 235 660 240 675 C 240 682 215 685 202 680 Q 198 665 208 650 Z" fill="#291e18" />
+                        <path class="line-leather" d="M 235 675 Q 220 678 204 675" />
+                        <path class="line-detail" d="M 225 662 Q 215 665 208 660" />
+                    </g>
+
+                    <!-- ================= 2. TROUSERS (High-Waisted Charcoal) ================= -->
+                    <g id="part-trousers" class="feature-target" data-part="trousers">
+                        <!-- Legs Silhouette -->
+                        <path class="line-thick" d="M 130 365 L 122 510 L 132 655 L 160 653 L 172 480 L 180 480 L 188 480 L 200 653 L 228 655 L 238 510 L 230 365 Z" fill="url(#charcoalPants)" />
+                        <!-- Center Pleats Lines -->
+                        <path class="line-detail" d="M 148 375 L 142 645" />
+                        <path class="line-detail" d="M 212 375 L 218 645" />
+                        <!-- Cuffed Hem Details -->
+                        <path class="line-main" d="M 132 645 L 160 643 M 200 643 L 228 645" />
+                    </g>
+
+                    <!-- ================= 3. LEATHER BELT & WAIST ================= -->
+                    <g id="part-belt" class="feature-target" data-part="belt">
+                        <!-- High Waistband -->
+                        <path class="line-main" d="M 130 365 Q 180 375 230 365 L 230 380 Q 180 390 130 380 Z" fill="#1c1917" />
+                        <!-- Metallic Buckle -->
+                        <rect x="170" y="367" width="20" height="15" rx="3" class="line-gold" fill="#fbbf24" fill-opacity="0.3" />
+                        <path class="line-leather" d="M 130 373 Q 170 381 230 373" />
+                        <!-- Belt Loops -->
+                        <path class="line-detail" d="M 150 365 L 150 381 M 210 365 L 210 381" />
+                    </g>
+
+                    <!-- ================= 4. HIGH-NECK IVORY TURTLENECK ================= -->
+                    <g id="part-turtleneck" class="feature-target" data-part="turtleneck">
+                        <path class="line-main" d="M 152 185 C 152 170 208 170 208 185 L 208 220 C 208 228 152 228 152 220 Z" fill="url(#ivoryShirt)" />
+                        <!-- Ribbed Texture -->
+                        <path class="line-detail" d="M 162 190 L 162 215 M 172 190 L 172 215 M 180 190 L 180 215 M 188 190 L 188 215 M 198 190 L 198 215" />
+                        <!-- Torso Tuck-in -->
+                        <path class="line-detail" d="M 152 220 L 132 368 M 208 220 L 228 368" />
+                    </g>
+
+                    <!-- ================= 5. TAILORED OLIVE BLAZER ================= -->
+                    <g id="part-blazer" class="feature-target" data-part="blazer">
+                        <!-- Main Jacket Body -->
+                        <path class="line-thick" d="M 152 215 L 100 245 L 85 410 C 85 430 135 435 142 420 L 148 370" fill="url(#oliveJacket)" />
+                        <path class="line-thick" d="M 208 215 L 260 245 L 275 410 C 275 430 225 435 218 420 L 212 370" fill="url(#oliveJacket)" />
+                        
+                        <!-- Notch Lapels -->
+                        <path class="line-main" d="M 132 230 L 168 310 L 140 375" />
+                        <path class="line-main" d="M 228 230 L 192 310 L 220 375" />
+                        <path class="line-main" d="M 132 230 L 160 250 L 150 278 L 168 310" />
+                        <path class="line-main" d="M 228 230 L 200 250 L 210 278 L 192 310" />
+
+                        <!-- Pockets & Buttons -->
+                        <path class="line-detail" d="M 102 380 L 132 383" /> <!-- Left Flap Pocket -->
+                        <path class="line-detail" d="M 258 380 L 228 383" /> <!-- Right Flap Pocket -->
+                        <circle cx="180" cy="355" r="3.5" class="line-gold" fill="#fbbf24" /> <!-- Button -->
+
+                        <!-- Minimalist Pendant Necklace -->
+                        <path class="line-detail" d="M 166 220 Q 180 255 194 220" />
+                        <rect x="177" y="252" width="6" height="10" rx="1" class="line-accent" fill="#34d399" />
+                    </g>
+
+                    <!-- ================= 6. PROPS & HANDS (Blueprint & Tablet/Tape) ================= -->
+                    <g id="part-props" class="feature-target" data-part="props">
+                        <!-- Left Arm Holding Rolled Blueprint -->
+                        <path class="line-main" d="M 100 245 L 72 340 L 98 355" />
+                        <!-- Rolled Architectural Blueprint -->
+                        <g transform="rotate(-25 80 340)">
+                            <rect x="30" y="325" width="110" height="22" rx="11" fill="#0f172a" class="line-main" />
+                            <ellipse cx="30" cy="336" rx="5" ry="11" class="line-accent" fill="#34d399" fill-opacity="0.4" />
+                            <ellipse cx="140" cy="336" rx="5" ry="11" class="line-accent" />
+                            <!-- Blueprint Grid Line Accents -->
+                            <path class="line-detail" d="M 50 328 L 120 328 M 55 336 L 125 336 M 60 344 L 115 344" />
+                        </g>
+
+                        <!-- Right Arm Holding Digital Design Tablet -->
+                        <path class="line-main" d="M 260 245 L 285 335 L 262 355" />
+                        <!-- Design Tablet -->
+                        <g transform="rotate(15 270 350)">
+                            <rect x="250" y="330" width="55" height="75" rx="6" fill="#020617" class="line-main" />
+                            <rect x="254" y="335" width="47" height="65" rx="3" class="line-accent" fill="#059669" fill-opacity="0.2" />
+                            <!-- Stylus Pen in Hand -->
+                            <path class="line-gold" d="M 292 320 L 282 345" />
+                        </g>
+                    </g>
+
+                    <!-- ================= 7. FACIAL FEATURES & HEAD ================= -->
+                    <g id="part-face" class="feature-target" data-part="face">
+                        <!-- Neck -->
+                        <path class="line-detail" d="M 164 165 L 164 185 M 196 165 L 196 185" />
+                        
+                        <!-- Elegant Jawline -->
+                        <path class="line-main" d="M 152 125 Q 148 158 168 175 Q 180 185 192 175 Q 212 158 208 125" />
+
+                        <!-- Eyes & Brows -->
+                        <path class="line-main" d="M 158 126 Q 166 120 174 126" />
+                        <circle cx="166" cy="128" r="2.8" fill="#34d399" />
+                        <path class="line-detail" d="M 156 117 Q 166 114 174 116" /> <!-- Left Brow -->
+
+                        <path class="line-main" d="M 186 126 Q 194 120 202 126" />
+                        <circle cx="194" cy="128" r="2.8" fill="#34d399" />
+                        <path class="line-detail" d="M 186 116 Q 194 114 204 117" /> <!-- Right Brow -->
+
+                        <!-- Nose -->
+                        <path class="line-detail" d="M 180 124 L 178 141 L 183 142" />
+
+                        <!-- Gentle Confident Smile -->
+                        <path class="line-main" d="M 172 156 Q 180 163 188 156" />
+                    </g>
+
+                    <!-- ================= 8. LAYERED BROWN HAIR ================= -->
+                    <g id="part-hair" class="feature-target" data-part="hair">
+                        <!-- Back & Sides -->
+                        <path class="line-thick" d="M 148 132 C 136 105 148 78 175 72 C 185 70 195 70 205 75 C 224 82 232 105 220 132" fill="#3d2b1f" fill-opacity="0.3" />
+                        
+                        <!-- Volume Flow Lines (Middle-Part Wavy Waves) -->
+                        <path class="line-thick" d="M 180 72 C 165 88 148 98 138 112 C 134 122 136 135 142 142" />
+                        <path class="line-thick" d="M 180 72 C 195 88 212 98 222 112 C 226 122 224 135 218 142" />
+                        
+                        <!-- Layered Locks Front -->
+                        <path class="line-detail" d="M 175 78 Q 162 95 150 106" />
+                        <path class="line-detail" d="M 185 78 Q 198 95 210 106" />
+                        <path class="line-accent" d="M 180 82 L 180 98" /> <!-- Center Part Accent -->
+                    </g>
+
+                </svg>
+
+            </div>
+
+            <!-- Hint Footer -->
+            <div class="text-center text-[11px] text-slate-500 mt-2">
+                Minimalist Vector Art • 2026 Interior Designer Concept
+            </div>
+
+        </div>
+
+        <!-- Right Column: Dynamic Profile & Feature Cards (MD: 5 cols) -->
+        <div class="md:col-span-5 p-6 flex flex-col justify-between bg-slate-900/40 relative">
+            
+            <!-- Designer Profile Header -->
+            <div>
+                <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+                    <div>
+                        <h2 class="text-xl font-light text-slate-100 tracking-wide">Ethan 艾森</h2>
+                        <p class="text-xs text-emerald-400 font-medium tracking-wider mt-0.5">首席室內建築師 / Interior Architect</p>
+                    </div>
+                    <div class="w-10 h-10 rounded-full bg-emerald-950 border border-emerald-700/50 flex items-center justify-center text-emerald-400 text-sm font-bold shadow-inner">
+                        E
+                    </div>
+                </div>
+
+                <!-- Default Bio & Specs -->
+                <div id="default-info" class="mt-5 space-y-4 text-xs text-slate-300 leading-relaxed">
+                    <p class="text-slate-400 font-light">
+                        崇尚「極簡與自然光影」的和諧。擅長運用溫暖的大地色調與層次剪裁，將個人的優雅氣質完美融合於空間創作中。
+                    </p>
+
+                    <!-- Stat Pills -->
+                    <div class="grid grid-cols-2 gap-2.5 pt-2">
+                        <div class="p-3 rounded-xl bg-slate-800/50 border border-slate-700/50">
+                            <span class="text-[10px] text-slate-400 uppercase tracking-wider block">設計風格</span>
+                            <span class="text-xs font-semibold text-emerald-400 mt-1 block">現代侘寂 / 輕奢極簡</span>
+                        </div>
+                        <div class="p-3 rounded-xl bg-slate-800/50 border border-slate-700/50">
+                            <span class="text-[10px] text-slate-400 uppercase tracking-wider block">代表穿搭</span>
+                            <span class="text-xs font-semibold text-teal-400 mt-1 block">橄欖綠西裝 + 高領</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dynamic Detail Annotation Display Cards -->
+                <div class="relative mt-4 min-h-[200px]">
+                    
+                    <!-- Hair Note -->
+                    <div id="note-hair" class="annotation-card absolute inset-0 bg-slate-800/90 border border-emerald-500/40 rounded-2xl p-4 shadow-xl">
+                        <div class="flex items-center gap-2 text-emerald-400 font-medium text-xs mb-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                            <span>髮型設計 (Hair Style)</span>
+                        </div>
+                        <h4 class="text-sm font-semibold text-slate-100">層次蓬鬆微捲中分</h4>
+                        <p class="text-xs text-slate-300 mt-1.5 leading-relaxed">
+                            經典的可可棕色調，搭配自然的中分弧度與微捲蓬鬆感，營造出既專業又不失親和力的藝術家氣息。
+                        </p>
+                    </div>
+
+                    <!-- Face Note -->
+                    <div id="note-face" class="annotation-card absolute inset-0 bg-slate-800/90 border border-emerald-500/40 rounded-2xl p-4 shadow-xl">
+                        <div class="flex items-center gap-2 text-emerald-400 font-medium text-xs mb-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            <span>五官氣質 (Facial Features)</span>
+                        </div>
+                        <h4 class="text-sm font-semibold text-slate-100">清秀顎線與睿智眼神</h4>
+                        <p class="text-xs text-slate-300 mt-1.5 leading-relaxed">
+                            流暢俐落的下巴輪廓，搭配帶有溫暖自信微笑的杏眼，透露出對空間細節的精準把控與優雅品味。
+                        </p>
+                    </div>
+
+                    <!-- Blazer Note -->
+                    <div id="note-blazer" class="annotation-card absolute inset-0 bg-slate-800/90 border border-emerald-500/40 rounded-2xl p-4 shadow-xl">
+                        <div class="flex items-center gap-2 text-emerald-400 font-medium text-xs mb-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h10a2 2 0 012 2v10a2 2 0 01-2 2H7a2 2 0 01-2-2V9a2 2 0 012-2z"/></svg>
+                            <span>外套剪裁 (Tailored Blazer)</span>
+                        </div>
+                        <h4 class="text-sm font-semibold text-slate-100">橄欖綠平駁領西裝</h4>
+                        <p class="text-xs text-slate-300 mt-1.5 leading-relaxed">
+                            選用低調沉穩的沉木橄欖綠（Olive Green），修身合體剪裁搭配精緻金屬扣，象徵建築與自然環境的融合。
+                        </p>
+                    </div>
+
+                    <!-- Turtleneck Note -->
+                    <div id="note-turtleneck" class="annotation-card absolute inset-0 bg-slate-800/90 border border-emerald-500/40 rounded-2xl p-4 shadow-xl">
+                        <div class="flex items-center gap-2 text-emerald-400 font-medium text-xs mb-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                            <span>內搭穿搭 (Ivory Turtleneck)</span>
+                        </div>
+                        <h4 class="text-sm font-semibold text-slate-100">象牙白坑條高領針織衫</h4>
+                        <p class="text-xs text-slate-300 mt-1.5 leading-relaxed">
+                            柔和的象牙白質地，拉長頸部線條，為俐落的西裝外觀增添了一份溫暖舒適的文藝質感。
+                        </p>
+                    </div>
+
+                    <!-- Belt Note -->
+                    <div id="note-belt" class="annotation-card absolute inset-0 bg-slate-800/90 border border-emerald-500/40 rounded-2xl p-4 shadow-xl">
+                        <div class="flex items-center gap-2 text-emerald-400 font-medium text-xs mb-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+                            <span>腰帶與比例 (Leather Belt)</span>
+                        </div>
+                        <h4 class="text-sm font-semibold text-slate-100">復古皮革腰帶與黃銅扣</h4>
+                        <p class="text-xs text-slate-300 mt-1.5 leading-relaxed">
+                            高腰設計分割出絕佳的上短下長身形比例，暖棕色皮質與腰帶扣成為整體色彩的睛之筆。
+                        </p>
+                    </div>
+
+                    <!-- Trousers Note -->
+                    <div id="note-trousers" class="annotation-card absolute inset-0 bg-slate-800/90 border border-emerald-500/40 rounded-2xl p-4 shadow-xl">
+                        <div class="flex items-center gap-2 text-emerald-400 font-medium text-xs mb-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+                            <span>褲裝細節 (Charcoal Trousers)</span>
+                        </div>
+                        <h4 class="text-sm font-semibold text-slate-100">深炭灰高腰摺褶西裝褲</h4>
+                        <p class="text-xs text-slate-300 mt-1.5 leading-relaxed">
+                            垂墜感極佳的炭灰色質料，壓摺細節強化垂直腿部線條，展現修長幹練的紳士氣場。
+                        </p>
+                    </div>
+
+                    <!-- Shoes Note -->
+                    <div id="note-shoes" class="annotation-card absolute inset-0 bg-slate-800/90 border border-emerald-500/40 rounded-2xl p-4 shadow-xl">
+                        <div class="flex items-center gap-2 text-emerald-400 font-medium text-xs mb-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                            <span>鞋履搭配 (Leather Shoes)</span>
+                        </div>
+                        <h4 class="text-sm font-semibold text-slate-100">深棕色手工皮鞋</h4>
+                        <p class="text-xs text-slate-300 mt-1.5 leading-relaxed">
+                            沉穩優雅的暗棕色皮革，搭配極簡線條縫線，收尾整體穿搭的高級質感。
+                        </p>
+                    </div>
+
+                    <!-- Props Note -->
+                    <div id="note-props" class="annotation-card absolute inset-0 bg-slate-800/90 border border-emerald-500/40 rounded-2xl p-4 shadow-xl">
+                        <div class="flex items-center gap-2 text-emerald-400 font-medium text-xs mb-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            <span>職業工具 (Design Tools)</span>
+                        </div>
+                        <h4 class="text-sm font-semibold text-slate-100">建築藍圖卷軸與數位繪圖板</h4>
+                        <p class="text-xs text-slate-300 mt-1.5 leading-relaxed">
+                            一手攜帶紙本設計藍圖圖紙，另一手隨時使用繪圖平板與觸控筆紀錄靈感，突顯現代室內設計師的專業形象。
+                        </p>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Interactive Quick Filter Buttons -->
+            <div class="mt-6 border-t border-slate-800 pt-4">
+                <span class="text-[10px] text-slate-400 font-medium uppercase tracking-wider block mb-2">快速檢視部位：</span>
+                <div class="flex flex-wrap gap-1.5 text-[11px]">
+                    <button onclick="highlightPart('hair')" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-emerald-900/60 hover:text-emerald-300 border border-slate-700 transition">髮型</button>
+                    <button onclick="highlightPart('face')" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-emerald-900/60 hover:text-emerald-300 border border-slate-700 transition">五官</button>
+                    <button onclick="highlightPart('blazer')" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-emerald-900/60 hover:text-emerald-300 border border-slate-700 transition">西裝外套</button>
+                    <button onclick="highlightPart('turtleneck')" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-emerald-900/60 hover:text-emerald-300 border border-slate-700 transition">高領內搭</button>
+                    <button onclick="highlightPart('trousers')" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-emerald-900/60 hover:text-emerald-300 border border-slate-700 transition">西裝褲</button>
+                    <button onclick="highlightPart('props')" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-emerald-900/60 hover:text-emerald-300 border border-slate-700 transition">設計工具</button>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- Interactive Script -->
+    <script>
+        const targets = document.querySelectorAll('.feature-target');
+        const cards = document.querySelectorAll('.annotation-card');
+
+        function highlightPart(partId) {
+            // Hide all active cards
+            cards.forEach(card => card.classList.remove('active'));
+            
+            // Show corresponding card
+            const targetCard = document.getElementById(`note-${partId}`);
+            if (targetCard) {
+                targetCard.classList.add('active');
+            }
+        }
+
+        // Add Click & Hover Listeners to SVG Parts
+        targets.forEach(target => {
+            const part = target.getAttribute('data-part');
+
+            target.addEventListener('mouseenter', () => highlightPart(part));
+            target.addEventListener('click', () => highlightPart(part));
+        });
+
+        // Reset to default when clicking outside SVG parts
+        document.getElementById('characterSvg').addEventListener('click', (e) => {
+            if (!e.target.closest('.feature-target')) {
+                cards.forEach(card => card.classList.remove('active'));
+            }
+        });
+    </script>
+</body>
+</html>
+
+圖像與互動特色說明
+完整全身比例與穿搭：
+
+頭部與髮型：層次感微捲中分棕髮，清秀帥氣的顎線與溫和笑容。
+
+上身：象牙白坑條高領衫，搭配沉木橄欖綠合體剪裁西裝外套，以及精致小巧的金屬項鍊。
+
+下身與腰細節：炭灰色高腰寬腿壓摺西裝褲，搭配復古皮革腰帶與手工棕色皮鞋，完美展現優越比例。
+
+職業符號：一手攜帶捲曲的建築圖紙藍圖，另一手握著數位設計繪圖板與感應筆。
+
+互動式設計筆記：
+
+點擊或將滑鼠懸停在 SVG 畫面上的人物部位（如髮型、西裝外套、圖紙手持物、皮鞋等），右側卡片會即時切換並展開該部位的專屬設計理念與細節註解。
+
