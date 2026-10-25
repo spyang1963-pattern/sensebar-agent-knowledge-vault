@@ -1,0 +1,16 @@
+{
+  "title": "為什麼設計費比統包貴？差別在哪",
+  "format": "dialog",
+  "look": "warm",
+  "bg": "plain",
+  "char_dir": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\characters",
+  "voice_map": {
+    "ren": "zh-TW-YunJheNeural",
+    "le": "zh-TW-HsiaoYuNeural"
+  },
+  "scenes": [],
+  "topic_id": "design_fee_why",
+  "style": "comic",
+  "version": 3,
+  "pack": "interior_lezhi"
+}

@@ -1,0 +1,65 @@
+{
+  "title": "為什麼設計費比統包貴？差別在哪",
+  "format": "dialog",
+  "look": "ink",
+  "bg": "office",
+  "char_dir": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\characters",
+  "voice_map": {
+    "ren": "zh-TW-YunJheNeural",
+    "le": "zh-TW-HsiaoYuNeural"
+  },
+  "scenes": [
+    {
+      "speaker": "le",
+      "text": "設計費五萬? 統包說不要錢唉!",
+      "expr": "surprise",
+      "camera": "zoom_in"
+    },
+    {
+      "speaker": "ren",
+      "text": "免費? 他們只是把錢藏起來了。",
+      "expr": "smug",
+      "camera": "static"
+    },
+    {
+      "speaker": "le",
+      "text": "藏哪? 莫非在板材裡面嗎?",
+      "expr": "worry",
+      "camera": "static"
+    },
+    {
+      "speaker": "ren",
+      "text": "對，混在材料費裡，多賺10%。",
+      "expr": "normal",
+      "camera": "zoom_in"
+    },
+    {
+      "speaker": "le",
+      "text": "那我的預算不是被吃飽嗎?",
+      "expr": "worry",
+      "camera": "static"
+    },
+    {
+      "speaker": "ren",
+      "text": "設計費是幫你把錢花在刀口上。",
+      "expr": "happy",
+      "camera": "static"
+    },
+    {
+      "speaker": "le",
+      "text": "聽起來... 好像還是我比較虧?",
+      "expr": "normal",
+      "camera": "pan_l"
+    },
+    {
+      "speaker": "ren",
+      "text": "想避坑，點頭像看報價拆解邏輯。",
+      "expr": "normal",
+      "camera": "zoom_out"
+    }
+  ],
+  "topic_id": "design_fee_why",
+  "style": "comic",
+  "version": 1,
+  "pack": "interior_lezhi"
+}

@@ -1,0 +1,45 @@
+{
+  "title": "動線怎麼規劃？記住「三角形原則」",
+  "voice": "zh-TW-HsiaoChenNeural",
+  "style": "narr",
+  "scenes": [
+    {
+      "narration": "廚房的黃金三角形，你踩到了嗎？",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\hook.png",
+      "motion": "kenburns_in"
+    },
+    {
+      "narration": "走動路線若沒形成閉環，做飯時會像原地跑步。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_traffic_triangle_0.png",
+      "motion": "shake_soft"
+    },
+    {
+      "narration": "記住，灶臺、洗槽、冰箱要構成一個三角形。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_traffic_triangle_1.png",
+      "motion": "kenburns_in"
+    },
+    {
+      "narration": "三角形三邊總長，建議控制在 3 到 6 公尺之間。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_traffic_triangle_2.png",
+      "motion": "pan_right"
+    },
+    {
+      "narration": "任一兩點間的直線距離，絕對不能小於 90 公分。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_traffic_triangle_3.png",
+      "motion": "kenburns_in"
+    },
+    {
+      "narration": "這樣轉身拿鍋、轉身洗筷，身體才不會撞牆。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_traffic_triangle_4.png",
+      "motion": "pan_left"
+    },
+    {
+      "narration": "你家廚房動線卡在哪個點？留言聊聊。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\endcard.png",
+      "motion": "kenburns_out"
+    }
+  ],
+  "topic_id": "traffic_triangle",
+  "version": 2,
+  "pack": "interior_lezhi"
+}

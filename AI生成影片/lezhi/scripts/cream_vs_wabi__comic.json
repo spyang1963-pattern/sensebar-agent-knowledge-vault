@@ -1,0 +1,70 @@
+{
+  "title": "奶油風 vs 侘寂風，小宅適合哪一種？",
+  "format": "dialog",
+  "look": "warm",
+  "char_dir": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\characters",
+  "voice_map": {
+    "ren": "zh-TW-YunJheNeural",
+    "le": "zh-TW-HsiaoYuNeural"
+  },
+  "scenes": [
+    {
+      "speaker": "le",
+      "text": "想把12坪小家做成侘寂風，很有禪意吧？",
+      "expr": "smug",
+      "bg": "cafe"
+    },
+    {
+      "speaker": "ren",
+      "text": "東西一堆沒收好，禪意秒變敘利亞工寮。",
+      "expr": "worry",
+      "bg": "site"
+    },
+    {
+      "speaker": "le",
+      "text": "什麼！那網美最愛的奶油風總安全了吧？",
+      "expr": "surprise",
+      "bg": "cafe"
+    },
+    {
+      "speaker": "ren",
+      "text": "奶油風用暖白配圓弧，視覺能放大1.5倍。",
+      "expr": "happy",
+      "bg": "living"
+    },
+    {
+      "speaker": "le",
+      "text": "聽起來超像軟綿綿的泡芙，我很需要！",
+      "expr": "happy",
+      "bg": "cafe"
+    },
+    {
+      "speaker": "ren",
+      "text": "侘寂要留白6成才仙，小宅雜物多很壓迫。",
+      "expr": "normal",
+      "bg": "plain"
+    },
+    {
+      "speaker": "le",
+      "text": "難道侘寂風只適合有錢買大坪數的怪人？",
+      "expr": "smug",
+      "bg": "cafe"
+    },
+    {
+      "speaker": "ren",
+      "text": "是適合極簡苦行僧，常人選奶油風不踩雷。",
+      "expr": "normal",
+      "bg": "living"
+    },
+    {
+      "speaker": "le",
+      "text": "你家小宅選哪種？留言告訴我們幫你評估！",
+      "expr": "smug",
+      "bg": "cafe"
+    }
+  ],
+  "topic_id": "cream_vs_wabi",
+  "style": "comic",
+  "version": 1,
+  "pack": "interior_lezhi"
+}

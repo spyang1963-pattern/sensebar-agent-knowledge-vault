@@ -17,6 +17,7 @@ import json
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 LEZHI = Path(__file__).resolve().parents[1]
@@ -43,6 +44,8 @@ CROPS = LEZHI / "assets" / "crops"
 CARDS = LEZHI / "assets" / "cards"
 SCRIPTS = LEZHI / "scripts"
 MODEL = "gemini-3.8-flash"
+GROQ_MODEL = "qwen/qwen3.8-27b"          # 備援：Groq 免費中文模型
+POLLINATIONS_MODEL = "openai"            # 備援：Pollinations 免費文字 API
 
 TENSION = """【張力技巧（盡量用，不必全用）】
 1. 前 3 秒鉤子：衝突／反差／懸念／數字衝擊，四選一。嚴禁「大家好」「今天要介紹」「為什麼我們要」「首先」。
@@ -355,12 +358,88 @@ def write_dialog_md(topic, pillar, data, script, path):
 def call_gemini(prompt, model=MODEL):
     from google import genai
     from google.genai import types
-    client = genai.Client(api_key=load_key())
-    r = client.models.generate_content(
-        model=model, contents=prompt,
-        config=types.GenerateContentConfig(temperature=0.9),
-    )
-    return (r.text or "").strip()
+    client = genai.Client(api_key=load_key(), http_options={"timeout": 90000})
+    last_err = None
+    for attempt in range(1, 3):
+        print(f"[Gemini 呼叫中] 第 {attempt} 次生成（可能需 20-60 秒，請稍候）…", flush=True)
+        try:
+            r = client.models.generate_content(
+                model=model, contents=prompt,
+                config=types.GenerateContentConfig(temperature=0.9),
+            )
+            return (r.text or "").strip()
+        except Exception as e:
+            last_err = e
+            msg = str(e)
+            transient = any(k in msg for k in ("503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED", "rate"))
+            if transient and attempt < 2:
+                wait = attempt * 8
+                print(f"[Gemini 重試] 高負載（{str(e)[:60]}），{wait} 秒後再試…", flush=True)
+                time.sleep(wait)
+            else:
+                break
+    raise last_err
+
+
+def _groq_key() -> str:
+    if os.environ.get("GROQ_API_KEY"):
+        return os.environ["GROQ_API_KEY"].strip()
+    p = Path.home() / ".groq_api_key"
+    if p.exists():
+        return p.read_text(encoding="utf-8").strip()
+    raise RuntimeError("找不到 Groq API Key")
+
+
+def _call_groq(prompt, model=GROQ_MODEL):
+    """備援 1：Groq Qwen（免費中文模型）。"""
+    from groq import Groq
+    client = Groq(api_key=_groq_key())
+    last_err = None
+    for attempt in range(1, 3):
+        try:
+            print(f"[Groq Qwen] 生成中（第 {attempt} 次）…", flush=True)
+            r = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.9, max_tokens=8192,
+            )
+            return (r.choices[0].message.content or "").strip()
+        except Exception as e:
+            last_err = e
+            time.sleep(attempt * 4)
+    raise last_err
+
+
+def _call_pollinations(prompt, model=POLLINATIONS_MODEL):
+    """備援 2：Pollinations 免費文字 API（無需 key）。"""
+    import urllib.request
+    body = json.dumps({"messages": [{"role": "user", "content": prompt}],
+                       "model": model}).encode("utf-8")
+    req = urllib.request.Request("https://text.pollinations.ai/", data=body,
+                                 headers={"Content-Type": "application/json"})
+    print("[Pollinations] 生成中…", flush=True)
+    r = urllib.request.urlopen(req, timeout=180)
+    return r.read().decode("utf-8", "replace").strip()
+
+
+def call_llm(prompt, model=MODEL):
+    """產腳本主入口：Gemini 優先，叫不到自動降級 Groq Qwen → Pollinations。"""
+    last_err = None
+    try:
+        return call_gemini(prompt, model)
+    except Exception as e:
+        last_err = e
+        print(f"[Gemini 失敗] {str(e)[:100]}，改走 Groq Qwen…", flush=True)
+    try:
+        return _call_groq(prompt)
+    except Exception as e:
+        last_err = e
+        print(f"[Groq 失敗] {str(e)[:100]}，改走 Pollinations…", flush=True)
+    try:
+        return _call_pollinations(prompt)
+    except Exception as e:
+        last_err = e
+    raise last_err
 
 
 def parse_json(text):
@@ -467,7 +546,7 @@ def run_topic(tid, queue, brand, projects, labels, model, fmt="narr", char_dir=N
     if fmt == "dialog":
         cd = Path(char_dir) if char_dir else (LEZHI / "assets" / "characters")
         print(f"[編劇/對話劇] {topic['title']}｜角色：{cd.name}｜版型 {style_key}")
-        raw = call_gemini(build_dialog_prompt(topic, pillar, brand) + block, model)
+        raw = call_llm(build_dialog_prompt(topic, pillar, brand) + block, model)
         data = parse_json(raw)
         script = assemble_dialog(topic, data, brand, cd)
         _finalize(script, tid, style_key, version, jp)
@@ -479,7 +558,7 @@ def run_topic(tid, queue, brand, projects, labels, model, fmt="narr", char_dir=N
         return script
     project, photo_files = pick_photos(topic, projects, labels)
     print(f"[編劇] {topic['title']}｜照片候選 {len(photo_files)} 張｜版型 {style_key}")
-    raw = call_gemini(build_prompt(topic, pillar, brand, project, photo_files, labels) + block, model)
+    raw = call_llm(build_prompt(topic, pillar, brand, project, photo_files, labels) + block, model)
     data = parse_json(raw)
     script = assemble(topic, data, project, photo_files, brand)
     _finalize(script, tid, style_key, version, jp)
@@ -522,6 +601,7 @@ def main():
         print("沒有指定題目。用 --topic / --topics / --starred")
         return
 
+    failed = []
     for tid in ids:
         t = next((x for x in queue["topics"] if x["id"] == tid), None)
         if t:
@@ -541,10 +621,14 @@ def main():
         try:
             run_topic(tid, queue, brand, projects, labels, args.model,
                       fmt=fmt, char_dir=args.chars_dir, style=args.style)
+            print(f"[腳本已更新] {tid} ✓", flush=True)
         except Exception as e:
-            import traceback
-            print(f"[ERR] {tid}: {e}")
-            traceback.print_exc()
+            failed.append(tid)
+            print(f"[腳本未更新] {tid}：{str(e)[:90]}（舊腳本保留，請稍後重試）", flush=True)
+
+    if failed:
+        print(f"[總結] {len(failed)}/{len(ids)} 個題目腳本未更新：{', '.join(failed)}（未產出任何新腳本）", flush=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

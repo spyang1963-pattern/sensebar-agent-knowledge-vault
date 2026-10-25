@@ -1,0 +1,77 @@
+{
+  "title": "為什麼設計費比統包貴？差別在哪",
+  "format": "dialog",
+  "look": "ink",
+  "bg": "cafe",
+  "char_dir": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\characters",
+  "voice_map": {
+    "ren": "zh-TW-YunJheNeural",
+    "le": "zh-TW-HsiaoYuNeural"
+  },
+  "scenes": [
+    {
+      "speaker": "le",
+      "text": "統包直接做才便宜，找你一坪多好幾千耶！",
+      "expr": "smug",
+      "camera": "zoom_in"
+    },
+    {
+      "speaker": "ren",
+      "text": "設計費一坪四千到八千，差在買「後悔藥」。",
+      "expr": "normal",
+      "camera": "static"
+    },
+    {
+      "speaker": "le",
+      "text": "哪有差？不都是找師傅來砌磚敲牆壁！",
+      "expr": "surprise",
+      "camera": "static"
+    },
+    {
+      "speaker": "ren",
+      "text": "統包是聽指令施工，我們是先抓出致命雷點。",
+      "expr": "normal",
+      "camera": "zoom_in"
+    },
+    {
+      "speaker": "le",
+      "text": "例如呢？少嚇唬人了喔！",
+      "expr": "smug",
+      "camera": "static"
+    },
+    {
+      "speaker": "ren",
+      "text": "像冰箱開門撞中島、掃地機卡在玄關高低差。",
+      "expr": "worry",
+      "camera": "static"
+    },
+    {
+      "speaker": "le",
+      "text": "哇…敲掉重做花的工錢好像更可怕？",
+      "expr": "surprise",
+      "camera": "zoom_in"
+    },
+    {
+      "speaker": "ren",
+      "text": "沒錯，圖面改十次免費，現場打掉五萬起跳。",
+      "expr": "smug",
+      "camera": "static"
+    },
+    {
+      "speaker": "le",
+      "text": "原來多花設計費，是買有人幫我扛雷啊！",
+      "expr": "happy",
+      "camera": "static"
+    },
+    {
+      "speaker": "ren",
+      "text": "預算吃緊怕踩坑？留言「評估」幫你看！",
+      "expr": "happy",
+      "camera": "zoom_out"
+    }
+  ],
+  "topic_id": "design_fee_why",
+  "style": "comic",
+  "version": 2,
+  "pack": "interior_lezhi"
+}

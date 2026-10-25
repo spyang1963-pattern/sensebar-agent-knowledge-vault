@@ -280,16 +280,44 @@ def render_scene(title, speaker, text, expr, char_dir, dur, fps, idx):
 
 
 async def _tts(text, voice, path, rate="+0%", pitch="+0Hz", volume="+0%"):
-    c = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch, volume=volume)
-    bounds = []
-    with open(path, "wb") as fh:
-        async for ch in c.stream():
-            if ch["type"] == "audio":
-                fh.write(ch["data"])
-            elif ch["type"] in ("SentenceBoundary", "WordBoundary"):
-                bounds.append({"start": ch["offset"] / 1e7, "dur": ch["duration"] / 1e7,
-                               "text": ch["text"]})
-    return bounds
+    last_err = None
+    for attempt in range(1, 3):
+        try:
+            c = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch, volume=volume)
+            bounds = []
+            wrote = 0
+            with open(path, "wb") as fh:
+                async for ch in c.stream():
+                    if ch["type"] == "audio":
+                        fh.write(ch["data"])
+                        wrote += len(ch["data"])
+                    elif ch["type"] in ("SentenceBoundary", "WordBoundary"):
+                        bounds.append({"start": ch["offset"] / 1e7, "dur": ch["duration"] / 1e7,
+                                       "text": ch["text"]})
+            if wrote == 0:
+                raise RuntimeError("TTS 回傳空音訊")
+            return bounds
+        except Exception as e:
+            last_err = e
+            print(f"[edge-tts 重試 {attempt}/2] {type(e).__name__}: {str(e)[:60]}", flush=True)
+            if attempt < 2:
+                await asyncio.sleep(attempt * 2)
+    # 備援 1：gTTS（Google Translate TTS，免費、中文佳，無需 key）
+    try:
+        print("[gTTS 備援] 生成語音…", flush=True)
+        from gtts import gTTS
+        gTTS(text=text, lang="zh-TW").save(str(path))
+        return []
+    except Exception as e:
+        print(f"[gTTS 失敗] {str(e)[:80]}，改無聲…", flush=True)
+    # 備援 2：無聲（確保執行成功，影片照樣產出）
+    try:
+        ms.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono",
+                "-t", "1.5", "-c:a", "libmp3lame", "-q:a", "9", str(path)])
+        return []
+    except Exception as e:
+        print(f"[無聲備援失敗] {str(e)[:80]}", flush=True)
+    raise last_err
 
 
 def voice_params(speaker, expr):

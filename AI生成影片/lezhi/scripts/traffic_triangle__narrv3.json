@@ -1,0 +1,40 @@
+{
+  "title": "動線怎麼規劃？記住「三角形原則」",
+  "voice": "zh-TW-HsiaoChenNeural",
+  "style": "narr",
+  "scenes": [
+    {
+      "narration": "你家動線，是不是走起來像擠牙膏？",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\hook.png",
+      "motion": "kenburns_in"
+    },
+    {
+      "narration": "把最常待的三個點，拉成一個三角形。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_traffic_triangle_0.png",
+      "motion": "pan_right"
+    },
+    {
+      "narration": "從廚房到沙發，別超過3公尺的路徑。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_traffic_triangle_1.png",
+      "motion": "kenburns_out"
+    },
+    {
+      "narration": "轉角處要留50公分，身體才轉得開。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_traffic_triangle_2.png",
+      "motion": "shake_soft"
+    },
+    {
+      "narration": "這樣走起來，腳下會有輕快的節奏感。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_traffic_triangle_3.png",
+      "motion": "pan_left"
+    },
+    {
+      "narration": "你家動線卡在哪裡？留言告訴我。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\endcard.png",
+      "motion": "kenburns_out"
+    }
+  ],
+  "topic_id": "traffic_triangle",
+  "version": 3,
+  "pack": "interior_lezhi"
+}

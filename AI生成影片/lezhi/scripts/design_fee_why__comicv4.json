@@ -1,0 +1,77 @@
+{
+  "title": "為什麼設計費比統包貴？差別在哪",
+  "format": "dialog",
+  "look": "ink",
+  "bg": "plain",
+  "char_dir": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\characters",
+  "voice_map": {
+    "ren": "zh-TW-YunJheNeural",
+    "le": "zh-TW-HsiaoYuNeural"
+  },
+  "scenes": [
+    {
+      "speaker": "le",
+      "text": "為什麼設計費比統包還貴？",
+      "expr": "smug",
+      "camera": "zoom_in"
+    },
+    {
+      "speaker": "ren",
+      "text": "統包含30%利潤，設計只收5%。",
+      "expr": "normal",
+      "camera": "static"
+    },
+    {
+      "speaker": "le",
+      "text": "但我看不出那5%差在哪裡。",
+      "expr": "worry",
+      "camera": "static"
+    },
+    {
+      "speaker": "ren",
+      "text": "他們賣的是標準化，我們賣精準。",
+      "expr": "smug",
+      "camera": "static"
+    },
+    {
+      "speaker": "le",
+      "text": "精準？就是量得更仔細嗎？",
+      "expr": "surprise",
+      "camera": "static"
+    },
+    {
+      "speaker": "ren",
+      "text": "對，每道牆都標1:1尺寸圖。",
+      "expr": "happy",
+      "camera": "zoom_in"
+    },
+    {
+      "speaker": "le",
+      "text": "所以不會出現櫃子裝不進去？",
+      "expr": "worry",
+      "camera": "static"
+    },
+    {
+      "speaker": "ren",
+      "text": "不會，因為我們先幫你踩坑。",
+      "expr": "normal",
+      "camera": "static"
+    },
+    {
+      "speaker": "le",
+      "text": "那這5%其實是在省大錢？",
+      "expr": "happy",
+      "camera": "static"
+    },
+    {
+      "speaker": "ren",
+      "text": "是，想避坑就點個關注。",
+      "expr": "smug",
+      "camera": "zoom_out"
+    }
+  ],
+  "topic_id": "design_fee_why",
+  "style": "comic",
+  "version": 4,
+  "pack": "interior_lezhi"
+}

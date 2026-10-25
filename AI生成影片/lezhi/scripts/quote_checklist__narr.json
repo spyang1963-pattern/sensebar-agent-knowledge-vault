@@ -1,0 +1,45 @@
+{
+  "title": "裝潢報價單，這 5 項沒問清楚一定後悔",
+  "voice": "zh-TW-HsiaoChenNeural",
+  "style": "narr",
+  "scenes": [
+    {
+      "narration": "報價單這5行字，沒寫清必哭",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\hook.png",
+      "motion": "kenburns_in"
+    },
+    {
+      "narration": "第一是無塵施工清潔，灰塵會鑽進縫隙，事後掃都掃不走。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_quote_checklist_0.png",
+      "motion": "pan_right"
+    },
+    {
+      "narration": "第二是高層窗戶清潔，玻璃太髒根本擦不到，追加很常見。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_quote_checklist_1.png",
+      "motion": "kenburns_out"
+    },
+    {
+      "narration": "第三是特殊造型單價，複雜曲線工時翻倍，一定要問清楚。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_quote_checklist_2.png",
+      "motion": "pan_up"
+    },
+    {
+      "narration": "第四是電路改造明細，重刷牆面藏線，電工費可能爆表。",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_quote_checklist_3.png",
+      "motion": "shake_soft"
+    },
+    {
+      "narration": "第五是保固範圍定義，哪些壞了要修？寫沒寫進合約？",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\c_quote_checklist_4.png",
+      "motion": "pan_left"
+    },
+    {
+      "narration": "你遇過哪項追加？留言告訴我",
+      "image_file": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\cards\\endcard.png",
+      "motion": "kenburns_out"
+    }
+  ],
+  "topic_id": "quote_checklist",
+  "version": 1,
+  "pack": "interior_lezhi"
+}

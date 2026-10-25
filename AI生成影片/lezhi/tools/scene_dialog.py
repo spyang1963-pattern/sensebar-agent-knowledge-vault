@@ -16,9 +16,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import math
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -33,105 +35,142 @@ import make_dialog as md  # noqa: E402
 import make_short as ms   # noqa: E402
 import make_comic as mc   # noqa: E402
 
-INK = (21, 26, 27)
-SKIN = (247, 219, 196)
-REN = {"hair": (38, 42, 45), "top": (117, 137, 133), "pants": (58, 62, 68), "glasses": True, "cap": False}
-LE = {"hair": (94, 66, 51), "top": (224, 158, 106), "pants": (70, 82, 96), "glasses": False, "cap": True}
 NAME = {"ren": "阿忍", "le": "小樂"}
+
+import char_modes as cm  # noqa: E402
+import char_parts as cp  # noqa: E402
+_CHAR_MODE = cm.DEFAULT
+_mode = cm.get(_CHAR_MODE)
+draw_char = _mode.draw_char
+draw_char_standing = _mode.draw_char_standing
+draw_char_seated = _mode.draw_char_seated
+draw_seat = getattr(_mode, "draw_seat", None)
+
+
+def set_char_mode(mode_key):
+    """切換角色構圖模式（2人角色-1/-2/...），重綁 draw_char 系列函式。"""
+    global _CHAR_MODE, draw_char, draw_char_standing, draw_char_seated, draw_seat
+    _CHAR_MODE = mode_key
+    m = cm.get(mode_key)
+    draw_char = m.draw_char
+    draw_char_standing = m.draw_char_standing
+    draw_char_seated = m.draw_char_seated
+    draw_seat = getattr(m, "draw_seat", None)
+
+# 場景姿勢：sit=都坐、stand=都站、sitstand=小樂坐＋阿忍站
+POSE_MAP = {
+    "sit": {"le": "sit", "ren": "sit"},
+    "stand": {"le": "stand", "ren": "stand"},
+    "sitstand": {"le": "sit", "ren": "stand"},
+}
+# 視線上下（sitstand 時站著往下看、坐著往上看，讓視線交會）
+GAZE = {
+    "sit": {"le": 0, "ren": 0},
+    "stand": {"le": 0, "ren": 0},
+    "sitstand": {"le": 0, "ren": 0},
+}
+# 頭部轉動角度（sitstand：小樂向下看阿忍、阿忍向上看小樂）
+TILT = {
+    "sit": {"le": 0, "ren": 0},
+    "stand": {"le": 0, "ren": 0},
+    "sitstand": {"le": -30, "ren": -30},
+}
+# 頭部位置微調（dx, dy 像素；sitstand 補償旋轉造成的偏移）
+HEAD_SHIFT = {
+    "sit": {"le": (0, 0), "ren": (0, 0)},
+    "stand": {"le": (0, 0), "ren": (0, 0)},
+    "sitstand": {"le": (16, 0), "ren": (-38, -21)},
+}
+CHAR_POS = {
+    "le": {"sit": (150, 470), "stand": (150, 750)},
+    "ren": {"sit": (435, 470), "stand": (435, 750)},
+}
+POS = None  # 覆寫（預覽介面套用）：{"le": {x,y,pose}, "ren": {x,y,pose}, "seat": bool}
+
+
+def resolve_pose(pose):
+    """依場景 pose（或 POS 覆寫）回傳 (le_p, ren_p, le_x, le_y, ren_x, ren_y)。"""
+    if POS:
+        le = POS.get("le") or {}
+        ren = POS.get("ren") or {}
+        le_p = le.get("pose") or POSE_MAP.get(pose, POSE_MAP["sit"])["le"]
+        ren_p = ren.get("pose") or POSE_MAP.get(pose, POSE_MAP["sit"])["ren"]
+        le_x = int(le.get("x", CHAR_POS["le"].get(le_p, (150, 470))[0]))
+        le_y = int(le.get("y", CHAR_POS["le"].get(le_p, (150, 470))[1]))
+        ren_x = int(ren.get("x", CHAR_POS["ren"].get(ren_p, (435, 750))[0]))
+        ren_y = int(ren.get("y", CHAR_POS["ren"].get(ren_p, (435, 750))[1]))
+        return le_p, ren_p, le_x, le_y, ren_x, ren_y
+    le_p = POSE_MAP.get(pose, POSE_MAP["sit"])["le"]
+    ren_p = POSE_MAP.get(pose, POSE_MAP["sit"])["ren"]
+    return le_p, ren_p, CHAR_POS["le"][le_p][0], CHAR_POS["le"][le_p][1], \
+        CHAR_POS["ren"][ren_p][0], CHAR_POS["ren"][ren_p][1]
+
+
+def resolve_seat(pose):
+    """是否畫椅子（坐姿）。POS 有指定則用指定，否則 sitstand 才畫椅。"""
+    if POS and "seat" in POS:
+        return bool(POS["seat"])
+    return pose == "sitstand"
+
+
+def resolve_wave():
+    """進場是否揮手。POS 有指定則用指定，否則維持舊行為（進場揮手）。"""
+    if POS:
+        return bool(POS.get("wave", False))
+    return True
+
+
+def look_at(sx, sy, ox, oy):
+    """角色在 (sx,sy) 看向 (ox,oy)：回傳 (dir, tilt, shift, lean)。
+    dir＝面朝方向；tilt＝頭轉角度；shift＝(dx,dy) 頭部位移（朝對方＋看上時上移）；
+    lean＝身體前傾量（看下時上半身朝對方傾）。"""
+    dx = ox - sx
+    dy = oy - sy
+    dist = math.hypot(dx, dy)
+    dir = 1 if dx >= 0 else -1
+    theta = math.degrees(math.atan2(dy, abs(dx))) if abs(dx) > 1 else (90 if dy > 0 else -90)
+    theta = max(-70, min(70, theta))
+    tilt = -dir * theta
+    amount_h = 55.0 * math.sin(math.radians(abs(theta)))
+    shift_y = int(-40.0 * math.sin(math.radians(abs(theta)))) if theta < 0 else 0
+    shift = (int(dir * amount_h), shift_y)
+    lean = dir * (20.0 * math.sin(math.radians(abs(theta)))) if theta > 0 else 0
+    return dir, tilt, shift, lean
+
+
+def look_at_gated(who, sx, sy, ox, oy):
+    """依「朝向」決定視線：
+    auto=自動朝對方（對望，算 tilt/shift/lean）；left/right=手動朝左/右（不連動對方）；
+    front/back=正視/後視（不連動）。"""
+    facing = cp.get_recipe(who).get("facing", "auto")
+    if facing in ("auto", "side"):
+        return look_at(sx, sy, ox, oy)
+    if facing == "left":
+        return -1, 0, (0, 0), 0
+    if facing == "right":
+        return 1, 0, (0, 0), 0
+    return 1, 0, (0, 0), 0  # front / back
+
+
+
+
 
 FONT = r"C:\Windows\Fonts\msjh.ttc"
 FONTB = r"C:\Windows\Fonts\msjhbd.ttc"
 
 
-def draw_head(d, who, sx, sy, r, dir, brow, eye, mouth):
-    """頭＋髮（chord 只蓋頭頂 1/5）＋側臉五官（單眼/鼻/嘴）。"""
-    c = REN if who == "ren" else LE
-    d.ellipse([sx - r, sy - r, sx + r, sy + r], fill=SKIN, outline=INK, width=5)
-    d.chord([sx - r - 2, sy - r - 2, sx + r + 2, sy + r + 2], 217, 323, fill=c["hair"], outline=INK, width=5)
-    if c["cap"]:
-        d.rounded_rectangle([sx - int(r * 0.85), sy - r + 2, sx + int(r * 0.5), sy - r + int(r * 0.42)],
-                            radius=10, fill=(196, 92, 82), outline=INK, width=4)
-    eye_x = sx + dir * int(r * 0.42)
-    ey = sy + int(r * 0.12)
-    if eye == "blink":
-        d.line([(eye_x - int(r * 0.26), ey), (eye_x + int(r * 0.26), ey)], fill=INK, width=5)
-    elif eye == "wide":
-        d.ellipse([eye_x - int(r * 0.28), ey - int(r * 0.24), eye_x + int(r * 0.28), ey + int(r * 0.24)],
-                  fill=(255, 255, 255), outline=INK, width=4)
-        d.ellipse([eye_x - int(r * 0.1), ey - int(r * 0.08), eye_x + int(r * 0.1), ey + int(r * 0.12)], fill=INK)
-    else:
-        d.ellipse([eye_x - int(r * 0.17), ey - int(r * 0.17), eye_x + int(r * 0.17), ey + int(r * 0.17)], fill=INK)
-    by = ey - int(r * 0.42)
-    if brow == "up":
-        d.line([(eye_x - int(r * 0.26), by - int(r * 0.1)), (eye_x + int(r * 0.26), by - int(r * 0.32))], fill=INK, width=5)
-    elif brow == "in":
-        d.line([(eye_x - int(r * 0.26), by - int(r * 0.32)), (eye_x + int(r * 0.26), by - int(r * 0.1))], fill=INK, width=5)
-    else:
-        d.line([(eye_x - int(r * 0.26), by), (eye_x + int(r * 0.26), by)], fill=INK, width=5)
-    d.ellipse([sx + dir * int(r * 0.72) - int(r * 0.13), sy + int(r * 0.12) - int(r * 0.13),
-               sx + dir * int(r * 0.72) + int(r * 0.13), sy + int(r * 0.12) + int(r * 0.13)],
-              fill=SKIN, outline=INK, width=4)
-    my = sy + int(r * 0.5)
-    mx = sx + dir * int(r * 0.4)
-    if mouth == "open":
-        d.ellipse([mx - int(r * 0.14), my - int(r * 0.06), mx + int(r * 0.18), my + int(r * 0.26)],
-                  fill=(122, 60, 60), outline=INK, width=4)
-    elif mouth == "half":
-        d.ellipse([mx - int(r * 0.1), my - int(r * 0.03), mx + int(r * 0.14), my + int(r * 0.14)],
-                  fill=(122, 60, 60), outline=INK, width=4)
-    else:
-        d.line([(sx + dir * int(r * 0.24), my), (sx + dir * int(r * 0.62), my)], fill=INK, width=5)
-    if c["glasses"]:
-        d.ellipse([eye_x - int(r * 0.34), ey - int(r * 0.44), eye_x + int(r * 0.34), ey + int(r * 0.2)],
-                  outline=INK, width=4)
-        d.line([(eye_x - int(r * 0.34), ey - int(r * 0.12)), (sx - dir * int(r * 0.45), ey - int(r * 0.12))],
-               fill=INK, width=4)
 
 
-def draw_char_seated(d, who, sx, sy, r, dir, brow, eye, mouth):
-    """盤腿坐側身（下半身單一形狀，無交接線）。"""
-    c = REN if who == "ren" else LE
-    hip_back = sx - dir * int(r * 0.9)
-    hip_front = sx + dir * int(r * 1.6)
-    hx0, hx1 = min(hip_back, hip_front), max(hip_back, hip_front)
-    d.rounded_rectangle([hx0, sy + int(r * 2.2), hx1, sy + int(r * 3.3)], radius=int(r * 0.55),
-                        fill=c["pants"], outline=INK, width=4)
-    foot_x = sx + dir * int(r * 1.4)
-    d.ellipse([foot_x - int(r * 0.3), sy + int(r * 2.6), foot_x + int(r * 0.3), sy + int(r * 3.4)],
-              fill=(40, 40, 44), outline=INK, width=3)
-    d.rounded_rectangle([sx - int(r * 0.75), sy + int(r * 0.7), sx + int(r * 0.75), sy + int(r * 2.6)],
-                        radius=int(r * 0.5), fill=c["top"], outline=INK, width=4)
-    d.line([(sx, sy + int(r * 1.1)), (sx + dir * int(r * 0.6), sy + int(r * 2.7))], fill=c["top"], width=int(r * 0.4))
-    draw_head(d, who, sx, sy, r, dir, brow, eye, mouth)
 
 
-def draw_char_standing(d, who, sx, sy, r, dir, t, wave):
-    """站姿（走路／揮手），一隻外側手臂有描邊＋手。"""
-    c = REN if who == "ren" else LE
-    for lx in (sx - int(r * 0.38), sx + int(r * 0.38)):
-        d.line([(lx, sy + int(r * 2.5)), (lx, sy + int(r * 4.6))], fill=c["pants"], width=int(r * 0.5))
-        d.ellipse([lx - int(r * 0.3), sy + int(r * 4.5), lx + int(r * 0.3), sy + int(r * 4.7)],
-                  fill=(40, 40, 44), outline=INK, width=3)
-    d.rounded_rectangle([sx - int(r * 0.7), sy + int(r * 0.7), sx + int(r * 0.7), sy + int(r * 2.7)],
-                        radius=int(r * 0.5), fill=c["top"], outline=INK, width=4)
-    shx = sx + dir * int(r * 0.3)
-    shy = sy + int(r * 1.0)
-    if wave:
-        wa = math.sin(t * 8) * 16
-        hx = shx + dir * int(r * 0.4) + wa
-        hy = shy - int(r * 2.4)
-    else:
-        hx = shx + dir * int(r * 0.2)
-        hy = shy + int(r * 1.3)
-    d.line([(shx, shy), (hx, hy)], fill=INK, width=int(r * 0.42) + 4)
-    d.line([(shx, shy), (hx, hy)], fill=c["top"], width=int(r * 0.42))
-    d.ellipse([hx - int(r * 0.2), hy - int(r * 0.2), hx + int(r * 0.2), hy + int(r * 0.2)],
-              fill=SKIN, outline=INK, width=3)
-    draw_head(d, who, sx, sy, r, dir, "flat", "normal", "closed")
+
+
+
+
 
 
 def draw_subtitle(d, who, text, W, H):
-    """程式畫字幕：固定置底、白字黑底、含說話者名字、位置一致。"""
+    """程式畫字幕：置於畫面上方、白字黑底，位置一致，不遮角色。"""
     font = ImageFont.truetype(FONTB, 30)
     label = f"{NAME[who]}：{text}"
     maxw = W - 40
@@ -145,9 +184,10 @@ def draw_subtitle(d, who, text, W, H):
     if cur:
         lines.append(cur)
     lh = 52
-    bar_top = H - 40 - len(lines) * lh - 14
-    d.rectangle([0, bar_top, W, H], fill=(0, 0, 0))
-    y = bar_top + 8
+    bar_top = 40
+    bar_bottom = bar_top + len(lines) * lh + 24
+    d.rectangle([0, bar_top, W, bar_bottom], fill=(0, 0, 0))
+    y = bar_top + 12
     for ln in lines:
         tw = d.textlength(ln, font=font)
         d.text(((W - tw) / 2, y), ln, font=font, fill=(255, 255, 255))
@@ -162,6 +202,16 @@ def mouth_from_energy(e):
     return "open"
 
 
+def _brow_from_t(t, seed):
+    """依時間循環眉毛：平 → 上揚(驚喜) → 平 → 皺(擔憂)。"""
+    ph = math.sin(t * 0.6 + seed)
+    if ph > 0.65:
+        return "up"
+    if ph < -0.65:
+        return "in"
+    return "flat"
+
+
 def encode(frames, out, fps):
     W, H = frames[0].size
     cmd = ["ffmpeg", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}",
@@ -174,8 +224,13 @@ def encode(frames, out, fps):
     p.wait()
 
 
-def render_entrance(out, bg, fps):
-    """進場：阿忍走路→揮手→坐下。回傳 (clip, dur)。"""
+def render_entrance(out, bg, fps, pose="sit"):
+    """進場：阿忍走路→揮手→（依姿勢）坐下或站定。回傳 (clip, dur)。"""
+    le_p, ren_p, le_x, le_y, ren_x, ren_y = resolve_pose(pose)
+    seat = resolve_seat(pose)
+    wave = resolve_wave()
+    le_dir, le_tilt, le_shift, le_lean = look_at_gated("le", le_x, le_y, ren_x, ren_y)
+    ren_dir, ren_tilt, ren_shift, ren_lean = look_at_gated("ren", ren_x, ren_y, le_x, le_y)
     clip = out / "entrance.mp4"
     dur = 3.8
     n = int(dur * fps)
@@ -184,23 +239,30 @@ def render_entrance(out, bg, fps):
         t = fi / fps
         img = Image.open(bg).convert("RGB")
         d = ImageDraw.Draw(img)
-        draw_char_seated(d, "le", 150, 470, 55, 1, "flat", "normal", "closed")
+        draw_char(d, "le", le_x, le_y, 55, le_dir, t, le_p, "flat", "normal", "closed", seat=seat, tilt=le_tilt, shift=le_shift, lean=le_lean)
         if t < 2.0:
             prog = t / 2.0
-            x = int(620 - prog * (620 - 435))
-            draw_char_standing(d, "ren", x, 470, 55, -1, t, wave=False)
+            x = int(620 - prog * (620 - ren_x))
+            draw_char_standing(d, "ren", x, ren_y, 55, ren_dir, t, wave=False)
         elif t < 3.2:
-            draw_char_standing(d, "ren", 435, 470, 55, -1, t, wave=True)
+            draw_char_standing(d, "ren", ren_x, ren_y, 55, ren_dir, t, wave=wave, tilt=ren_tilt, shift=ren_shift, lean=ren_lean)
         else:
-            k = (t - 3.2) / 0.6
-            draw_char_seated(d, "ren", 435, 470 + int((1 - k) * 40), 55, -1, "flat", "normal", "closed")
+            if ren_p == "sit":
+                k = (t - 3.2) / 0.6
+                draw_char_seated(d, "ren", ren_x, ren_y + int((1 - k) * 40), 55, ren_dir, "flat", "normal", "closed", tilt=ren_tilt, shift=ren_shift, lean=ren_lean)
+            else:
+                draw_char_standing(d, "ren", ren_x, ren_y, 55, ren_dir, t, wave=False, tilt=ren_tilt, shift=ren_shift, lean=ren_lean)
         frames.append(img)
     encode(frames, clip, fps)
     return clip, dur
 
 
-def render_line(out, bg, who, text, idx, fps, tail=0.35):
+def render_line(out, bg, who, text, idx, fps, pose="sit", tail=0.35):
     """單句對白：TTS→音量對嘴→渲染（含字幕）。回傳 scene_dur。"""
+    le_p, ren_p, le_x, le_y, ren_x, ren_y = resolve_pose(pose)
+    seat = resolve_seat(pose)
+    le_dir, le_tilt, le_shift, le_lean = look_at_gated("le", le_x, le_y, ren_x, ren_y)
+    ren_dir, ren_tilt, ren_shift, ren_lean = look_at_gated("ren", ren_x, ren_y, le_x, le_y)
     mp3 = out / f"tts_{idx}.mp3"
     clip = out / f"clip_{idx}.mp4"
     m4a = out / f"aud_{idx}.m4a"
@@ -214,15 +276,16 @@ def render_line(out, bg, who, text, idx, fps, tail=0.35):
         t = fi / fps
         e = env[fi] if fi < len(env) else 0.0
         mouth = mouth_from_energy(e)
-        eye = "blink" if (t % 3.0) < 0.12 else "normal"
+        brow = _brow_from_t(t, idx)
+        eye = "blink" if (t % 3.0) < 0.12 else ("wide" if brow == "up" else "normal")
         img = Image.open(bg).convert("RGB")
         d = ImageDraw.Draw(img)
         if who == "ren":
-            draw_char_seated(d, "ren", 435, 470, 55, -1, "flat", eye, mouth)
-            draw_char_seated(d, "le", 150, 470, 55, 1, "flat", "normal", "closed")
+            draw_char(d, "ren", ren_x, ren_y, 55, ren_dir, t, ren_p, brow, eye, mouth, seat=seat, tilt=ren_tilt, shift=ren_shift, lean=ren_lean)
+            draw_char(d, "le", le_x, le_y, 55, le_dir, t, le_p, "flat", "normal", "closed", seat=seat, tilt=le_tilt, shift=le_shift, lean=le_lean)
         else:
-            draw_char_seated(d, "le", 150, 470, 55, 1, "flat", eye, mouth)
-            draw_char_seated(d, "ren", 435, 470, 55, -1, "flat", "normal", "closed")
+            draw_char(d, "le", le_x, le_y, 55, le_dir, t, le_p, brow, eye, mouth, seat=seat, tilt=le_tilt, shift=le_shift, lean=le_lean)
+            draw_char(d, "ren", ren_x, ren_y, 55, ren_dir, t, ren_p, "flat", "normal", "closed", seat=seat, tilt=ren_tilt, shift=ren_shift, lean=ren_lean)
         draw_subtitle(d, who, text, img.size[0], img.size[1])
         frames.append(img)
     encode(frames, clip, fps)
@@ -231,36 +294,115 @@ def render_line(out, bg, who, text, idx, fps, tail=0.35):
 
 
 def main():
+    global POS
     ap = argparse.ArgumentParser(description="場景式對話劇（融合版）")
     ap.add_argument("--bg", default=str(PROJECT_ROOT / "working" / "ai_bg3" / "hi_a.png"))
     ap.add_argument("--out", default=str(PROJECT_ROOT / "working" / "scene_demo"))
     ap.add_argument("--fps", type=int, default=15)
+    ap.add_argument("--lines", default=None, help="台詞 JSON 檔（[{who, text}, ...]），省略則用 demo 台詞")
+    ap.add_argument("--pose", default="sit", choices=["sit", "stand", "sitstand"],
+                    help="姿勢：sit=都坐、stand=都站、sitstand=小樂坐＋阿忍站")
+    ap.add_argument("--pos", default=None, help="覆寫位置 JSON（預覽介面套用）：{le:{x,y,pose},ren:{x,y,pose},seat}")
+    ap.add_argument("--title", default=None, help="影片標題（寫入 metadata，供產出庫顯示）")
+    ap.add_argument("--topic-id", default=None, help="題目 id（用於規格化影片命名）")
+    ap.add_argument("--char-mode", default=cm.DEFAULT, help="角色構圖模式（2人角色-1/-2/...）")
+    ap.add_argument("--le-recipe", default=None, help="小樂長相（recipe key，如 le/frog）")
+    ap.add_argument("--ren-recipe", default=None, help="阿忍長相（recipe key，如 ren/frog）")
+    ap.add_argument("--le-pose", default=None, help="小樂姿勢覆寫 JSON（11 錨點 offset）")
+    ap.add_argument("--ren-pose", default=None, help="阿忍姿勢覆寫 JSON（11 錨點 offset）")
+    ap.add_argument("--bgm", default=None, help="背景音樂 wav 路徑")
+    ap.add_argument("--bgm-volume", type=float, default=0.16)
     args = ap.parse_args()
+
+    set_char_mode(args.char_mode)
+
+    recipe_override = {}
+    if args.le_recipe:
+        recipe_override["le"] = args.le_recipe
+    if args.ren_recipe:
+        recipe_override["ren"] = args.ren_recipe
+    if recipe_override:
+        cp.set_override(recipe_override)
+
+    pose_override = {}
+    if args.le_pose:
+        try:
+            pose_override["le"] = json.loads(args.le_pose)
+        except Exception:
+            pass
+    if args.ren_pose:
+        try:
+            pose_override["ren"] = json.loads(args.ren_pose)
+        except Exception:
+            pass
+    if pose_override:
+        cp.set_pose_override(pose_override)
+
+    if args.pos:
+        try:
+            POS = json.loads(Path(args.pos).read_text(encoding="utf-8"))
+        except Exception:
+            POS = None
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     bg = Path(args.bg)
     fps = args.fps
 
-    lines = [("ren", "設計費不是亂收的，其實包含了很多專業判斷。"),
-             ("le", "是喔？那你說說看，到底值多少錢啊？")]
+    if args.lines:
+        raw = json.loads(Path(args.lines).read_text(encoding="utf-8"))
+        lines = [(it.get("who") or it.get("speaker") or "ren", it["text"]) for it in raw]
+    else:
+        lines = [("ren", "設計費不是亂收的，其實包含了很多專業判斷。"),
+                 ("le", "是喔？那你說說看，到底值多少錢啊？")]
 
-    ent_clip, ent_dur = render_entrance(out, bg, fps)
+    assets = out / "assets"
+    assets.mkdir(parents=True, exist_ok=True)
+
+    ent_clip, ent_dur = render_entrance(assets, bg, fps, args.pose)
 
     durs = []
     for idx, (who, text) in enumerate(lines):
-        durs.append(render_line(out, bg, who, text, idx, fps))
+        durs.append(render_line(assets, bg, who, text, idx, fps, args.pose))
 
-    silent_m4a = out / "silent.m4a"
+    silent_m4a = assets / "silent.m4a"
     ms.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono",
             "-t", str(ent_dur), "-c:a", "aac", str(silent_m4a)])
 
-    clips = [ent_clip] + [out / f"clip_{i}.mp4" for i in range(len(lines))]
-    audios = [silent_m4a] + [out / f"aud_{i}.m4a" for i in range(len(lines))]
-    timeline = out / "timeline.mp4"
+    clips = [ent_clip] + [assets / f"clip_{i}.mp4" for i in range(len(lines))]
+    audios = [silent_m4a] + [assets / f"aud_{i}.m4a" for i in range(len(lines))]
+    timeline = assets / "timeline.mp4"
     ms.concat_scenes(clips, audios, timeline, fps, 0.3)
+    video = timeline
+    if args.bgm and Path(args.bgm).exists():
+        mixed = assets / "timeline_mix.mp4"
+        ms.mix_bgm(timeline, Path(args.bgm), mixed, args.bgm_volume)
+        video = mixed
     final = out / "scene_dialog.mp4"
-    ms.run(["ffmpeg", "-y", "-i", str(timeline), "-c", "copy", str(final)])
+    try:
+        sys.path.insert(0, str(PROJECT_ROOT / "engine"))
+        from core import naming as ename
+        stem = ename.film_filename("scene", args.topic_id, args.title or "", None).rstrip(".mp4")
+        # 角色構圖（配方）不同 → 檔名加角色配方，避免覆蓋先前產出
+        le_recipe = recipe_override.get("le", "le")
+        ren_recipe = recipe_override.get("ren", "ren")
+        variant = ""
+        if le_recipe != "le" or ren_recipe != "ren":
+            variant = f"__{le_recipe}_{ren_recipe}"
+        if stem:
+            final = out / f"{stem}{variant}.mp4"
+    except Exception:
+        pass
+    ms.run(["ffmpeg", "-y", "-i", str(video), "-c", "copy", str(final)])
+
+    # 封面 + metadata（供產出庫顯示）
+    cover = out / "封面.png"
+    ms.run(["ffmpeg", "-y", "-ss", "4", "-i", str(final), "-frames:v", "1", str(cover)])
+    (out / "metadata.json").write_text(json.dumps({
+        "pack": "interior_lezhi", "style": "scene", "title": args.title or out.name,
+        "topic_id": args.topic_id, "date": time.strftime("%Y-%m-%d"),
+        "duration_sec": round(ms.probe_duration(final), 1), "video": final.name,
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
     print("done ->", final)
 
 

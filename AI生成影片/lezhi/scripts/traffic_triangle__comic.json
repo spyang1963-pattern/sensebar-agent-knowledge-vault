@@ -1,0 +1,89 @@
+{
+  "title": "動線怎麼規劃？記住「三角形原則」",
+  "format": "dialog",
+  "look": "ink",
+  "bg": "living",
+  "char_dir": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\characters",
+  "voice_map": {
+    "ren": "zh-TW-YunJheNeural",
+    "le": "zh-TW-HsiaoYuNeural"
+  },
+  "scenes": [
+    {
+      "speaker": "le",
+      "text": "為什麼我在家總要踩到對方的腳？",
+      "expr": "worry",
+      "camera": "zoom_in"
+    },
+    {
+      "speaker": "ren",
+      "text": "因為你們沒遵守三角形原則。",
+      "expr": "normal",
+      "camera": "static"
+    },
+    {
+      "speaker": "le",
+      "text": "啥？三角形？這也能講？",
+      "expr": "surprise",
+      "camera": "static"
+    },
+    {
+      "speaker": "ren",
+      "text": "冰箱、水槽、爐灶，連成三角形。",
+      "expr": "normal",
+      "camera": "zoom_in"
+    },
+    {
+      "speaker": "le",
+      "text": "那這三角形要多大才對？",
+      "expr": "normal",
+      "camera": "static"
+    },
+    {
+      "speaker": "ren",
+      "text": "底邊 1.5 米，是最後的終點。",
+      "expr": "smug",
+      "camera": "zoom_in"
+    },
+    {
+      "speaker": "le",
+      "text": "也太難了，我家廚房才兩米。",
+      "expr": "worry",
+      "camera": "static"
+    },
+    {
+      "speaker": "ren",
+      "text": "所以你要把冰箱與爐灶合在一起。",
+      "expr": "normal",
+      "camera": "zoom_in"
+    },
+    {
+      "speaker": "le",
+      "text": "合在一起那還不過去？",
+      "expr": "surprise",
+      "camera": "static"
+    },
+    {
+      "speaker": "ren",
+      "text": "對，這樣就不算 triangle。",
+      "expr": "smug",
+      "camera": "zoom_in"
+    },
+    {
+      "speaker": "le",
+      "text": "那你叫我怎麼做？",
+      "expr": "worry",
+      "camera": "static"
+    },
+    {
+      "speaker": "ren",
+      "text": "訂閱我，下次教你怎麼改。",
+      "expr": "happy",
+      "camera": "zoom_in"
+    }
+  ],
+  "topic_id": "traffic_triangle",
+  "style": "comic",
+  "version": 1,
+  "pack": "interior_lezhi"
+}

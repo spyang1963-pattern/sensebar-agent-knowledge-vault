@@ -1,6 +1,6 @@
 {
   "studio": "押忍室內裝修設計有限公司",
-  "updated": "2026-10-19",
+  "updated": "2026-10-25",
   "pillars": [
     {
       "id": "p1",
@@ -58,9 +58,10 @@
       "direction": "用實際報價單項目示範「為什麼這項會追加」",
       "material": "no_shot",
       "star": false,
-      "script": "quote_checklist.json",
+      "script": "quote_checklist__narr.json",
       "status": "done",
-      "format": "narr"
+      "format": "narr",
+      "style": "narr"
     },
     {
       "id": "storage_liters",
@@ -77,10 +78,10 @@
       "id": "small_house_mistakes",
       "title": "小宅最容易做錯的 3 種設計",
       "pillar": "p1",
-      "direction": "",
+      "direction": "把設計空間示範出來為什麼容易錯",
       "material": "no_shot",
-      "star": true,
-      "script": "small_house_mistakes__comic.json",
+      "star": false,
+      "script": "small_house_mistakes__comicv2.json",
       "status": "done",
       "format": "dialog",
       "style": "comic"
@@ -89,12 +90,13 @@
       "id": "design_fee_why",
       "title": "為什麼設計費比統包貴？差別在哪",
       "pillar": "p1",
-      "direction": "",
+      "direction": "強調關鍵因素",
       "material": "no_shot",
       "star": false,
-      "script": "design_fee_why.json",
-      "status": "todo",
-      "format": "dialog"
+      "script": "design_fee_why__comicv4.json",
+      "status": "done",
+      "format": "dialog",
+      "style": "comic"
     },
     {
       "id": "traffic_triangle",
@@ -102,9 +104,11 @@
       "pillar": "p2",
       "direction": "",
       "material": "no_shot",
-      "star": false,
-      "script": null,
-      "status": "todo"
+      "star": true,
+      "script": "traffic_triangle__narrv3.json",
+      "status": "done",
+      "format": "narr",
+      "style": "narr"
     },
     {
       "id": "light_layers",
@@ -113,8 +117,10 @@
       "direction": "",
       "material": "no_shot",
       "star": false,
-      "script": null,
-      "status": "todo"
+      "script": "light_layers__comic.json",
+      "status": "done",
+      "format": "dialog",
+      "style": "comic"
     },
     {
       "id": "mingsui_33ping",
@@ -153,8 +159,10 @@
       "direction": "",
       "material": "no_shot",
       "star": false,
-      "script": null,
-      "status": "todo"
+      "script": "cream_vs_wabi__comic.json",
+      "status": "done",
+      "format": "dialog",
+      "style": "comic"
     },
     {
       "id": "color_formula",

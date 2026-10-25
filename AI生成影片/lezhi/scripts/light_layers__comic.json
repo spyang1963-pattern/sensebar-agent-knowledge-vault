@@ -1,0 +1,76 @@
+{
+  "title": "燈光做三層次，家立刻高級起來",
+  "format": "dialog",
+  "look": "night",
+  "char_dir": "D:\\AI-Agent-Workspace\\AI生成影片\\lezhi\\assets\\characters",
+  "voice_map": {
+    "ren": "zh-TW-YunJheNeural",
+    "le": "zh-TW-HsiaoYuNeural"
+  },
+  "scenes": [
+    {
+      "speaker": "le",
+      "text": "我家客廳開燈像審訊室，慘白又刺眼！",
+      "expr": "worry",
+      "bg": "cafe"
+    },
+    {
+      "speaker": "ren",
+      "text": "因為你全家只靠一盞大吸頂燈死撐啊！",
+      "expr": "smug",
+      "bg": "living"
+    },
+    {
+      "speaker": "le",
+      "text": "不然咧？那些高級飯店到底怎麼打光的？",
+      "expr": "surprise",
+      "bg": "cafe"
+    },
+    {
+      "speaker": "ren",
+      "text": "關鍵是三層次！第一層環境光，用嵌燈均勻亮。",
+      "expr": "normal",
+      "bg": "living"
+    },
+    {
+      "speaker": "le",
+      "text": "那第二層呢？總不會又是換嵌燈吧？",
+      "expr": "smug",
+      "bg": "plain"
+    },
+    {
+      "speaker": "ren",
+      "text": "第二層是重點光，射燈洗牆照出雕塑立體感。",
+      "expr": "smug",
+      "bg": "living"
+    },
+    {
+      "speaker": "le",
+      "text": "那聽起來最厲害的第三層是什麼？",
+      "expr": "surprise",
+      "bg": "cafe"
+    },
+    {
+      "speaker": "ren",
+      "text": "第三層是氛圍光，櫃底藏3000K暖光燈帶！",
+      "expr": "happy",
+      "bg": "living"
+    },
+    {
+      "speaker": "le",
+      "text": "柔和光線漫射出來，秒變高級小酒吧！",
+      "expr": "happy",
+      "bg": "living"
+    },
+    {
+      "speaker": "ren",
+      "text": "客廳別亮成辦公室！留言『燈光』幫你健檢。",
+      "expr": "smug",
+      "bg": "plain"
+    }
+  ],
+  "topic_id": "light_layers",
+  "style": "comic",
+  "version": 1,
+  "pack": "interior_lezhi"
+}

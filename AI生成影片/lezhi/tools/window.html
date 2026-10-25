@@ -86,6 +86,18 @@
   .vidmodal{display:none;position:fixed;inset:0;background:rgba(8,10,11,.9);z-index:50;align-items:center;justify-content:center}
   .vidmodal.on{display:flex}
   .vidmodal video{max-width:92vw;max-height:92vh;border-radius:8px;background:#000}
+  .pvbox{position:relative;width:400px;height:711px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#151A1B;flex:0 0 auto}
+  .pvbox img{width:100%;height:100%;display:block;object-fit:fill}
+  .chandle{position:absolute;width:20px;height:20px;border-radius:50%;border:2px solid #fff;cursor:grab;z-index:5;box-shadow:0 1px 4px rgba(0,0,0,.5)}
+  .chandle:active{cursor:grabbing}
+  .chandle.le{background:#e09e6a}
+  .chandle.ren{background:#758985}
+  .chandle span{position:absolute;left:24px;top:-2px;font-size:11px;color:#fff;background:rgba(21,26,27,.82);padding:1px 6px;border-radius:8px;white-space:nowrap;pointer-events:none}
+  .pvctrl{display:flex;flex-direction:column;gap:9px;flex:1;min-width:240px}
+  .pvrow{display:flex;align-items:center;gap:7px;font-size:12.5px;flex-wrap:wrap}
+  .pvrow b{min-width:36px}
+  .pvrow select,.pvrow input[type=number]{border:1px solid var(--line);border-radius:6px;padding:5px 6px;font:inherit;font-size:12.5px}
+  .pvrow input[type=number]{width:60px}
 </style>
 </head>
 <body>
@@ -138,6 +150,15 @@
       <span class="volwrap">產出風格
         <select id="sStyle" style="border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit;font-size:12.5px"></select>
       </span>
+      <label class="ck"><input type="checkbox" id="sSceneMode"> 場景式</label>
+      <span class="volwrap">場景
+        <select id="sScene" style="border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit;font-size:12.5px">
+          <option value="">（載入中…）</option>
+        </select>
+      </span>
+      <span class="volwrap">角色構圖
+        <select id="sCharMode" style="border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit;font-size:12.5px"></select>
+      </span>
     </div>
     <div class="settings" style="gap:10px">
       <span style="font-weight:700">＋ 背景音樂</span>
@@ -155,9 +176,16 @@
       <input type="file" id="photoFile" accept="image/*" style="display:none" onchange="importPhoto(this)">
       <div id="bgList" style="font-size:12px;line-height:1.7"></div>
     </div>
+    <div class="settings" style="gap:10px;align-items:flex-start">
+      <span style="font-weight:700">＋ 生成背景（AI）</span>
+      <select id="genSceneType" style="border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit;font-size:12.5px"></select>
+      <button class="mini" id="genSceneBtn" onclick="genScene()">⬢ 生成背景</button>
+      <span id="genSceneHint" style="font-size:12px;color:var(--sage)"></span>
+    </div>
     <div class="runbar" id="runbar">
       <button class="run" id="runBtn" onclick="runWeek()">▶ 執行本週排程</button>
       <button class="run" id="scriptBtn" onclick="genScripts()" style="background:var(--sage)">✎ 產腳本（本週★）</button>
+      <button class="run" id="regenBtn" onclick="regenScripts()" style="background:#8a6d3b">✎ 重新產腳本</button>
       <span id="runhint" style="font-size:12.5px;color:var(--sage)"></span>
     </div>
     <div class="gaps" id="gaps"></div>
@@ -180,6 +208,117 @@
     <div class="gaps" id="adhocHint" style="font-size:12.5px;color:var(--sage)"></div>
     <pre id="adhocLog" style="display:none"></pre>
   </section>
+
+  <section class="col sys" id="pvCol">
+    <h2>⑤ 場景式預覽<span>拖動角色位置 → 即時預覽合成</span></h2>
+    <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
+      <div class="pvbox" id="previewBox">
+        <img id="previewImg" alt="預覽">
+      </div>
+      <div class="pvctrl">
+        <div class="pvrow"><b>背景</b>
+          <select id="pvScene" onchange="pvSceneChange()" style="flex:1"></select>
+          <label class="ck" style="font-size:12px"><input type="checkbox" id="pvSeat" checked onchange="pvSeatToggle(this)"> 畫椅子</label>
+        </div>
+        <div class="pvrow"><b>構圖</b>
+          <select id="pvCharMode" onchange="pvRender()" style="flex:1"></select>
+        </div>
+        <div class="pvrow"><b>長相</b>
+          <span style="font-size:11px;color:#8a938f">小樂</span>
+          <select id="pvLeRecipe" onchange="pvRender()" style="flex:1"></select>
+          <span style="font-size:11px;color:#8a938f">阿忍</span>
+          <select id="pvRenRecipe" onchange="pvRender()" style="flex:1"></select>
+        </div>
+        <div class="pvrow"><b>小樂</b>
+          <select id="pvLePose" onchange="pvPoseChange('le')"><option value="sit">坐</option><option value="stand">站</option></select>
+          <span>x</span><input type="number" id="pvLeX" onchange="pvNum('le','x',this.value)">
+          <span>y</span><input type="number" id="pvLeY" onchange="pvNum('le','y',this.value)">
+        </div>
+        <div class="pvrow"><b>阿忍</b>
+          <select id="pvRenPose" onchange="pvPoseChange('ren')"><option value="sit">坐</option><option value="stand" selected>站</option></select>
+          <label class="ck" style="font-size:12px"><input type="checkbox" id="pvWave" onchange="pvWaveToggle(this)"> 揮手</label>
+          <span>x</span><input type="number" id="pvRenX" onchange="pvNum('ren','x',this.value)">
+          <span>y</span><input type="number" id="pvRenY" onchange="pvNum('ren','y',this.value)">
+        </div>
+        <div class="pvrow">
+          <button class="mini" onclick="pvReset()">↺ 還原預設</button>
+          <button class="mini" id="pvApplyBtn" onclick="pvApply()">✓ 套用到執行</button>
+          <span class="hint" id="pvHint">調整好後按「套用」，場景式執行會沿用這組位置</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="col sys" id="customCol">
+    <h2>⑥ 自訂角色（捏角色）<span>選零件＋顏色 → 即時預覽 → 存為新角色</span></h2>
+    <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
+      <div id="charPreviewBox" style="width:320px;height:448px;border:1px solid var(--line);border-radius:10px;background:#fff;position:relative;flex:0 0 auto;overflow:hidden">
+        <img id="charBodyPreview" style="width:100%;height:100%;object-fit:contain" alt="角色預覽">
+        <div class="chandle" id="headHandle" style="background:#e09e6a"><span>頭</span></div>
+        <div class="chandle" id="neckHandle" style="background:#e8b46a"><span>頸</span></div>
+        <div class="chandle" id="elbowLHandle" style="background:#7aa8c9"><span>肘L</span></div>
+        <div class="chandle" id="elbowRHandle" style="background:#7aa8c9"><span>肘R</span></div>
+        <div class="chandle" id="handLHandle" style="background:#3a6ea5"><span>手L</span></div>
+        <div class="chandle" id="handRHandle" style="background:#3a6ea5"><span>手R</span></div>
+        <div class="chandle" id="hipHandle" style="background:#758985"><span>髖</span></div>
+        <div class="chandle" id="kneeLHandle" style="background:#a78bb5"><span>膝L</span></div>
+        <div class="chandle" id="kneeRHandle" style="background:#a78bb5"><span>膝R</span></div>
+        <div class="chandle" id="footLHandle" style="background:#8a6d3b"><span>腳L</span></div>
+        <div class="chandle" id="footRHandle" style="background:#8a6d3b"><span>腳R</span></div>
+      </div>
+      <div class="pvctrl">
+        <div class="pvrow"><b>名稱</b>
+          <input type="text" id="custName" value="新角色" style="flex:1;border:1px solid var(--line);border-radius:6px;padding:5px 8px;font:inherit;font-size:12.5px">
+        </div>
+        <div class="pvrow">
+          <b>頭型</b><select id="custHead" onchange="custPreview()"></select>
+          <b>髮</b><select id="custHair" onchange="custPreview()"></select>
+          <b>帽</b><select id="custHat" onchange="custPreview()"></select>
+        </div>
+        <div class="pvrow">
+          <b>眼睛</b><select id="custEyes" onchange="custPreview()"></select>
+          <b>嘴</b><select id="custMouth" onchange="custPreview()"></select>
+          <label class="ck" style="font-size:12px"><input type="checkbox" id="custGlasses" onchange="custPreview()"> 眼鏡</label>
+        </div>
+        <div class="pvrow">
+          <b>朝向</b>
+          <select id="custFacing" onchange="custPreview()">
+            <option value="auto">自動對望</option>
+            <option value="left">側視朝左</option>
+            <option value="right">側視朝右</option>
+            <option value="front">正視</option>
+            <option value="back">後視</option>
+          </select>
+        </div>
+        <div class="pvrow">
+          <b>耳朵</b><select id="custEars" onchange="custPreview()"></select>
+          <b>眉毛</b><select id="custBrow" onchange="custPreview()"></select>
+        </div>
+        <div class="pvrow">
+          <b>眼位</b>
+          <span>x <input type="number" id="custEyeDx" step="0.01" onchange="custPreview()" style="width:54px"></span>
+          <span>y <input type="number" id="custEyeDy" step="0.01" onchange="custPreview()" style="width:54px"></span>
+          <b>嘴位</b>
+          <span>x <input type="number" id="custMouthDx" step="0.01" onchange="custPreview()" style="width:54px"></span>
+          <span>y <input type="number" id="custMouthDy" step="0.01" onchange="custPreview()" style="width:54px"></span>
+        </div>
+        <div class="pvrow">
+          <span class="hint" style="font-size:11.5px">骨架姿勢：直接拖動左圖的 11 個圓點（頭/頸/髖/肘/手/膝/腳）調整</span>
+        </div>
+        <div class="pvrow">
+          <span>膚色<input type="color" id="custSkin" onchange="custPreview()" style="border:none;width:34px;height:26px;padding:0;background:none"></span>
+          <span>髮色<input type="color" id="custHairColor" onchange="custPreview()" style="border:none;width:34px;height:26px;padding:0;background:none"></span>
+          <span>帽色<input type="color" id="custHatColor" onchange="custPreview()" style="border:none;width:34px;height:26px;padding:0;background:none"></span>
+        </div>
+        <div class="pvrow">
+          <span>上衣<input type="color" id="custTop" onchange="custPreview()" style="border:none;width:34px;height:26px;padding:0;background:none"></span>
+          <span>褲<input type="color" id="custPants" onchange="custPreview()" style="border:none;width:34px;height:26px;padding:0;background:none"></span>
+          <button class="mini" onclick="custSave()">✓ 存為新角色</button>
+          <span class="hint" id="custHint"></span>
+        </div>
+      </div>
+    </div>
+  </section>
 </div>
 
 <div id="vidModal" class="vidmodal" onclick="closeVid(event)"><video id="vidPlayer" controls autoplay playsinline></video></div>
@@ -188,6 +327,7 @@
 let Q=null; let S=null; let SETFILES=null; let META={styles:[],presets:[],structures:[],versions:{}};
 let PACKS=[]; let MODE='queue'; let expanded=null;
 const PICK={};
+let SCENES=[];
 const $=(s)=>document.querySelector(s);
 
 async function load(){
@@ -209,6 +349,11 @@ async function load(){
   renderStatus();
   loadOutputs();
   loadBackgrounds();
+  loadScenes();
+  loadSceneTypes();
+  loadCharModes();
+  loadCharRecipes();
+  loadCharParts();
   if(s.log){$('#log').style.display='block';$('#log').textContent=s.log;}
   if(s.running)startPoll();
 }
@@ -374,6 +519,192 @@ async function loadBackgrounds(){
       +'<br><span style="color:#8a938f">實景：</span>'+(photo||'<span style="color:#c8cdcb">（尚未上傳）</span>');
   }catch(e){}
 }
+async function loadScenes(){
+  try{
+    const r=await (await fetch('/api/scenes')).json();
+    SCENES=r.items||[];
+    $('#sScene').innerHTML=SCENES.length
+      ? SCENES.map(s=>`<option value="${s.key}">${esc(s.name)}</option>`).join('')
+      : '<option value="">（無背景，請先用 scene_bg_gen.py 生成）</option>';
+    $('#pvScene').innerHTML=SCENES.length
+      ? SCENES.map(s=>`<option value="${s.key}">${esc(s.name)}</option>`).join('')
+      : '<option value="">（無背景）</option>';
+    if(SCENES.length) pvSceneChange(true);
+    pvLoadApplied();
+  }catch(e){$('#sScene').innerHTML='<option value="">（載入失敗）</option>';}
+}
+async function loadSceneTypes(){
+  try{
+    const r=await (await fetch('/api/scene_types')).json();
+    const items=r.items||[];
+    $('#genSceneType').innerHTML=items.map(s=>`<option value="${s.key}">${esc(s.name)}（${s.pose==='sit'?'坐':s.pose==='stand'?'站':'坐+站'}）</option>`).join('');
+  }catch(e){}
+}
+async function loadCharModes(){
+  try{
+    const r=await (await fetch('/api/char_modes')).json();
+    const items=r.items||[];
+    const opts=items.map(m=>`<option value="${m.key}">${esc(m.name)}</option>`).join('');
+    $('#sCharMode').innerHTML=opts;
+    $('#pvCharMode').innerHTML=opts;
+  }catch(e){
+    $('#sCharMode').innerHTML='<option value="mode_2">2人角色-2（怪奇盤腿側身）</option>';
+    $('#pvCharMode').innerHTML='<option value="mode_2">2人角色-2（怪奇盤腿側身）</option>';
+  }
+}
+async function loadCharRecipes(){
+  try{
+    const r=await (await fetch('/api/char_recipes')).json();
+    const items=r.items||[];
+    const opts=items.map(m=>`<option value="${m.key}">${esc(m.name)}</option>`).join('');
+    $('#pvLeRecipe').innerHTML=opts;
+    $('#pvRenRecipe').innerHTML=opts;
+    $('#pvLeRecipe').value='le';
+    $('#pvRenRecipe').value='ren';
+  }catch(e){
+    $('#pvLeRecipe').innerHTML='<option value="le">小樂</option><option value="ren">阿忍</option>';
+    $('#pvRenRecipe').innerHTML='<option value="le">小樂</option><option value="ren">阿忍</option>';
+  }
+}
+async function loadCharParts(){
+  try{
+    const r=await (await fetch('/api/char_parts')).json();
+    const cat=r.catalog||{};
+    const def=r.default||{};
+    const fill=(id,items,val)=>{$('#'+id).innerHTML=(items||[]).map(i=>`<option value="${i.key}" ${i.key===val?'selected':''}>${i.name}</option>`).join('');};
+    fill('custHead',cat.heads,def.head);
+    fill('custHair',cat.hairs,def.hair);
+    fill('custHat',cat.hats,def.hat);
+    fill('custEyes',cat.eyes,def.eyes);
+    fill('custMouth',cat.mouths,def.mouth);
+    fill('custEars',cat.ears,def.ears);
+    fill('custBrow',cat.brows,def.brow);
+    $('#custGlasses').checked=!!def.glasses;
+    $('#custFacing').value=def.facing||'auto';
+    $('#custEyeDx').value=def.eye_dx||0;
+    $('#custEyeDy').value=def.eye_dy||0;
+    $('#custMouthDx').value=def.mouth_dx||0;
+    $('#custMouthDy').value=def.mouth_dy||0;
+    $('#custSkin').value=def.skin||'#f7dbc4';
+    $('#custHairColor').value=def.hair_color||'#262a2d';
+    $('#custHatColor').value=def.hat_color||'#c45c52';
+    $('#custTop').value=def.top||'#758985';
+    $('#custPants').value=def.pants||'#3a3e44';
+    custPreview();
+  }catch(e){}
+}
+function custSpec(){
+  return {
+    name:$('#custName').value.trim()||'新角色',
+    head:$('#custHead').value, hair:$('#custHair').value, hat:$('#custHat').value,
+    eyes:$('#custEyes').value, mouth:$('#custMouth').value, glasses:$('#custGlasses').checked,
+    ears:$('#custEars').value, brow:$('#custBrow').value,
+    facing:$('#custFacing').value,
+    eye_dx:parseFloat($('#custEyeDx').value)||0, eye_dy:parseFloat($('#custEyeDy').value)||0,
+    mouth_dx:parseFloat($('#custMouthDx').value)||0, mouth_dy:parseFloat($('#custMouthDy').value)||0,
+    head_dx:CHAR_POS.head_dx, head_dy:CHAR_POS.head_dy,
+    neck_dx:CHAR_POS.neck_dx, neck_dy:CHAR_POS.neck_dy,
+    hip_dx:CHAR_POS.hip_dx, hip_dy:CHAR_POS.hip_dy,
+    elbow_lx:CHAR_POS.elbow_lx, elbow_ly:CHAR_POS.elbow_ly, elbow_rx:CHAR_POS.elbow_rx, elbow_ry:CHAR_POS.elbow_ry,
+    hand_lx:CHAR_POS.hand_lx, hand_ly:CHAR_POS.hand_ly, hand_rx:CHAR_POS.hand_rx, hand_ry:CHAR_POS.hand_ry,
+    knee_lx:CHAR_POS.knee_lx, knee_ly:CHAR_POS.knee_ly, knee_rx:CHAR_POS.knee_rx, knee_ry:CHAR_POS.knee_ry,
+    foot_lx:CHAR_POS.foot_lx, foot_ly:CHAR_POS.foot_ly, foot_rx:CHAR_POS.foot_rx, foot_ry:CHAR_POS.foot_ry,
+    skin:$('#custSkin').value, hair_color:$('#custHairColor').value, hat_color:$('#custHatColor').value,
+    top:$('#custTop').value, pants:$('#custPants').value,
+  };
+}
+let CHAR_BODY=null;
+let CHAR_POS={head_dx:0,head_dy:0,
+  neck_dx:0,neck_dy:0.7,hip_dx:0,hip_dy:2.0,
+  elbow_lx:-0.4,elbow_ly:0.15,elbow_rx:0.4,elbow_ry:0.15,
+  hand_lx:-0.2,hand_ly:0.15,hand_rx:0.2,hand_ry:0.15,
+  knee_lx:-0.3,knee_ly:0.95,knee_rx:0.3,knee_ry:0.95,
+  foot_lx:-0.08,foot_ly:0.95,foot_rx:0.08,foot_ry:0.95};
+async function custPreview(){
+  try{
+    const r=await fetch('/api/render_char_body',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({spec:custSpec()})});
+    const j=await r.json();
+    CHAR_BODY=j;
+    $('#charBodyPreview').src='data:image/png;base64,'+j.image;
+    updateCharHandles();
+  }catch(e){}
+}
+function placeCharHandle(el,pos,sx,sy){
+  el.style.left=(pos[0]*sx-10)+'px';
+  el.style.top=(pos[1]*sy-10)+'px';
+}
+function updateCharHandles(){
+  if(!CHAR_BODY)return;
+  const box=$('#charPreviewBox').getBoundingClientRect();
+  const sx=box.width/CHAR_BODY.size[0], sy=box.height/CHAR_BODY.size[1];
+  const H={head:'#headHandle',neck:'#neckHandle',hip:'#hipHandle',
+    elbowL:'#elbowLHandle',elbowR:'#elbowRHandle',handL:'#handLHandle',handR:'#handRHandle',
+    kneeL:'#kneeLHandle',kneeR:'#kneeRHandle',footL:'#footLHandle',footR:'#footRHandle'};
+  for(const k in H){placeCharHandle($(H[k]),CHAR_BODY.anchors[k],sx,sy);}
+}
+function charDragHandle(el,kind){
+  el.addEventListener('mousedown',e=>{
+    e.preventDefault();
+    if(!CHAR_BODY)return;
+    const box=$('#charPreviewBox').getBoundingClientRect();
+    const sc={sx:box.width/CHAR_BODY.size[0], sy:box.height/CHAR_BODY.size[1]};
+    const R=50;
+    const MAP={head:['head_dx','head_dy'],neck:['neck_dx','neck_dy'],hip:['hip_dx','hip_dy'],
+               elbowL:['elbow_lx','elbow_ly'],elbowR:['elbow_rx','elbow_ry'],
+               handL:['hand_lx','hand_ly'],handR:['hand_rx','hand_ry'],
+               kneeL:['knee_lx','knee_ly'],kneeR:['knee_rx','knee_ry'],
+               footL:['foot_lx','foot_ly'],footR:['foot_rx','foot_ry']}[kind];
+    const startX=e.clientX, startY=e.clientY, ox=CHAR_POS[MAP[0]], oy=CHAR_POS[MAP[1]];
+    const move=ev=>{
+      CHAR_POS[MAP[0]]=Math.round((ox+(ev.clientX-startX)/(R*sc.sx))*100)/100;
+      CHAR_POS[MAP[1]]=Math.round((oy+(ev.clientY-startY)/(R*sc.sy))*100)/100;
+      scheduleCustPreview();
+    };
+    const up=()=>{window.removeEventListener('mousemove',move);window.removeEventListener('mouseup',up);};
+    window.addEventListener('mousemove',move);
+    window.addEventListener('mouseup',up);
+  });
+}
+let custTimer=null;
+function scheduleCustPreview(){clearTimeout(custTimer);custTimer=setTimeout(custPreview,120);}
+charDragHandle($('#headHandle'),'head');
+charDragHandle($('#neckHandle'),'neck');
+charDragHandle($('#hipHandle'),'hip');
+charDragHandle($('#elbowLHandle'),'elbowL');
+charDragHandle($('#elbowRHandle'),'elbowR');
+charDragHandle($('#handLHandle'),'handL');
+charDragHandle($('#handRHandle'),'handR');
+charDragHandle($('#kneeLHandle'),'kneeL');
+charDragHandle($('#kneeRHandle'),'kneeR');
+charDragHandle($('#footLHandle'),'footL');
+charDragHandle($('#footRHandle'),'footR');
+async function custSave(){
+  const spec=custSpec();
+  const r=await (await fetch('/api/custom_recipe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({spec,name:spec.name})})).json();
+  if(r.ok){
+    $('#custHint').textContent='已存 ✓';
+    const opts=r.recipes.map(m=>`<option value="${m.key}">${esc(m.name)}</option>`).join('');
+    $('#pvLeRecipe').innerHTML=opts; $('#pvRenRecipe').innerHTML=opts;
+    setTimeout(()=>{$('#custHint').textContent='';},1500);
+  } else {
+    $('#custHint').textContent='儲存失敗';
+  }
+}
+async function genScene(){
+  const scene=$('#genSceneType').value;
+  if(!scene)return;
+  if(!confirm(`生成一個新的「${scene}」背景？會呼叫 AI，約 30-60 秒。`))return;
+  $('#genSceneBtn').disabled=true;$('#genSceneHint').textContent='生成中…';
+  $('#log').style.display='block';$('#log').textContent='生成背景中…';
+  const r=await (await fetch('/api/scene_gen',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene})})).json();
+  if(!r.ok){$('#genSceneBtn').disabled=false;$('#genSceneHint').textContent='';alert('目前有任務在跑或場景未知。');return;}
+  const orig=setInterval(async()=>{
+    const s=await (await fetch('/api/runstatus')).json();
+    $('#log').textContent=s.log||'';
+    $('#log').scrollTop=$('#log').scrollHeight;
+    if(!s.running){clearInterval(orig);$('#genSceneBtn').disabled=false;$('#genSceneHint').textContent='完成 ✓';loadScenes();}
+  },1500);
+}
 async function importPhoto(el){
   const f=el.files&&el.files[0]; if(!f)return;
   try{
@@ -402,11 +733,11 @@ function topicRow(t){
   const vers=(META.versions[t.id]||[]);
   let vsel='';
   if(vers.length){
-    const cur=PICK[t.id]||vers[vers.length-1].file;
-    PICK[t.id]=cur;
+    const cur=(PICK[t.id] && vers.some(v=>v.file===PICK[t.id])) ? PICK[t.id] : vers[vers.length-1].file;
     const opts=vers.map(v=>`<option value="${v.file}" ${v.file===cur?'selected':''}>${v.file}</option>`).join('');
-    vsel=`<div class="dir" style="margin-top:5px"><select style="border:1px solid var(--line);border-radius:6px;padding:4px 6px;font:inherit;font-size:11.5px;color:#3a4a6b"
-       onchange="setPick('${t.id}',this.value)">${opts}</select></div>`;
+    vsel=`<div class="dir" style="margin-top:5px;display:flex;gap:6px;align-items:center"><select style="border:1px solid var(--line);border-radius:6px;padding:4px 6px;font:inherit;font-size:11.5px;color:#3a4a6b"
+       onchange="setPick('${t.id}',this.value)">${opts}</select><select style="border:1px solid var(--line);border-radius:6px;padding:4px 6px;font:inherit;font-size:11.5px;color:#8a6d3b"
+       onchange="genAnotherStyle('${t.id}',this.value);this.value=''"><option value="">＋另一風格</option><option value="narr">旁白式</option><option value="comic">漫畫對話劇</option></select></div>`;
   }
   const opts=Q.pillars.map(p=>`<option value="${p.id}" ${p.id===t.pillar?'selected':''}>${p.id} ${p.name}</option>`).join('');
   return `<div class="topic ${t.star?'star':''}">
@@ -538,28 +869,240 @@ async function runWeek(){
   if(!ids.length){alert('本週勾選的題目都還沒有分鏡，先按「✎ 產腳本」。');return;}
   const script_map={};
   picked.forEach(t=>{const cur=PICK[t.id]||t.script; if(cur)script_map[t.id]=cur;});
-  $('#runBtn').disabled=true;$('#scriptBtn').disabled=true;$('#log').style.display='block';$('#log').textContent='啟動中…';
-  await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids,script_map})});
+  const scene_mode=$('#sSceneMode').checked;
+  const scene=$('#sScene').value;
+  const char_mode=$('#sCharMode').value;
+  $('#runBtn').disabled=true;$('#scriptBtn').disabled=true;$('#regenBtn').disabled=true;$('#log').style.display='block';$('#log').textContent='啟動中…';
+  await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids,script_map,scene,scene_mode,char_mode})});
   startPoll();
 }
 async function genScripts(){
   const style=$('#sStyle').value||null;
   if(!confirm(`為本週 ★ 且尚無腳本的題目產生腳本？（風格：${style||'預設'}，會呼叫 Gemini，約數十秒）`))return;
-  $('#runBtn').disabled=true;$('#scriptBtn').disabled=true;$('#log').style.display='block';$('#log').textContent='產腳本中…';
+  $('#runBtn').disabled=true;$('#scriptBtn').disabled=true;$('#regenBtn').disabled=true;$('#log').style.display='block';$('#log').textContent='產腳本中…';
   await fetch('/api/script',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({starred:true,style})});
+  startPoll();
+}
+async function regenScripts(){
+  const picked=Q.topics.filter(t=>t.star&&t.script);
+  const ids=picked.map(t=>t.id);
+  if(!ids.length){alert('本週 ★ 且有腳本的題目（含已完成）不存在，無需重寫。');return;}
+  if(!confirm(`強制重寫 ${ids.length} 個題目的腳本？（沿用各題原格式，會呼叫 AI 並遞增版本）`))return;
+  $('#runBtn').disabled=true;$('#scriptBtn').disabled=true;$('#regenBtn').disabled=true;$('#log').style.display='block';$('#log').textContent='重新產腳本中…';
+  await fetch('/api/script',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})});
+  startPoll();
+}
+async function genAnotherStyle(id,style){
+  if(!style)return;
+  const t=Q.topics.find(x=>x.id===id);
+  const styleName=style==='comic'?'漫畫對話劇':'旁白式';
+  if(!confirm(`為「${(t&&t.title)||id}」多產一支「${styleName}」腳本？（不影響原有腳本，會呼叫 AI）`))return;
+  $('#runBtn').disabled=true;$('#scriptBtn').disabled=true;$('#regenBtn').disabled=true;$('#log').style.display='block';$('#log').textContent='產腳本中…';
+  await fetch('/api/script_style',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,style})});
   startPoll();
 }
 let poll=null;
 function startPoll(){
-  $('#runBtn').disabled=true;$('#scriptBtn').disabled=true;$('#adhocBtn').disabled=true;
+  $('#runBtn').disabled=true;$('#scriptBtn').disabled=true;$('#adhocBtn').disabled=true;$('#regenBtn').disabled=true;
   clearInterval(poll);
   poll=setInterval(async()=>{
     const s=await (await fetch('/api/runstatus')).json();
     $('#log').textContent=s.log||'';
     $('#log').scrollTop=$('#log').scrollHeight;
-    if(!s.running){clearInterval(poll);$('#runBtn').disabled=false;$('#scriptBtn').disabled=false;$('#adhocBtn').disabled=false;load();}
+    if(!s.running){clearInterval(poll);$('#runBtn').disabled=false;$('#scriptBtn').disabled=false;$('#adhocBtn').disabled=false;$('#regenBtn').disabled=false;load();}
   },1500);
 }
+
+// —— 場景式預覽 ——
+const PVW=400, PVH=711, PVSCALE=PVW/576;
+const WHOCAP={le:'Le',ren:'Ren'};
+const R=55;
+const ANCHOR_KEYS=['head','neck','hip','elbowL','elbowR','handL','handR','kneeL','kneeR','footL','footR'];
+const ANCHOR_PARENT={neck:'head',hip:'neck',elbowL:'neck',elbowR:'neck',handL:'elbowL',handR:'elbowR',kneeL:'hip',kneeR:'hip',footL:'kneeL',footR:'kneeR'};
+const ANCHOR_FIELD={neck:['neck_dx','neck_dy'],hip:['hip_dx','hip_dy'],
+  elbowL:['elbow_lx','elbow_ly'],elbowR:['elbow_rx','elbow_ry'],
+  handL:['hand_lx','hand_ly'],handR:['hand_rx','hand_ry'],
+  kneeL:['knee_lx','knee_ly'],kneeR:['knee_rx','knee_ry'],
+  footL:['foot_lx','foot_ly'],footR:['foot_rx','foot_ry']};
+let PV={bg:'', le:{x:150,y:470,pose:'sit'}, ren:{x:435,y:750,pose:'stand'}, wave:false, seat:true, applied:false};
+let PV_ANCHORS=null;
+let PV_POSE={le:{}, ren:{}};
+let PV_HANDLES={};
+
+function pvDefaults(sceneKey){
+  const sc=SCENES.find(s=>s.key===sceneKey);
+  const pose=sc?sc.pose:'sitstand';
+  if(pose==='sit'){PV.le={x:150,y:470,pose:'sit'};PV.ren={x:435,y:470,pose:'sit'};}
+  else if(pose==='stand'){PV.le={x:150,y:750,pose:'stand'};PV.ren={x:435,y:750,pose:'stand'};}
+  else {PV.le={x:150,y:470,pose:'sit'};PV.ren={x:435,y:750,pose:'stand'};}
+}
+function pvSyncUI(){
+  $('#pvLePose').value=PV.le.pose; $('#pvRenPose').value=PV.ren.pose;
+  $('#pvLeX').value=PV.le.x; $('#pvLeY').value=PV.le.y;
+  $('#pvRenX').value=PV.ren.x; $('#pvRenY').value=PV.ren.y;
+  $('#pvSeat').checked=PV.seat; $('#pvWave').checked=PV.wave;
+  updateHandles();
+}
+function pvSceneChange(keep){
+  PV.bg=$('#pvScene').value;
+  if(!keep) pvDefaults(PV.bg);
+  pvSyncUI();
+  pvRender();
+}
+function pvPoseChange(who){
+  const v=$('#pv'+WHOCAP[who]+'Pose').value;
+  const c=who==='le'?PV.le:PV.ren;
+  c.pose=v;
+  // 依姿勢切換預設高度
+  if(v==='sit')c.y=470; else c.y=750;
+  pvSyncUI(); pvRender();
+}
+function pvSeatToggle(el){PV.seat=el.checked;pvRender();}
+function pvWaveToggle(el){PV.wave=el.checked;pvRender();}
+function pvNum(who,axis,val){
+  const c=who==='le'?PV.le:PV.ren;
+  c[axis]=parseInt(val||'0',10)||0;
+  if(axis==='x')c.x=Math.max(0,Math.min(576,c.x)); else c.y=Math.max(0,Math.min(1024,c.y));
+  $('#pv'+WHOCAP[who]+(axis==='x'?'X':'Y')).value=c[axis];
+  updateHandles(); scheduleRender();
+}
+function pvRender(){
+  if(!PV.bg){$('#previewImg').removeAttribute('src');return;}
+  const body={bg:PV.bg,
+    le:{x:PV.le.x,y:PV.le.y,pose:PV.le.pose},
+    ren:{x:PV.ren.x,y:PV.ren.y,pose:PV.ren.pose},
+    wave:PV.wave, seat:PV.seat,
+    char_mode:$('#pvCharMode').value||'mode_2',
+    le_recipe:$('#pvLeRecipe').value||'le', ren_recipe:$('#pvRenRecipe').value||'ren',
+    le_pose:PV_POSE.le, ren_pose:PV_POSE.ren};
+  fetch('/api/scene_preview_full',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(r=>r.json()).then(j=>{
+      if(!j.ok)return;
+      $('#previewImg').src='data:image/png;base64,'+j.image;
+      PV_ANCHORS=j.anchors;
+      updateHandles();
+    }).catch(()=>{});
+}
+function ensureHandles(){
+  if(PV_HANDLES.le)return;
+  const box=$('#previewBox');
+  const color=k=> k==='head'?'#e09e6a':k==='neck'?'#e8b46a':k==='hip'?'#758985':
+    (k.indexOf('elbow')===0?'#7aa8c9':k.indexOf('hand')===0?'#3a6ea5':k.indexOf('knee')===0?'#a78bb5':'#8a6d3b');
+  for(const who of ['le','ren']){
+    PV_HANDLES[who]={};
+    for(const k of ANCHOR_KEYS){
+      const el=document.createElement('div');
+      el.className='chandle';
+      el.style.background=color(k);
+      el.innerHTML='<span>'+(who==='le'?'樂':'忍')+k+'</span>';
+      box.appendChild(el);
+      PV_HANDLES[who][k]=el;
+      anchorDrag(el,who,k);
+    }
+  }
+}
+function placeHandle(el,pos){
+  el.style.left=(pos[0]*PVSCALE-10)+'px';
+  el.style.top=(pos[1]*PVSCALE-10)+'px';
+}
+function updateHandles(){
+  ensureHandles();
+  if(!PV_ANCHORS)return;
+  for(const who of ['le','ren']){
+    for(const k of ANCHOR_KEYS){
+      placeHandle(PV_HANDLES[who][k],PV_ANCHORS[who][k]);
+    }
+  }
+}
+let pvTimer=null;
+function scheduleRender(){clearTimeout(pvTimer);pvTimer=setTimeout(pvRender,130);}
+function anchorDrag(el,who,k){
+  el.addEventListener('mousedown',e=>{
+    e.preventDefault();
+    if(!PV_ANCHORS)return;
+    const box=$('#previewBox').getBoundingClientRect();
+    const scx=box.width/576, scy=box.height/1024;
+    const move=ev=>{
+      const nx=(ev.clientX-box.left)/scx;
+      const ny=(ev.clientY-box.top)/scy;
+      if(k==='head'){
+        PV[who].x=Math.round(Math.max(0,Math.min(576,nx)));
+        PV[who].y=Math.round(Math.max(0,Math.min(1024,ny)));
+        $('#pv'+WHOCAP[who]+'X').value=PV[who].x;
+        $('#pv'+WHOCAP[who]+'Y').value=PV[who].y;
+      }else{
+        const parent=PV_ANCHORS[who][ANCHOR_PARENT[k]];
+        const f=ANCHOR_FIELD[k];
+        PV_POSE[who][f[0]]=Math.round((nx-parent[0])/R*100)/100;
+        PV_POSE[who][f[1]]=Math.round((ny-parent[1])/R*100)/100;
+      }
+      scheduleRender();
+    };
+    const up=()=>{window.removeEventListener('mousemove',move);window.removeEventListener('mouseup',up);};
+    window.addEventListener('mousemove',move);
+    window.addEventListener('mouseup',up);
+  });
+}
+function pvReset(){
+  pvDefaults(PV.bg||$('#pvScene').value);
+  PV_POSE={le:{},ren:{}};
+  pvSyncUI(); pvRender();
+  if(PV.applied){
+    fetch('/api/scene_pos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({clear:true})});
+    PV.applied=false; $('#pvApplyBtn').textContent='✓ 套用到執行';
+  }
+  $('#pvHint').textContent='已還原預設位置';
+}
+async function pvApply(){
+  const btn=$('#pvApplyBtn');
+  if(PV.applied){
+    const r=await (await fetch('/api/scene_pos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({clear:true})})).json();
+    if(r.ok){PV.applied=false; btn.textContent='✓ 套用到執行'; $('#pvHint').textContent='已取消套用，回復預設位置';}
+    return;
+  }
+  if(!PV.bg){alert('請先選背景。');return;}
+  const body={le:{x:PV.le.x,y:PV.le.y,pose:PV.le.pose},
+             ren:{x:PV.ren.x,y:PV.ren.y,pose:PV.ren.pose}, seat:PV.seat, wave:PV.wave,
+             le_recipe:$('#pvLeRecipe').value||'le', ren_recipe:$('#pvRenRecipe').value||'ren',
+             le_pose:PV_POSE.le, ren_pose:PV_POSE.ren};
+  const r=await (await fetch('/api/scene_pos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
+  if(r.ok){PV.applied=true; btn.textContent='✓ 已套用（再按取消）'; $('#pvHint').textContent='已套用，場景式執行會沿用這組位置';}
+  else{$('#pvHint').textContent='套用失敗';}
+}
+async function pvLoadApplied(){
+  try{
+    const r=await (await fetch('/api/scene_pos')).json();
+    if(r.pos){
+      PV.le={x:r.pos.le.x,y:r.pos.le.y,pose:r.pos.le.pose};
+      PV.ren={x:r.pos.ren.x,y:r.pos.ren.y,pose:r.pos.ren.pose};
+      if(typeof r.pos.seat==='boolean')PV.seat=r.pos.seat;
+      if(r.pos.le_pose)PV_POSE.le=r.pos.le_pose;
+      if(r.pos.ren_pose)PV_POSE.ren=r.pos.ren_pose;
+      PV.applied=true; $('#pvApplyBtn').textContent='✓ 已套用（再按取消）';
+      $('#pvHint').textContent='已載入上次套用的位置';
+    }
+    pvSyncUI(); pvRender();
+  }catch(e){}
+}
+function dragHandle(el,who){
+  el.addEventListener('mousedown',e=>{
+    e.preventDefault();
+    const c=who==='le'?PV.le:PV.ren;
+    const box=$('#previewBox').getBoundingClientRect();
+    const move=ev=>{
+      const x=Math.round((ev.clientX-box.left)/PVSCALE);
+      const y=Math.round((ev.clientY-box.top)/PVSCALE);
+      c.x=Math.max(0,Math.min(576,x)); c.y=Math.max(0,Math.min(1024,y));
+      $('#pv'+WHOCAP[who]+'X').value=c.x; $('#pv'+WHOCAP[who]+'Y').value=c.y;
+      scheduleRender();
+    };
+    const up=()=>{window.removeEventListener('mousemove',move);window.removeEventListener('mouseup',up);};
+    window.addEventListener('mousemove',move);
+    window.addEventListener('mouseup',up);
+  });
+}
+
+
 load();
 </script>
 </body>
