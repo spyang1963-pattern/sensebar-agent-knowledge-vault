@@ -98,6 +98,27 @@
   .pvrow b{min-width:36px}
   .pvrow select,.pvrow input[type=number]{border:1px solid var(--line);border-radius:6px;padding:5px 6px;font:inherit;font-size:12.5px}
   .pvrow input[type=number]{width:60px}
+  .mseg{border:1px solid var(--line);border-radius:9px;padding:8px;margin-bottom:8px;background:#fff}
+  .mseg-top{display:flex;gap:6px;align-items:center;margin-bottom:6px}
+  .mseg-idx{font-size:12px;font-weight:700;color:var(--sage);width:18px}
+  .mseg-top select{border:1px solid var(--line);border-radius:6px;padding:4px 6px;font:inherit;font-size:12.5px}
+  .mseg-params{display:flex;gap:8px;flex-wrap:wrap;font-size:12px}
+  .mparam{display:flex;align-items:center;gap:4px;color:#3d4744}
+  .mparam input[type=number]{width:64px;border:1px solid var(--line);border-radius:6px;padding:4px 5px;font:inherit;font-size:12px}
+  #motionCanvas{pointer-events:auto}
+  .mseg-row{display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;margin-bottom:5px;font-size:12.5px;background:#fff;cursor:pointer}
+  .mseg-row:hover{background:var(--soft)}
+  .mseg-row .dot{width:10px;height:10px;border-radius:50%;background:var(--sage);flex:0 0 auto}
+  .mseg-row .dot.pause{background:#e09e6a}
+  .mseg-row .nm{flex:1;font-weight:600}
+  .mseg-row .du{color:#8a938f;font-size:11.5px}
+  .mpop{position:fixed;z-index:70;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.3);padding:10px 12px;width:220px}
+  .mpop-title{font-weight:700;font-size:13px;margin-bottom:8px}
+  .mpop .mrow{display:flex;align-items:center;gap:6px;font-size:12.5px;margin-bottom:6px}
+  .mpop .mrow b{min-width:30px}
+  .mpop select,.mpop input[type=number]{border:1px solid var(--line);border-radius:6px;padding:4px 6px;font:inherit;font-size:12.5px}
+  .mpop input[type=number]{width:58px}
+  .mpop-actions{display:flex;gap:6px;justify-content:flex-end;margin-top:8px}
 </style>
 </head>
 <body>
@@ -319,9 +340,71 @@
       </div>
     </div>
   </section>
+
+  <section class="col sys" id="motionCol">
+    <h2>⑦ 動作時間軸<span>點背景畫路徑 → 右鍵每段設動作 → 播放預覽</span></h2>
+    <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
+      <div class="pvbox" id="motionBox" style="cursor:crosshair;touch-action:none">
+        <img id="motionImg" alt="動作預覽" style="pointer-events:none">
+        <canvas id="motionCanvas" style="position:absolute;inset:0;width:100%;height:100%"></canvas>
+      </div>
+      <div class="pvctrl" style="flex:1;min-width:360px">
+        <div class="pvrow">
+          <b>角色</b><select id="mWho" onchange="mSave();mRefresh()"></select>
+          <b>背景</b><select id="mBg" onchange="mReloadBg()" style="flex:1"></select>
+        </div>
+        <div class="pvrow">
+          <b>時間</b>
+          <input type="range" id="mScrub" min="0" max="1" step="0.05" style="flex:1" oninput="mScrub(this.value)">
+          <span id="mTime">0.0s</span>
+          <button class="mini" onclick="mPlay()">▶ 播放</button>
+          <button class="mini" onclick="mStop()">■</button>
+        </div>
+        <div class="hint" style="font-size:12.5px;color:var(--sage);line-height:1.7">
+          ① 在左圖<b>空白處點按＝加路徑點</b>（拖點可移動）<br>
+          ② <b>點「點」＝設位置動作</b>（站／坐／蹲＋揮手）<br>
+          ③ <b>點「段線」＝設移動動作</b>（走／滑／跑／跳＋朝向）<br>
+          ④ 過渡（站↔坐、站↔蹲）<b>自動帶出</b>；▶ 播放、🎬 出片
+        </div>
+        <div id="mSegs"></div>
+        <div class="pvrow">
+          <button class="mini" onclick="mUndo()">↩ 回上一步</button>
+          <button class="mini" onclick="mClear()">↺ 清除全部</button>
+          <button class="mini" id="mRenderBtn" onclick="mRender()">🎬 出片</button>
+          <span class="hint" id="mHint"></span>
+        </div>
+      </div>
+    </div>
+    <pre id="mLog" style="display:none"></pre>
+  </section>
 </div>
 
 <div id="vidModal" class="vidmodal" onclick="closeVid(event)"><video id="vidPlayer" controls autoplay playsinline></video></div>
+
+<div id="mPointPop" class="mpop" style="display:none">
+  <div class="mpop-title" id="mPointTitle">第 1 點</div>
+  <div class="mrow"><b>姿勢</b><select id="mPointPose"></select></div>
+  <div class="mrow"><label style="display:flex;align-items:center;gap:5px"><input type="checkbox" id="mPointWave"> 揮手</label></div>
+  <div class="mrow"><b>停留</b><input type="number" id="mPointHold" min="0" max="10" step="0.1"> 秒</div>
+  <div class="mpop-actions">
+    <button class="mini" style="background:#a3502a" onclick="mPointDel()">刪除點</button>
+    <button class="btn pass" onclick="mPointOk()">✓</button>
+  </div>
+</div>
+
+<div id="mSegPop" class="mpop" style="display:none">
+  <div class="mpop-title" id="mSegTitle">第 1 段</div>
+  <div class="mrow"><b>動作</b><select id="mSegMotion" onchange="mSegMotionChange()"></select></div>
+  <div class="mrow"><b>秒</b><input type="number" id="mSegDur" min="0.1" max="10" step="0.1"></div>
+  <div class="mrow" id="mSegSpeedRow"><b>步頻</b><input type="number" id="mSegSps" min="0.5" max="6" step="0.1"></div>
+  <div class="mrow" id="mSegAmpRow"><b>幅度</b><input type="number" id="mSegAmp" min="0" max="2" step="0.05"></div>
+  <div class="mrow"><b>朝向</b><select id="mSegFacing"></select></div>
+  <div class="mrow"><label style="display:flex;align-items:center;gap:5px"><input type="checkbox" id="mSegWave"> 揮手（邊走邊揮）</label></div>
+  <div class="mpop-actions">
+    <button class="mini" style="background:#a3502a" onclick="mSegDel()">刪除段</button>
+    <button class="btn pass" onclick="mSegOk()">✓</button>
+  </div>
+</div>
 
 <script>
 let Q=null; let S=null; let SETFILES=null; let META={styles:[],presets:[],structures:[],versions:{}};
@@ -354,6 +437,7 @@ async function load(){
   loadCharModes();
   loadCharRecipes();
   loadCharParts();
+  loadMotion();
   if(s.log){$('#log').style.display='block';$('#log').textContent=s.log;}
   if(s.running)startPoll();
 }
@@ -1102,6 +1186,315 @@ function dragHandle(el,who){
   });
 }
 
+
+// —— ⑦ 動作時間軸（畫布路徑編輯：點動作＋段動作）——
+let MPOSES=[]; let MKINDS=[]; let MFACING=[]; let MPARAMS={};
+let MOTION={who:'ren',r:55,bg:'',fps:15};
+let mWaypoints=[]; let mSegs=[];
+let mScrubVal=0; let mTimer=null; let mPlaying=false;
+let mCanvasEl=null; let mCtx=null;
+let mCurPos=null; let mDragIdx=null; let mDragMoved=false; let mDragStart={x:0,y:0};
+let mPointIdx=null; let mSegIdx=null;
+const SCENE_W=576, SCENE_H=1024;
+
+async function loadMotion(){
+  try{
+    const r=await (await fetch('/api/motion')).json();
+    MPOSES=r.poses||[]; MKINDS=r.kinds||[]; MFACING=r.facing||[]; MPARAMS=r.params||{};
+    MOTION=r.config||{};
+    mWaypoints=(MOTION.waypoints||[]).map(p=>({x:+p.x||0,y:+p.y||0,pose:p.pose||'stand',wave:!!p.wave,hold:(p.hold===undefined?0.3:+p.hold)}));
+    mSegs=(MOTION.segments||[]).map(s=>Object.assign({motion:'walk',dur:2.0,steps_per_sec:2.0,amp:1.0,facing:'auto',wave:false},s));
+    $('#mWho').innerHTML=(r.recipes||[]).map(m=>`<option value="${m.key}">${esc(m.name)}</option>`).join('');
+    $('#mBg').innerHTML=(r.scenes||[]).map(s=>`<option value="${s.key}">${esc(s.name)}</option>`).join('');
+    $('#mWho').value=MOTION.who||'ren';
+    $('#mBg').value=MOTION.bg||'';
+    $('#mPointPose').innerHTML=MPOSES.map(p=>`<option value="${p.key}">${p.name}</option>`).join('');
+    $('#mSegMotion').innerHTML=MKINDS.map(k=>`<option value="${k.key}">${k.name}</option>`).join('');
+    $('#mSegFacing').innerHTML=MFACING.map(f=>`<option value="${f.key}">${f.name}</option>`).join('');
+    resizeMotionCanvas();
+    renderSegs();
+    mRefresh();
+  }catch(e){}
+}
+function mCfg(){
+  return {who:$('#mWho').value, r:MOTION.r||55, bg:$('#mBg').value, fps:MOTION.fps||15,
+          waypoints:mWaypoints, segments:mSegs};
+}
+function resizeMotionCanvas(){
+  const rect=mCanvasEl.getBoundingClientRect();
+  const w=Math.round(rect.width)||400, h=Math.round(rect.height)||711;
+  if(mCanvasEl.width!==w) mCanvasEl.width=w;
+  if(mCanvasEl.height!==h) mCanvasEl.height=h;
+}
+function s2c(p){ return {x:p.x*mCanvasEl.width/SCENE_W, y:p.y*mCanvasEl.height/SCENE_H}; }
+function c2s(cx,cy){
+  return {x:Math.max(0,Math.min(SCENE_W,cx*SCENE_W/mCanvasEl.width)),
+          y:Math.max(0,Math.min(SCENE_H,cy*SCENE_H/mCanvasEl.height))};
+}
+const POSE_COLOR={stand:'#758985',sit:'#e09e6a',squat:'#a78bb5',squat_bob:'#6a5aa0'};
+function drawMotionCanvas(){
+  const ctx=mCtx; if(!ctx)return;
+  const w=mCanvasEl.width, h=mCanvasEl.height;
+  ctx.clearRect(0,0,w,h);
+  ctx.setLineDash([6,4]); ctx.lineWidth=3; ctx.strokeStyle='rgba(21,26,27,0.85)';
+  for(let i=0;i<mWaypoints.length-1;i++){
+    const a=s2c(mWaypoints[i]), b=s2c(mWaypoints[i+1]);
+    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  for(let i=0;i<mWaypoints.length;i++){
+    const p=s2c(mWaypoints[i]);
+    const c=POSE_COLOR[mWaypoints[i].pose]||'#758985';
+    ctx.beginPath(); ctx.arc(p.x,p.y,7,0,7); ctx.fillStyle=c; ctx.fill();
+    ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke();
+    if(mWaypoints[i].wave){
+      ctx.beginPath(); ctx.arc(p.x,p.y,12,0,7); ctx.strokeStyle='#e09e6a'; ctx.lineWidth=2; ctx.stroke();
+    }
+  }
+  if(mCurPos){
+    const p=s2c(mCurPos);
+    ctx.beginPath(); ctx.arc(p.x,p.y,8,0,7); ctx.fillStyle='#c44a3a'; ctx.fill();
+    ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke();
+  }
+}
+function renderSegs(){
+  const box=$('#mSegs');
+  if(!mSegs.length){box.innerHTML='<div class="hint">在左圖空白處點按加入路徑點；點「點」設站/坐/蹲＋揮手，點「段線」設走/滑/跑/跳。</div>';updateScrub();return;}
+  box.innerHTML=mSegs.map((s,i)=>{
+    const name=(MKINDS.find(k=>k.key===s.motion)||{}).name||s.motion;
+    return `<div class="mseg-row" onclick="mOpenSeg(${i}, event)" title="設定這段移動動作">
+      <span class="dot"></span>
+      <span class="nm">${i+1}. ${esc(name)}</span>
+      <span class="du">${(+s.dur||0).toFixed(1)}s</span>
+    </div>`;
+  }).join('');
+  updateScrub();
+}
+function mTotal(){
+  // 總時長 = 各段移動時長 + 過渡（程式估算）＋各點停留
+  let tot=0;
+  for(let i=0;i<mSegs.length;i++){ tot+=parseFloat(mSegs[i].dur)||0; }
+  for(let i=0;i<mWaypoints.length;i++){ tot+=parseFloat(mWaypoints[i].hold)||0; }
+  tot+=(mSegs.length)*0.8; // 過渡粗估
+  return tot;
+}
+function updateScrub(){
+  const tot=mTotal();
+  const scr=$('#mScrub');
+  scr.max=Math.max(0.1,Math.round(tot*100)/100);
+  if(mScrubVal>scr.max) mScrubVal=scr.max;
+  scr.value=mScrubVal;
+  $('#mTime').textContent=(+scr.value).toFixed(1)+'s / ~'+tot.toFixed(1)+'s';
+}
+function mScrub(v){
+  mScrubVal=parseFloat(v)||0;
+  $('#mTime').textContent=mScrubVal.toFixed(1)+'s / ~'+mTotal().toFixed(1)+'s';
+  mRefresh();
+}
+async function mRefresh(){
+  const cfg=mCfg();
+  drawMotionCanvas();
+  if(!cfg.bg || !cfg.waypoints.length){ return; }
+  try{
+    const r=await fetch('/api/motion_preview',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({config:cfg, t:mScrubVal})});
+    const j=await r.json();
+    if(j.ok){ $('#motionImg').src='data:image/png;base64,'+j.image; mCurPos={x:j.x,y:j.y}; drawMotionCanvas(); }
+  }catch(e){}
+}
+async function mSave(){
+  await fetch('/api/motion',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({config:mCfg()})}).catch(()=>{});
+}
+function distP(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
+function distSeg(p,a,b){
+  const dx=b.x-a.x, dy=b.y-a.y, L2=dx*dx+dy*dy;
+  if(L2===0) return distP(p,a);
+  let t=((p.x-a.x)*dx+(p.y-a.y)*dy)/L2; t=Math.max(0,Math.min(1,t));
+  return Math.hypot(p.x-(a.x+t*dx), p.y-(a.y+t*dy));
+}
+function mHitWaypoint(cp){ for(let i=0;i<mWaypoints.length;i++){ if(distP(cp,s2c(mWaypoints[i]))<18)return i; } return -1; }
+function mHitSegment(cp){
+  let best=-1, bd=18;
+  for(let i=0;i<mSegs.length;i++){
+    const d=distSeg(cp, s2c(mWaypoints[i]), s2c(mWaypoints[i+1]));
+    if(d<bd){bd=d;best=i;}
+  }
+  return best;
+}
+function setupMotionCanvas(){
+  mCanvasEl.addEventListener('mousedown',e=>{
+    if(e.button===2) return;
+    const rect=mCanvasEl.getBoundingClientRect();
+    const cp={x:e.clientX-rect.left, y:e.clientY-rect.top};
+    const hit=mHitWaypoint(cp);
+    if(hit>=0){ mDragIdx=hit; mDragMoved=false; mDragStart={x:cp.x,y:cp.y}; return; }
+    const seg=mHitSegment(cp);
+    if(seg>=0){ mOpenSeg(seg, e); return; }
+    const sp=c2s(cp.x,cp.y);
+    if(!mWaypoints.length){ mWaypoints.push({x:sp.x,y:sp.y,pose:'stand',wave:false,hold:0.3}); }
+    else { mWaypoints.push({x:sp.x,y:sp.y,pose:'stand',wave:false,hold:0.3});
+           mSegs.push({motion:'walk',dur:2.0,steps_per_sec:2.0,amp:1.0,facing:'auto',wave:false}); }
+    renderSegs(); drawMotionCanvas(); mSave(); mRefresh();
+  });
+  window.addEventListener('mousemove',e=>{
+    if(mDragIdx===null) return;
+    const rect=mCanvasEl.getBoundingClientRect();
+    const cp={x:e.clientX-rect.left, y:e.clientY-rect.top};
+    if(!mDragMoved && distP(cp,mDragStart)<4) return;
+    mDragMoved=true;
+    const sp=c2s(cp.x,cp.y);
+    mWaypoints[mDragIdx].x=sp.x; mWaypoints[mDragIdx].y=sp.y;
+    drawMotionCanvas();
+  });
+  window.addEventListener('mouseup',e=>{
+    if(mDragIdx!==null){
+      const i=mDragIdx;
+      mDragIdx=null;
+      if(!mDragMoved){ mOpenPoint(i, e); }
+      else { renderSegs(); mSave(); mRefresh(); }
+      mDragMoved=false;
+    }
+  });
+  mCanvasEl.addEventListener('contextmenu',e=>{
+    e.preventDefault();
+    const rect=mCanvasEl.getBoundingClientRect();
+    const cp={x:e.clientX-rect.left, y:e.clientY-rect.top};
+    const hit=mHitWaypoint(cp);
+    if(hit>=0){ mOpenPoint(hit, e); return; }
+    const seg=mHitSegment(cp);
+    if(seg>=0){ mOpenSeg(seg, e); }
+  });
+}
+function mPlacePop(el, cx, cy){
+  el.style.display='block';
+  const r=el.getBoundingClientRect();
+  let left=cx+14, top=cy+14;
+  if(left+r.width>window.innerWidth-8) left=cx-r.width-14;
+  if(top+r.height>window.innerHeight-8) top=cy-r.height-14;
+  left=Math.max(8,left); top=Math.max(8,top);
+  el.style.left=left+'px'; el.style.top=top+'px';
+}
+function mOpenPoint(i, e){
+  mPointIdx=i; mSegIdx=null;
+  const w=mWaypoints[i];
+  $('#mPointTitle').textContent=`第 ${i+1} 點（位置動作）`;
+  $('#mPointPose').value=w.pose||'stand';
+  $('#mPointWave').checked=!!w.wave;
+  $('#mPointHold').value=(w.hold===undefined?0.3:w.hold);
+  $('#mSegPop').style.display='none';
+  mPlacePop($('#mPointPop'), e.clientX, e.clientY);
+}
+function mPointOk(){
+  if(mPointIdx===null) return;
+  const w=mWaypoints[mPointIdx];
+  w.pose=$('#mPointPose').value;
+  w.wave=$('#mPointWave').checked;
+  w.hold=parseFloat($('#mPointHold').value)||0;
+  mClosePops();
+  renderSegs(); drawMotionCanvas(); mSave(); mRefresh();
+}
+function mPointDel(){
+  if(mPointIdx===null) return;
+  const i=mPointIdx;
+  // 刪除點 i：併掉它所在的段
+  mWaypoints.splice(i,1);
+  if(mSegs.length>mWaypoints.length-1){ mSegs.splice(Math.max(0,i-1),1); }
+  else if(i<mSegs.length){ mSegs.splice(i,1); }
+  mClosePops();
+  renderSegs(); drawMotionCanvas(); mSave(); mRefresh();
+}
+function mOpenSeg(i, e){
+  mSegIdx=i; mPointIdx=null;
+  const s=mSegs[i];
+  $('#mSegTitle').textContent=`第 ${i+1} 段（移動動作）`;
+  $('#mSegMotion').value=s.motion||'walk';
+  $('#mSegDur').value=s.dur||2.0;
+  $('#mSegSps').value=s.steps_per_sec||2.0;
+  $('#mSegAmp').value=s.amp||1.0;
+  $('#mSegFacing').value=s.facing||'auto';
+  $('#mSegWave').checked=!!s.wave;
+  mSegMotionChange();
+  $('#mPointPop').style.display='none';
+  mPlacePop($('#mSegPop'), e.clientX, e.clientY);
+}
+function mSegMotionChange(){
+  const m=$('#mSegMotion').value;
+  const has=(m==='walk'||m==='run'||m==='jump');
+  $('#mSegSpeedRow').style.display=has?'':'none';
+  $('#mSegAmpRow').style.display=has?'':'none';
+}
+function mSegOk(){
+  if(mSegIdx===null) return;
+  const s=mSegs[mSegIdx];
+  s.motion=$('#mSegMotion').value;
+  s.dur=parseFloat($('#mSegDur').value)||1.0;
+  s.steps_per_sec=parseFloat($('#mSegSps').value)||2.0;
+  s.amp=parseFloat($('#mSegAmp').value)||1.0;
+  s.facing=$('#mSegFacing').value||'auto';
+  s.wave=$('#mSegWave').checked;
+  mClosePops();
+  renderSegs(); drawMotionCanvas(); mSave(); mRefresh();
+}
+function mSegDel(){
+  if(mSegIdx===null) return;
+  const i=mSegIdx;
+  mSegs.splice(i,1);
+  mWaypoints.splice(i,1);
+  mClosePops();
+  renderSegs(); drawMotionCanvas(); mSave(); mRefresh();
+}
+function mClosePops(){ $('#mPointPop').style.display='none'; $('#mSegPop').style.display='none'; mPointIdx=null; mSegIdx=null; }
+function mPlay(){
+  if(mPlaying)return;
+  const tot=mTotal(); if(!tot)return;
+  mPlaying=true;
+  let t=mScrubVal;
+  mTimer=setInterval(()=>{
+    t+=0.1; if(t>tot) t=0;
+    mScrubVal=t; updateScrub(); mRefresh();
+  },100);
+}
+function mStop(){ mPlaying=false; if(mTimer)clearInterval(mTimer); mTimer=null; }
+function mUndo(){
+  if(!mWaypoints.length) return;
+  mWaypoints.pop();
+  if(mSegs.length>mWaypoints.length-1) mSegs.pop();
+  mClosePops();
+  renderSegs(); drawMotionCanvas(); mSave(); mRefresh();
+}
+function mClear(){
+  if(!mWaypoints.length) return;
+  if(!confirm('清除全部路徑與動作？'))return;
+  mWaypoints=[]; mSegs=[]; mCurPos=null;
+  mClosePops();
+  renderSegs(); drawMotionCanvas(); mSave(); mRefresh();
+}
+function mReloadBg(){ mSave(); mRefresh(); }
+async function mRender(){
+  const cfg=mCfg();
+  if(!cfg.bg){alert('請先選背景。');return;}
+  if(!cfg.waypoints.length){alert('請先在左圖點出路徑。');return;}
+  $('#mRenderBtn').disabled=true; $('#mLog').style.display='block'; $('#mLog').textContent='出片中…';
+  const r=await (await fetch('/api/motion_render',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({config:cfg})})).json();
+  if(!r.ok){$('#mRenderBtn').disabled=false; alert('目前有任務在跑。');return;}
+  const iv=setInterval(async()=>{
+    const s=await (await fetch('/api/runstatus')).json();
+    $('#mLog').textContent=s.log||'';
+    $('#mLog').scrollTop=$('#mLog').scrollHeight;
+    if(!s.running){clearInterval(iv);$('#mRenderBtn').disabled=false; $('#mLog').textContent+='\n完成 ✓（working/motion_edit/motion.mp4）';}
+  },1200);
+}
+
+document.addEventListener('mousedown',e=>{
+  if(mPointIdx===null&&mSegIdx===null) return;
+  if(e.target.closest('.mpop')) return;
+  mClosePops();
+});
+
+mCanvasEl=$('#motionCanvas');
+mCtx=mCanvasEl.getContext('2d');
+setupMotionCanvas();
+window.addEventListener('resize',()=>{ resizeMotionCanvas(); drawMotionCanvas(); });
 
 load();
 </script>

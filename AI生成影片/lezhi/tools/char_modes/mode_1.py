@@ -15,16 +15,16 @@ def draw_seat(d, sx, sy, r):
     return
 
 
-def draw_char(d, who, sx, sy, r, dir, t, pose, brow, eye, mouth, wave=False, seat=False, gaze=0, tilt=0, shift=(0, 0), lean=0, facing=None):
+def draw_char(d, who, sx, sy, r, dir, t, pose, brow, eye, mouth, wave=False, seat=False, gaze=0, tilt=0, shift=(0, 0), lean=0, facing=None, pose_override=None):
     dy = -int(r * 0.4) if pose == "stand" else 0
     _draw_half(d, who, sx, sy + dy, r, dir, brow, eye, mouth, gaze, tilt, shift, facing)
 
 
-def draw_char_standing(d, who, sx, sy, r, dir, t, wave, brow="flat", eye="normal", mouth="closed", gaze=0, tilt=0, shift=(0, 0), lean=0, facing=None):
+def draw_char_standing(d, who, sx, sy, r, dir, t, wave, brow="flat", eye="normal", mouth="closed", gaze=0, tilt=0, shift=(0, 0), lean=0, facing=None, pose_override=None):
     _draw_half(d, who, sx, sy - int(r * 0.4), r, dir, brow, eye, mouth, gaze, tilt, shift, facing)
 
 
-def draw_char_seated(d, who, sx, sy, r, dir, brow, eye, mouth, gaze=0, tilt=0, shift=(0, 0), lean=0, facing=None):
+def draw_char_seated(d, who, sx, sy, r, dir, brow, eye, mouth, gaze=0, tilt=0, shift=(0, 0), lean=0, facing=None, pose_override=None):
     _draw_half(d, who, sx, sy, r, dir, brow, eye, mouth, gaze, tilt, shift, facing)
 
 

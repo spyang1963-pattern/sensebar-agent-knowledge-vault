@@ -239,10 +239,10 @@ DEFAULT_SPEC = {
     "ears": "none", "brow": "line", "glasses": False, "facing": "auto",
     "eye_dx": 0, "eye_dy": 0, "mouth_dx": 0, "mouth_dy": 0,
     "neck_dx": 0, "neck_dy": 0.7, "hip_dx": 0, "hip_dy": 2.0,
-    "elbow_lx": -0.4, "elbow_ly": 0.15, "elbow_rx": 0.4, "elbow_ry": 0.15,
-    "hand_lx": -0.2, "hand_ly": 0.15, "hand_rx": 0.2, "hand_ry": 0.15,
-    "knee_lx": -0.3, "knee_ly": 0.95, "knee_rx": 0.3, "knee_ry": 0.95,
-    "foot_lx": -0.08, "foot_ly": 0.95, "foot_rx": 0.08, "foot_ry": 0.95,
+    "elbow_lx": 0.2, "elbow_ly": 0.7, "elbow_rx": -0.2, "elbow_ry": 0.7,
+    "hand_lx": -0.25, "hand_ly": 1.0, "hand_rx": 0.25, "hand_ry": 1.0,
+    "knee_lx": -0.2, "knee_ly": 1.1, "knee_rx": 0.2, "knee_ry": 1.1,
+    "foot_lx": 0.25, "foot_ly": 1.0, "foot_rx": -0.25, "foot_ry": 1.0,
     "head_dx": 0, "head_dy": 0,
     "skin": "#f7dbc4", "hair_color": "#262a2d", "hat_color": "#c45c52",
     "top": "#758985", "pants": "#3a3e44",
@@ -283,21 +283,21 @@ def build_recipe(spec):
         "mouth_dx": float(spec.get("mouth_dx") or 0), "mouth_dy": float(spec.get("mouth_dy") or 0),
         "neck_dx": float(spec.get("neck_dx", 0) or 0), "neck_dy": float(spec.get("neck_dy", 0.7) if spec.get("neck_dy") is not None else 0.7),
         "hip_dx": float(spec.get("hip_dx", 0) or 0), "hip_dy": float(spec.get("hip_dy", 2.0) if spec.get("hip_dy") is not None else 2.0),
-        "elbow_lx": float(spec.get("elbow_lx") if spec.get("elbow_lx") is not None else -0.4),
-        "elbow_ly": float(spec.get("elbow_ly") if spec.get("elbow_ly") is not None else 0.15),
-        "elbow_rx": float(spec.get("elbow_rx") if spec.get("elbow_rx") is not None else 0.4),
-        "elbow_ry": float(spec.get("elbow_ry") if spec.get("elbow_ry") is not None else 0.15),
-        "hand_lx": float(spec.get("hand_lx") if spec.get("hand_lx") is not None else -0.2),
-        "hand_ly": float(spec.get("hand_ly") if spec.get("hand_ly") is not None else 0.15),
-        "hand_rx": float(spec.get("hand_rx") if spec.get("hand_rx") is not None else 0.2),
-        "hand_ry": float(spec.get("hand_ry") if spec.get("hand_ry") is not None else 0.15),
-        "knee_lx": float(spec.get("knee_lx") if spec.get("knee_lx") is not None else -0.3),
-        "knee_ly": float(spec.get("knee_ly") if spec.get("knee_ly") is not None else 0.95),
-        "knee_rx": float(spec.get("knee_rx") if spec.get("knee_rx") is not None else 0.3),
+        "elbow_lx": float(spec.get("elbow_lx") if spec.get("elbow_lx") is not None else 0.2),
+        "elbow_ly": float(spec.get("elbow_ly") if spec.get("elbow_ly") is not None else 0.7),
+        "elbow_rx": float(spec.get("elbow_rx") if spec.get("elbow_rx") is not None else -0.2),
+        "elbow_ry": float(spec.get("elbow_ry") if spec.get("elbow_ry") is not None else 0.7),
+        "hand_lx": float(spec.get("hand_lx") if spec.get("hand_lx") is not None else -0.25),
+        "hand_ly": float(spec.get("hand_ly") if spec.get("hand_ly") is not None else 1.0),
+        "hand_rx": float(spec.get("hand_rx") if spec.get("hand_rx") is not None else 0.25),
+        "hand_ry": float(spec.get("hand_ry") if spec.get("hand_ry") is not None else 1.0),
+        "knee_lx": float(spec.get("knee_lx") if spec.get("knee_lx") is not None else -0.2),
+        "knee_ly": float(spec.get("knee_ly") if spec.get("knee_ly") is not None else 1.1),
+        "knee_rx": float(spec.get("knee_rx") if spec.get("knee_rx") is not None else 0.2),
         "knee_ry": float(spec.get("knee_ry") if spec.get("knee_ry") is not None else 0.95),
-        "foot_lx": float(spec.get("foot_lx") if spec.get("foot_lx") is not None else -0.08),
-        "foot_ly": float(spec.get("foot_ly") if spec.get("foot_ly") is not None else 0.95),
-        "foot_rx": float(spec.get("foot_rx") if spec.get("foot_rx") is not None else 0.08),
+        "foot_lx": float(spec.get("foot_lx") if spec.get("foot_lx") is not None else 0.25),
+        "foot_ly": float(spec.get("foot_ly") if spec.get("foot_ly") is not None else 1.0),
+        "foot_rx": float(spec.get("foot_rx") if spec.get("foot_rx") is not None else -0.25),
         "foot_ry": float(spec.get("foot_ry") if spec.get("foot_ry") is not None else 0.95),
         "head_dx": float(spec.get("head_dx", 0) or 0), "head_dy": float(spec.get("head_dy", 0) or 0),
         "top": _hex_to_rgb(spec.get("top")), "pants": _hex_to_rgb(spec.get("pants")),
@@ -326,14 +326,14 @@ def anchors_from(recipe, hx, hy, r):
     ny = hy + ndy
     px = nx + pdx
     py = ny + pdy
-    el = (nx + int(recipe.get("elbow_lx", -0.4) * r), ny + int(recipe.get("elbow_ly", 0.15) * r))
-    er = (nx + int(recipe.get("elbow_rx", 0.4) * r), ny + int(recipe.get("elbow_ry", 0.15) * r))
-    hl = (el[0] + int(recipe.get("hand_lx", -0.2) * r), el[1] + int(recipe.get("hand_ly", 0.15) * r))
-    hr = (er[0] + int(recipe.get("hand_rx", 0.2) * r), er[1] + int(recipe.get("hand_ry", 0.15) * r))
-    kl = (px + int(recipe.get("knee_lx", -0.3) * r), py + int(recipe.get("knee_ly", 0.95) * r))
-    kr = (px + int(recipe.get("knee_rx", 0.3) * r), py + int(recipe.get("knee_ry", 0.95) * r))
-    fl = (kl[0] + int(recipe.get("foot_lx", -0.08) * r), kl[1] + int(recipe.get("foot_ly", 0.95) * r))
-    fr = (kr[0] + int(recipe.get("foot_rx", 0.08) * r), kr[1] + int(recipe.get("foot_ry", 0.95) * r))
+    el = (nx + int(recipe.get("elbow_lx", 0.2) * r), ny + int(recipe.get("elbow_ly", 0.7) * r))
+    er = (nx + int(recipe.get("elbow_rx", -0.2) * r), ny + int(recipe.get("elbow_ry", 0.7) * r))
+    hl = (el[0] + int(recipe.get("hand_lx", -0.25) * r), el[1] + int(recipe.get("hand_ly", 1.0) * r))
+    hr = (er[0] + int(recipe.get("hand_rx", 0.25) * r), er[1] + int(recipe.get("hand_ry", 1.0) * r))
+    kl = (px + int(recipe.get("knee_lx", -0.2) * r), py + int(recipe.get("knee_ly", 1.1) * r))
+    kr = (px + int(recipe.get("knee_rx", 0.2) * r), py + int(recipe.get("knee_ry", 0.95) * r))
+    fl = (kl[0] + int(recipe.get("foot_lx", 0.25) * r), kl[1] + int(recipe.get("foot_ly", 1.0) * r))
+    fr = (kr[0] + int(recipe.get("foot_rx", -0.25) * r), kr[1] + int(recipe.get("foot_ry", 0.95) * r))
     return {"head": (hx, hy), "neck": (nx, ny), "hip": (px, py),
             "elbowL": el, "elbowR": er, "handL": hl, "handR": hr,
             "kneeL": kl, "kneeR": kr, "footL": fl, "footR": fr}
@@ -614,11 +614,20 @@ def render_torso(d, recipe, nx, ny, px, py, r, top_w, bot_w=None, lean=0):
     d.line([(px - bot_w, py), (px + bot_w, py)], fill=ink, width=4)
 
 
-def render_legs_stand(d, recipe, px, py, klx, kly, krx, kry, flx, fly, frx, fry, r):
-    """站姿雙腿（兩段），髖→膝→腳。"""
+def render_legs_stand(d, recipe, px, py, klx, kly, krx, kry, flx, fly, frx, fry, r, facing="right"):
+    """站姿雙腿（兩段），髖→膝→腳。side view 依 facing 排「遠腿先、近腿後」；
+    front/back 對稱（左右各一腿）。"""
     pants = recipe.get("pants", (58, 62, 68))
     ink = recipe.get("ink", INK)
-    for (kx, ky, fx, fy) in ((klx, kly, flx, fly), (krx, kry, frx, fry)):
+    left = (klx, kly, flx, fly)
+    right = (krx, kry, frx, fry)
+    if facing == "left":
+        order = (right, left)      # 近腿＝左（面朝左）
+    elif facing == "right":
+        order = (left, right)      # 近腿＝右（面朝右）
+    else:
+        order = (left, right)      # front/back：對稱
+    for (kx, ky, fx, fy) in order:
         d.line([(px, py), (kx, ky)], fill=pants, width=int(r * 0.5))
         d.line([(kx, ky), (fx, fy)], fill=pants, width=int(r * 0.45))
         d.ellipse([fx - int(r * 0.3), fy - int(r * 0.12), fx + int(r * 0.3), fy + int(r * 0.28)],
@@ -641,8 +650,11 @@ def render_arms(d, recipe, nx, ny, elx, ely, erx, ery, hlx, hly, hrx, hry, r):
                   fill=skin, outline=ink, width=3)
 
 
-def render_hip_seated(d, recipe, px, py, r, dir, symmetric=False):
-    """盤腿坐的下半身（單一形狀）＋腳，畫在髖(px,py)處。symmetric=True 正視/後視。"""
+def render_hip_seated(d, recipe, px, py, r, dir, symmetric=False, show_foot=True):
+    """盤腿坐的下半身（單一形狀）＋腳，畫在髖(px,py)處。symmetric=True 正視/後視。
+
+    show_foot=False 時不畫腳（後視：腳在身體前方、被盤腿擋住，看不到腳）。
+    """
     pants = recipe.get("pants", (58, 62, 68))
     ink = recipe.get("ink", INK)
     if symmetric:
@@ -655,8 +667,9 @@ def render_hip_seated(d, recipe, px, py, r, dir, symmetric=False):
         foot_x = px + dir * int(r * 1.4)
     d.rounded_rectangle([hx0, py, hx1, py + int(r * 1.1)], radius=int(r * 0.55),
                         fill=pants, outline=ink, width=4)
-    d.ellipse([foot_x - int(r * 0.3), py + int(r * 0.4), foot_x + int(r * 0.3), py + int(r * 1.2)],
-              fill=(40, 40, 44), outline=ink, width=3)
+    if show_foot:
+        d.ellipse([foot_x - int(r * 0.3), py + int(r * 0.4), foot_x + int(r * 0.3), py + int(r * 1.2)],
+                  fill=(40, 40, 44), outline=ink, width=3)
 
 
 def render_arm(d, recipe, nx, ny, ex, ey, hx, hy, r, t, wave):

@@ -74,6 +74,52 @@ try:
     CHAR_RECIPES = _char_parts_mod.list_recipes()
 except Exception:
     CHAR_RECIPES = [{"key": "ren", "name": "阿忍"}, {"key": "le", "name": "小樂"}]
+try:
+    import char_trajectory as _ct
+except Exception:
+    _ct = None
+TRAJECTORY_DEMO = LEZHI / "tools" / "trajectory_demo.py"
+MOTION_JSON = LEZHI.parent / "working" / "motion_timeline.json"
+
+# 動作時間軸：點動作（姿勢）與段動作（移動）分離
+MOTION_POSES = [
+    {"key": "stand", "name": "站姿"},
+    {"key": "sit", "name": "坐姿"},
+    {"key": "squat", "name": "蹲姿（靜態）"},
+    {"key": "squat_bob", "name": "蹲姿（動態上下）"},
+]
+MOTION_KINDS = [
+    {"key": "walk", "name": "走路"},
+    {"key": "slide", "name": "滑步"},
+    {"key": "run", "name": "跑步"},
+    {"key": "jump", "name": "跳躍走路"},
+]
+MOTION_FACING = [
+    {"key": "auto", "name": "自動（陡坡轉正/後視）"},
+    {"key": "side", "name": "維持側視（爬高/爬低）"},
+    {"key": "left", "name": "朝左"},
+    {"key": "right", "name": "朝右"},
+    {"key": "front", "name": "正視"},
+    {"key": "back", "name": "後視"},
+]
+MOTION_PARAMS = {
+    "dur": {"label": "秒", "min": 0.1, "max": 10, "step": 0.1},
+    "steps_per_sec": {"label": "步頻", "min": 0.5, "max": 6, "step": 0.1},
+    "amp": {"label": "幅度", "min": 0, "max": 2, "step": 0.05},
+    "hold": {"label": "停留秒", "min": 0, "max": 10, "step": 0.1},
+}
+DEFAULT_MOTION = {
+    "who": "ren", "r": 55, "bg": "park_1", "fps": 15,
+    "waypoints": [
+        {"x": 60, "y": 760, "pose": "stand", "wave": False, "hold": 0.3},
+        {"x": 380, "y": 760, "pose": "sit", "wave": False, "hold": 1.0},
+        {"x": 60, "y": 760, "pose": "stand", "wave": False, "hold": 0.0},
+    ],
+    "segments": [
+        {"motion": "walk", "dur": 2.0, "steps_per_sec": 2.0, "amp": 1.0, "facing": "auto"},
+        {"motion": "walk", "dur": 1.6, "steps_per_sec": 2.0, "amp": 1.0, "facing": "auto"},
+    ],
+}
 ADHOC = ENGINE / "core" / "adhoc.py"            # 即興型產片（Pack 驅動）
 MAKE_BGM = ROOT / "make_bgm.py"                 # 程序化背景音樂（numpy）
 ENGINE = LEZHI.parent / "engine"
@@ -238,6 +284,145 @@ def render_scene_preview(data):
     buf = io.BytesIO()
     img.save(buf, "PNG")
     return buf.getvalue(), anchors, None
+
+
+def motion_config():
+    """載入動作時間軸設定（MOTION_JSON，缺則用 DEFAULT_MOTION）。"""
+    cfg = json.loads(json.dumps(DEFAULT_MOTION))
+    saved = _read_json(MOTION_JSON, {}) or {}
+    if isinstance(saved, dict):
+        cfg.update(saved)
+    return cfg
+
+
+def _set_motion_base(who):
+    """時間軸用「對稱基底」(STAND) 做動作，不繼承 ⑥ 拖曳的非對稱骨架姿勢。
+
+    ⑥ 自訂角色把「臉/髮/帽/眼鏡/顏色」（長相）與「11 錨點」（骨架姿勢）都存進 recipe。
+    長相由 draw_char_standing 的 get_recipe 取用；骨架姿勢屬「場景姿勢」，若拿來當基底，
+    會讓自訂角色（如光頭把右手拖到右側）在時間軸裡永遠偏一邊、不隨朝向翻轉。
+    故時間軸一律用對稱 STAND 基底，動作（走/跑/跳/蹲/坐）都在其上做。
+    """
+    _ct.set_base_pose(None)
+
+
+def motion_frame(cfg, t):
+    """渲染時間軸在 t 秒的單張畫面。回傳 (png_bytes, meta, err)，meta 含角色座標。"""
+    from PIL import Image, ImageDraw
+    import io
+    if _ct is None:
+        return None, None, "char_trajectory 載入失敗"
+    bg_key = cfg.get("bg") or ""
+    bg_path = SCENE_BG_DIR / f"{bg_key}.png"
+    if not bg_path.exists():
+        return None, None, f"背景 {bg_key} 不存在（請先生成）"
+    try:
+        import char_modes as cm
+        mode_obj = cm.get("mode_2")
+    except Exception as e:
+        return None, None, f"載入 char_modes 失敗：{e}"
+    # 清掉場景預覽設的全局覆寫，確保時間軸角色乾淨
+    try:
+        _char_parts_mod.set_override({})
+        _char_parts_mod.set_pose_override({})
+    except Exception:
+        pass
+    who = cfg.get("who") or "ren"
+    _set_motion_base(who)
+    r = int(cfg.get("r") or 55)
+    segs = cfg.get("segments") or []
+    waypoints = cfg.get("waypoints") or []
+    if not waypoints:
+        return None, None, "時間軸沒有路徑點"
+    traj = _ct.compile_path(waypoints, segs)
+    pose, x, y, mode, wave, facing = traj.sample(float(t))
+    d = -1 if facing == "left" else 1
+    img = Image.open(bg_path).convert("RGB")
+    draw = ImageDraw.Draw(img)
+    if mode == "sit":
+        mode_obj.draw_char_seated(draw, who, x, y, r, d, "flat", "normal", "closed",
+                                  facing=facing, wave=wave, t=float(t))
+    else:
+        mode_obj.draw_char_standing(draw, who, x, y, r, d, float(t), wave, "flat", "normal", "closed",
+                                    facing=facing, pose_override=pose)
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return buf.getvalue(), {"x": float(x), "y": float(y), "mode": mode, "dir": int(d), "facing": facing}, None
+
+
+def run_motion_render(data):
+    """把時間軸渲染成一支 MP4（背景執行，沿用 _RUN 日誌輪詢）。"""
+    with _LOCK:
+        _RUN["running"] = True
+        _RUN["log"] = ""
+        _RUN["results"] = []
+    cfg = json.loads(json.dumps(data.get("config") or data or {}))
+    cfg.setdefault("fps", 15)
+    _write_json(MOTION_JSON, cfg)
+    log_lines = []
+
+    def emit(s):
+        log_lines.append(s)
+        with _LOCK:
+            _RUN["log"] = "\n".join(log_lines)
+
+    try:
+        bg_key = cfg.get("bg") or ""
+        bg_path = SCENE_BG_DIR / f"{bg_key}.png"
+        if not bg_path.exists():
+            emit(f"[錯誤] 背景 {bg_key} 不存在，請先生成（scene_bg_gen.py）")
+            return
+        segs = cfg.get("segments") or []
+        waypoints = cfg.get("waypoints") or []
+        if not waypoints:
+            emit("[錯誤] 時間軸沒有路徑點")
+            return
+        fps = int(cfg.get("fps") or 15)
+        who = cfg.get("who") or "ren"
+        _set_motion_base(who)
+        r = int(cfg.get("r") or 55)
+        outdir = LEZHI.parent / "working" / "motion_edit"
+        outdir.mkdir(parents=True, exist_ok=True)
+        traj = _ct.compile_path(waypoints, segs)
+        total = traj.duration()
+        nframes = max(1, int(round(total * fps)))
+        emit(f"[軌跡] {len(waypoints)} 點、{len(segs)} 段、{total:.1f}s、{nframes} 幀 @ {fps}fps")
+        import char_modes as cm
+        from PIL import Image, ImageDraw
+        mode_obj = cm.get("mode_2")
+        frames = []
+        for fi in range(nframes):
+            t = fi / fps
+            pose, x, y, mode, wave, facing = traj.sample(t)
+            d = -1 if facing == "left" else 1
+            img = Image.open(bg_path).convert("RGB")
+            draw = ImageDraw.Draw(img)
+            if mode == "sit":
+                mode_obj.draw_char_seated(draw, who, x, y, r, d, "flat", "normal", "closed",
+                                          facing=facing, wave=wave, t=t)
+            else:
+                mode_obj.draw_char_standing(draw, who, x, y, r, d, t, wave, "flat", "normal", "closed",
+                                            facing=facing, pose_override=pose)
+            frames.append(img)
+            if fi % 15 == 0:
+                emit(f"  渲染 {fi}/{nframes}")
+        clip = outdir / "motion.mp4"
+        W, H = frames[0].size
+        cmd = ["ffmpeg", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}",
+               "-r", str(fps), "-i", "-", "-an", "-c:v", "libx264", "-preset", "veryfast",
+               "-crf", "20", "-pix_fmt", "yuv420p", str(clip)]
+        p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for f in frames:
+            p.stdin.write(f.tobytes())
+        p.stdin.close()
+        p.wait()
+        emit(f"[完成] -> {clip}")
+        _RUN["results"].append({"ok": True, "video": str(clip)})
+    except Exception as e:
+        emit(f"[失敗] {e}")
+    finally:
+        with _LOCK:
+            _RUN["running"] = False
 
 
 def packs_list():
@@ -738,6 +923,11 @@ class Handler(BaseHTTPRequestHandler):
         elif p == "/api/char_parts":
             self._json({"catalog": getattr(_char_parts_mod, "PART_CATALOG", {}),
                         "default": getattr(_char_parts_mod, "DEFAULT_SPEC", {})})
+        elif p == "/api/motion":
+            self._json({"poses": MOTION_POSES, "kinds": MOTION_KINDS,
+                        "facing": MOTION_FACING, "params": MOTION_PARAMS,
+                        "config": motion_config(),
+                        "recipes": CHAR_RECIPES, "scenes": scan_scenes()})
         elif p == "/api/scene_pos":
             self._json({"pos": (_read_json(SCENE_POS_JSON, None) if SCENE_POS_JSON.exists() else None)})
         elif p == "/api/scene_preview":
@@ -929,6 +1119,29 @@ class Handler(BaseHTTPRequestHandler):
             img.save(buf, "PNG")
             b64 = base64.b64encode(buf.getvalue()).decode("ascii")
             self._json({"image": b64, "anchors": anchors, "size": [W, H]})
+        elif p == "/api/motion":
+            cfg = data.get("config") or data
+            _write_json(MOTION_JSON, cfg)
+            self._json({"ok": True})
+        elif p == "/api/motion_preview":
+            import base64
+            cfg = data.get("config") or data or {}
+            try:
+                t = float(data.get("t", 0.0))
+            except Exception:
+                t = 0.0
+            png, meta, err = motion_frame(cfg, t)
+            if err:
+                self._json({"ok": False, "error": err})
+            else:
+                self._json({"ok": True, "image": base64.b64encode(png).decode("ascii"),
+                            "x": meta["x"], "y": meta["y"], "mode": meta["mode"], "dir": meta["dir"]})
+        elif p == "/api/motion_render":
+            if _RUN["running"]:
+                self._json({"ok": False, "reason": "running"})
+                return
+            threading.Thread(target=run_motion_render, args=(data,), daemon=True).start()
+            self._json({"ok": True})
         elif p == "/api/scene_preview_full":
             import io, base64
             png, anchors, err = render_scene_preview(data)
