@@ -69,32 +69,31 @@ def _head_poly_points(recipe, r, sx, sy, rot, cx, cy):
     return pts
 
 
-def _head_shape_layer(recipe, r, skin, ink):
-    """畫頭基本型（套用 head_sx/head_sy 拉伸與 head_rot 旋轉），回傳 RGBA layer。"""
+def _draw_head_base(ld, recipe, r, skin, ink, cx, cy):
+    """在 ld 上畫頭基本型（無縮放/旋轉，含頂點變形）。縮放/旋轉由 _apply_head_transform 對整顆頭一起套。"""
     shape = recipe.get("head", "round")
+    if shape in BASE_VERTS:
+        verts = _head_verts(recipe)
+        pts = [(cx + vx * r, cy + vy * r) for vx, vy in verts]
+        ld.polygon(pts, fill=skin, outline=ink, width=5)
+    else:
+        HEADS.get(shape, head_round)(ld, cx, cy, r, r, skin, ink)
+
+
+def _apply_head_transform(layer, cx, cy, recipe):
+    """對整顆頭（含髮/五官/帽）套用 head_sx/head_sy 縮放與 head_rot 旋轉（繞頭中心）。"""
     sx = float(recipe.get("head_sx", 1.0) or 1.0)
     sy = float(recipe.get("head_sy", 1.0) or 1.0)
     rot = float(recipe.get("head_rot", 0.0) or 0.0)
-    if shape in BASE_VERTS:
-        m = 1.0
-        for vx, vy in _head_verts(recipe):
-            m = max(m, abs(vx), abs(vy))
-        ext = int(m * max(r * sx, r * sy) * 1.6) + 8
-    else:
-        ext = int(max(r * sx, r * sy) * 1.5) + 8
-    size = ext * 2
-    hl = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    ld = ImageDraw.Draw(hl)
-    c = size // 2
-    if shape in BASE_VERTS:
-        pts = _head_poly_points(recipe, r, sx, sy, rot, c, c)
-        if pts:
-            ld.polygon(pts, fill=skin, outline=ink, width=5)
-    else:
-        HEADS.get(shape, head_round)(ld, c, c, r * sx, r * sy, skin, ink)
-        if abs(rot) > 1e-3:
-            hl = hl.rotate(rot, resample=Image.BICUBIC, center=(c, c))
-    return hl
+    if abs(sx - 1.0) > 1e-3 or abs(sy - 1.0) > 1e-3:
+        nw = max(1, round(layer.width * sx))
+        nh = max(1, round(layer.height * sy))
+        layer = layer.resize((nw, nh), Image.LANCZOS)
+        cx = round(cx * sx)
+        cy = round(cy * sy)
+    if abs(rot) > 1e-3:
+        layer = layer.rotate(rot, resample=Image.BICUBIC, center=(cx, cy))
+    return layer, cx, cy
 
 # ---------------------------------------------------------------- 零件：頭髮
 
@@ -108,6 +107,44 @@ def hair_none(ld, cx, cy, r, color, ink):
 
 
 HAIRS = {"chord": hair_chord, "none": hair_none}
+
+
+def _hair_shape_layer(recipe, r, color, ink):
+    """畫頭髮基本型（套用 hair_sx/hair_sy 拉伸與 hair_rot 旋轉），回傳 RGBA layer（無髮回 None）。"""
+    style = (recipe.get("hair") or {}).get("style", "none")
+    if style == "none":
+        return None
+    sx = float(recipe.get("hair_sx", 1.0) or 1.0)
+    sy = float(recipe.get("hair_sy", 1.0) or 1.0)
+    rot = float(recipe.get("hair_rot", 0.0) or 0.0)
+    rx, ry = r * sx, r * sy
+    ext = int(max(rx, ry) * 1.6) + 6
+    size = ext * 2
+    hl = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    ld = ImageDraw.Draw(hl)
+    c = size // 2
+    if style == "chord":
+        ld.chord([c - rx - 2, c - ry - 2, c + rx + 2, c + ry + 2], 217, 323, fill=color, outline=ink, width=5)
+    elif style == "fringe":
+        # 瀏海：蓋住額頭上緣的弧形＋底邊
+        ld.pieslice([c - rx - 2, c - ry - 2, c + rx + 2, c + ry + 2], 200, 340, fill=color, outline=ink, width=5)
+        ld.line([(c - rx, c + int(ry * 0.25)), (c + rx, c + int(ry * 0.25))], fill=ink, width=5)
+    elif style == "spiky":
+        # 鋸齒：頂部多個三角尖
+        n = 5
+        pts = []
+        for i in range(n):
+            xl = c - rx + (2 * rx * i) / n
+            xr = c - rx + (2 * rx * (i + 1)) / n
+            xm = (xl + xr) / 2
+            pts.append((xl, c + int(ry * 0.1)))
+            pts.append((xm, c - int(ry * 1.35)))
+        pts.append((c + rx, c + int(ry * 0.1)))
+        pts.append((c - rx, c + int(ry * 0.1)))
+        ld.polygon(pts, fill=color, outline=ink, width=5)
+    if abs(rot) > 1e-3:
+        hl = hl.rotate(rot, resample=Image.BICUBIC, center=(c, c))
+    return hl
 
 # ---------------------------------------------------------------- 零件：帽子
 
@@ -292,7 +329,7 @@ def list_recipes():
 
 PART_CATALOG = {
     "heads": [{"key": "round", "name": "圓頭"}, {"key": "square", "name": "方頭"}, {"key": "triangle", "name": "三角頭"}],
-    "hairs": [{"key": "chord", "name": "短髮"}, {"key": "none", "name": "無"}],
+    "hairs": [{"key": "chord", "name": "短髮"}, {"key": "fringe", "name": "瀏海"}, {"key": "spiky", "name": "鋸齒"}, {"key": "none", "name": "無"}],
     "hats": [{"key": "none", "name": "無"}, {"key": "cap", "name": "帽子"}],
     "eyes": [{"key": "dot", "name": "點眼"}, {"key": "big", "name": "大眼"}],
     "mouths": [{"key": "line", "name": "線嘴"}, {"key": "wide", "name": "寬嘴"}],
@@ -304,6 +341,7 @@ DEFAULT_SPEC = {
     "name": "新角色",
     "head": "round", "hair": "chord", "hat": "none", "eyes": "dot", "mouth": "line",
     "head_sx": 1.0, "head_sy": 1.0, "head_rot": 0.0, "head_v": [],
+    "hair_sx": 1.0, "hair_sy": 1.0, "hair_rot": 0.0, "hair_dx": 0.0, "hair_dy": 0.0,
     "ears": "none", "brow": "line", "glasses": False, "facing": "auto",
     "eye_dx": 0, "eye_dy": 0, "mouth_dx": 0, "mouth_dy": 0,
     "neck_dx": 0, "neck_dy": 0.7, "hip_dx": 0, "hip_dy": 2.0,
@@ -343,6 +381,11 @@ def build_recipe(spec):
         "head_sy": float(spec.get("head_sy") if spec.get("head_sy") is not None else 1.0),
         "head_rot": float(spec.get("head_rot") if spec.get("head_rot") is not None else 0.0),
         "head_v": spec.get("head_v") if isinstance(spec.get("head_v"), list) else [],
+        "hair_sx": float(spec.get("hair_sx") if spec.get("hair_sx") is not None else 1.0),
+        "hair_sy": float(spec.get("hair_sy") if spec.get("hair_sy") is not None else 1.0),
+        "hair_rot": float(spec.get("hair_rot") if spec.get("hair_rot") is not None else 0.0),
+        "hair_dx": float(spec.get("hair_dx") if spec.get("hair_dx") is not None else 0.0),
+        "hair_dy": float(spec.get("hair_dy") if spec.get("hair_dy") is not None else 0.0),
         "eyes": spec.get("eyes", "dot"),
         "mouth": spec.get("mouth", "line"),
         "ears": spec.get("ears", "none"),
@@ -400,14 +443,22 @@ def head_preview_meta(recipe, r=70):
     sy = float(recipe.get("head_sy", 1.0) or 1.0)
     rot = float(recipe.get("head_rot", 0.0) or 0.0)
     verts = _head_poly_points(recipe, r, sx, sy, rot, cx, cy)
-    return bg.convert("RGB"), {"cx": cx, "cy": cy, "rx": r * sx, "ry": r * sy, "rot": rot,
-                               "verts": [[round(x, 1), round(y, 1)] for x, y in verts]}
+    hx = float(recipe.get("hair_sx", 1.0) or 1.0)
+    hy = float(recipe.get("hair_sy", 1.0) or 1.0)
+    hrot = float(recipe.get("hair_rot", 0.0) or 0.0)
+    hdx = float(recipe.get("hair_dx", 0.0) or 0.0)
+    hdy = float(recipe.get("hair_dy", 0.0) or 0.0)
+    return bg.convert("RGB"), {"r": r, "cx": cx, "cy": cy, "rx": r * sx, "ry": r * sy, "rot": rot,
+                               "verts": [[round(x, 1), round(y, 1)] for x, y in verts],
+                               "hair": {"rx": r * hx, "ry": r * hy, "rot": hrot,
+                                        "ox": round(hdx * r, 1), "oy": round(hdy * r, 1),
+                                        "style": (recipe.get("hair") or {}).get("style", "none")}}
 
 
 # ---------------------------------------------------------------- 自訂零件（捏零件存檔復用）
 
 _CUSTOM_PARTS_FILE = Path(__file__).resolve().parents[2] / "working" / "custom_parts.json"
-_CUSTOM_PARTS = {"heads": {}}
+_CUSTOM_PARTS = {"looks": {}}
 
 
 def _load_custom_parts():
@@ -417,11 +468,11 @@ def _load_custom_parts():
         if isinstance(data, dict):
             _CUSTOM_PARTS = data
     except Exception:
-        _CUSTOM_PARTS = {"heads": {}}
-    _CUSTOM_PARTS.setdefault("heads", {})
+        _CUSTOM_PARTS = {"looks": {}}
+    _CUSTOM_PARTS.setdefault("looks", {})
 
 
-def list_custom_parts(kind="heads"):
+def list_custom_parts(kind="looks"):
     return _CUSTOM_PARTS.get(kind, {})
 
 
@@ -437,6 +488,19 @@ def save_custom_part(kind, name, preset):
     except Exception:
         pass
     return True
+
+
+def delete_custom_part(kind, name):
+    """刪除一個自訂零件。"""
+    name = (name or "").strip()
+    if name in _CUSTOM_PARTS.get(kind, {}):
+        del _CUSTOM_PARTS[kind][name]
+        try:
+            _CUSTOM_PARTS_FILE.write_text(json.dumps(_CUSTOM_PARTS, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+        return True
+    return False
 
 
 _load_custom_parts()
@@ -651,19 +715,23 @@ def render_head_layer(recipe, r, facing, brow, eye, mouth, gaze):
     facing ∈ {"front","left","right","back"}：正視/側左/側右/後視。"""
     skin = recipe.get("skin", SKIN)
     ink = recipe.get("ink", INK)
-    pad = int(r * 1.6)
+    pad = int(r * 2.0)
     size = 2 * (r + pad)
     layer = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     ld = ImageDraw.Draw(layer)
     cx = cy = r + pad
-    hl = _head_shape_layer(recipe, r, skin, ink)
-    layer.alpha_composite(hl, (cx - hl.width // 2, cy - hl.height // 2))
+    _draw_head_base(ld, recipe, r, skin, ink, cx, cy)
     hair = recipe.get("hair") or {}
     if facing == "back":
         # 後視：頭髮蓋滿整個頭（無五官）
         ld.ellipse([cx - r, cy - r, cx + r, cy + r], fill=hair.get("color", (38, 42, 45)), outline=ink, width=5)
     else:
-        HAIRS.get(hair.get("style", "none"), hair_none)(ld, cx, cy, r, hair.get("color", (38, 42, 45)), ink)
+        hlayer = _hair_shape_layer(recipe, r, hair.get("color", (38, 42, 45)), ink)
+        if hlayer:
+            hdx = float(recipe.get("hair_dx", 0.0) or 0.0)
+            hdy = float(recipe.get("hair_dy", 0.0) or 0.0)
+            layer.alpha_composite(hlayer, (cx + int(hdx * r) - hlayer.width // 2,
+                                           cy + int(hdy * r) - hlayer.height // 2))
     ear_fn = EARS.get(recipe.get("ears", "none"))
     if ear_fn:
         ear_fn(ld, cx, cy, r, skin, ink, facing)
@@ -677,7 +745,7 @@ def render_head_layer(recipe, r, facing, brow, eye, mouth, gaze):
     mouth_dx = recipe.get("mouth_dx", 0.0)
     mouth_dy = recipe.get("mouth_dy", 0.0)
     if facing == "back":
-        return layer, cx, cy
+        return _apply_head_transform(layer, cx, cy, recipe)
     if facing == "front":
         _eyes_front(ld, cx, cy, r, gaze, eye, ink, recipe.get("eyes", "dot"), eye_dx, eye_dy)
         if brow_w:
@@ -694,7 +762,7 @@ def render_head_layer(recipe, r, facing, brow, eye, mouth, gaze):
                 ld.ellipse([ex - int(r * 0.36), ey - int(r * 0.32), ex + int(r * 0.36), ey + int(r * 0.30)],
                            outline=ink, width=4)
             ld.line([(cx - int(r * 0.04), ey), (cx + int(r * 0.04), ey)], fill=ink, width=4)
-        return layer, cx, cy
+        return _apply_head_transform(layer, cx, cy, recipe)
     dir = -1 if facing == "left" else 1
     eye_x, ey = EYES.get(recipe.get("eyes", "dot"), eye_dot)(ld, cx, cy, r, dir, gaze, eye, ink, eye_dx, eye_dy)
     if brow_w:
@@ -706,7 +774,7 @@ def render_head_layer(recipe, r, facing, brow, eye, mouth, gaze):
     MOUTHS.get(recipe.get("mouth", "line"), mouth_line)(ld, cx, cy, r, dir, mouth, ink, mouth_dx, mouth_dy)
     if recipe.get("glasses"):
         glasses_round(ld, cx, cy, r, dir, eye_x, ey, ink)
-    return layer, cx, cy
+    return _apply_head_transform(layer, cx, cy, recipe)
 
 
 def resolve_facing(recipe, dir, facing=None):

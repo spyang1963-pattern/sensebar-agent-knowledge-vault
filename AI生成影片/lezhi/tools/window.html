@@ -300,13 +300,18 @@
         </div>
         <div class="pvrow">
           <b>頭型</b><select id="custHead" onchange="custHeadChange()"></select>
-          <b>髮</b><select id="custHair" onchange="custPreview()"></select>
+          <b>髮</b><select id="custHair" onchange="custHairChange()"></select>
           <b>帽</b><select id="custHat" onchange="custPreview()"></select>
         </div>
         <div class="pvrow" style="align-items:center">
           <b>頭寬</b><input type="range" id="custHeadSx" min="0.5" max="1.8" step="0.05" value="1" oninput="scheduleCustPreview()" style="width:70px">
           <b>頭高</b><input type="range" id="custHeadSy" min="0.5" max="1.8" step="0.05" value="1" oninput="scheduleCustPreview()" style="width:70px">
           <b>旋轉</b><input type="range" id="custHeadRot" min="-45" max="45" step="1" value="0" oninput="scheduleCustPreview()" style="width:70px">
+        </div>
+        <div class="pvrow" style="align-items:center">
+          <b>髮寬</b><input type="range" id="custHairSx" min="0.5" max="1.8" step="0.05" value="1" oninput="scheduleCustPreview()" style="width:70px">
+          <b>髮高</b><input type="range" id="custHairSy" min="0.5" max="1.8" step="0.05" value="1" oninput="scheduleCustPreview()" style="width:70px">
+          <b>髮轉</b><input type="range" id="custHairRot" min="-45" max="45" step="1" value="0" oninput="scheduleCustPreview()" style="width:70px">
         </div>
         <div class="pvrow">
           <b>眼睛</b><select id="custEyes" onchange="custPreview()"></select>
@@ -347,6 +352,7 @@
           <span>上衣<input type="color" id="custTop" onchange="custPreview()" style="border:none;width:34px;height:26px;padding:0;background:none"></span>
           <span>褲<input type="color" id="custPants" onchange="custPreview()" style="border:none;width:34px;height:26px;padding:0;background:none"></span>
           <button class="mini" onclick="custSave()">✓ 存為新角色</button>
+          <button class="mini" onclick="openPartsLib()">🧩 零件庫</button>
           <span class="hint" id="custHint"></span>
         </div>
       </div>
@@ -359,10 +365,20 @@
           <div class="chandle" id="hsScaleY" style="background:#8a6d3b"><span>高</span></div>
         </div>
         <div style="display:flex;gap:6px;align-items:center">
-          <input id="partName" type="text" placeholder="零件名（如 蛋型頭）" style="flex:1;border:1px solid var(--line);border-radius:6px;padding:5px 8px;font:inherit;font-size:12px">
-          <button class="mini" onclick="savePart()">＋ 存零件</button>
+          <input id="lookName" type="text" placeholder="造型名（如 帥氣頭）" style="flex:1;border:1px solid var(--line);border-radius:6px;padding:5px 8px;font:inherit;font-size:12px">
+          <button class="mini" onclick="saveLook()">＋ 存造型</button>
         </div>
-        <span class="hint" id="partHint" style="font-size:11.5px">捏好的頭會出現在上方「頭型」選單，可重複套用</span>
+        <span class="hint" id="lookHint" style="font-size:11.5px">頭型＋髮型一起存成一個造型，可在「零件庫」套用</span>
+      </div>
+      <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:8px">
+        <div style="font-weight:700">捏頭髮<span style="font-weight:400;color:var(--sage);font-size:11px">拖控制點：移/轉/寬/高</span></div>
+        <div id="hairSculptBox" style="position:relative;width:260px;height:260px;border:1px solid var(--line);border-radius:10px;background:#fff;overflow:hidden">
+          <img id="hairSculptImg" style="width:100%;height:100%;object-fit:fill" alt="頭髮捏塑">
+          <div class="chandle" id="hairMove" style="background:#4a9d6b"><span>移</span></div>
+          <div class="chandle" id="hairRot" style="background:#c45c52"><span>轉</span></div>
+          <div class="chandle" id="hairScaleX" style="background:#3a6ea5"><span>寬</span></div>
+          <div class="chandle" id="hairScaleY" style="background:#8a6d3b"><span>高</span></div>
+        </div>
       </div>
     </div>
   </section>
@@ -406,6 +422,18 @@
 </div>
 
 <div id="vidModal" class="vidmodal" onclick="closeVid(event)"><video id="vidPlayer" controls autoplay playsinline></video></div>
+
+<div id="partsLib" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:14px;padding:18px;width:min(720px,92vw);max-height:82vh;display:flex;flex-direction:column">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <b style="font-size:15px">🧩 造型庫</b>
+      <button class="mini" onclick="$('#partsLib').style.display='none'">✕ 關閉</button>
+    </div>
+    <div style="overflow:auto">
+      <div id="libLooks" style="display:flex;flex-wrap:wrap;gap:10px"></div>
+    </div>
+  </div>
+</div>
 
 <div id="mPointPop" class="mpop" style="display:none">
   <div class="mpop-title" id="mPointTitle">第 1 點</div>
@@ -684,7 +712,6 @@ async function loadCharParts(){
     const def=r.default||{};
     const fill=(id,items,val)=>{$('#'+id).innerHTML=(items||[]).map(i=>`<option value="${i.key}" ${i.key===val?'selected':''}>${i.name}</option>`).join('');};
     fill('custHead',cat.heads,def.head);
-    loadCustomParts();
     fill('custHair',cat.hairs,def.hair);
     fill('custHat',cat.hats,def.hat);
     fill('custEyes',cat.eyes,def.eyes);
@@ -701,6 +728,10 @@ async function loadCharParts(){
     $('#custHeadSx').value=(def.head_sx!=null?def.head_sx:1);
     $('#custHeadSy').value=(def.head_sy!=null?def.head_sy:1);
     $('#custHeadRot').value=(def.head_rot!=null?def.head_rot:0);
+    $('#custHairSx').value=(def.hair_sx!=null?def.hair_sx:1);
+    $('#custHairSy').value=(def.hair_sy!=null?def.hair_sy:1);
+    $('#custHairRot').value=(def.hair_rot!=null?def.hair_rot:0);
+    HAIR_DX=(def.hair_dx!=null?+def.hair_dx:0); HAIR_DY=(def.hair_dy!=null?+def.hair_dy:0);
     $('#custHairColor').value=def.hair_color||'#262a2d';
     $('#custHatColor').value=def.hat_color||'#c45c52';
     $('#custTop').value=def.top||'#758985';
@@ -713,6 +744,7 @@ function custSpec(){
     name:$('#custName').value.trim()||'新角色',
     head:$('#custHead').value, hair:$('#custHair').value, hat:$('#custHat').value,
     head_sx:parseFloat($('#custHeadSx').value)||1, head_sy:parseFloat($('#custHeadSy').value)||1, head_rot:parseFloat($('#custHeadRot').value)||0, head_v:HEAD_V,
+    hair_sx:parseFloat($('#custHairSx').value)||1, hair_sy:parseFloat($('#custHairSy').value)||1, hair_rot:parseFloat($('#custHairRot').value)||0, hair_dx:HAIR_DX, hair_dy:HAIR_DY,
     eyes:$('#custEyes').value, mouth:$('#custMouth').value, glasses:$('#custGlasses').checked,
     ears:$('#custEars').value, brow:$('#custBrow').value,
     facing:$('#custFacing').value,
@@ -749,6 +781,7 @@ async function custPreview(){
 let HEAD_PREVIEW=null;
 const BASE_V={square:[[-1,-1],[1,-1],[1,1],[-1,1]], triangle:[[-1,-1],[1,-1],[0,1]]};
 let HEAD_V=[];
+let HAIR_DX=0, HAIR_DY=0;
 let VERT_HANDLES=[];
 async function partPreview(){
   try{
@@ -756,11 +789,13 @@ async function partPreview(){
     const j=await r.json();
     HEAD_PREVIEW=j;
     $('#headSculptImg').src='data:image/png;base64,'+j.image;
+    $('#hairSculptImg').src='data:image/png;base64,'+j.image;
     try{
       placeHeadHandles();
+      placeHairHandles();
     }catch(e){
-      console.error('placeHeadHandles',e);
-      const lg=$('#log'); if(lg){lg.style.display='block'; lg.textContent='placeHeadHandles 錯誤: '+e.message+' @'+e.lineNumber;}
+      console.error('placeHandles',e);
+      const lg=$('#log'); if(lg){lg.style.display='block'; lg.textContent='placeHandles 錯誤: '+e.message;}
     }
   }catch(e){
     console.error('partPreview',e);
@@ -875,38 +910,123 @@ function hsHandle(id,kind){
   });
 }
 hsHandle('#hsRotate','rot'); hsHandle('#hsScaleX','sx'); hsHandle('#hsScaleY','sy');
-async function savePart(){
-  const name=$('#partName').value.trim();
-  if(!name){alert('請輸入零件名。');return;}
-  const preset={base:$('#custHead').value, sx:parseFloat($('#custHeadSx').value)||1, sy:parseFloat($('#custHeadSy').value)||1, rot:parseFloat($('#custHeadRot').value)||0, v:HEAD_V};
-  const r=await (await fetch('/api/custom_part',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'heads',name,preset})})).json();
-  if(r.ok){$('#partHint').textContent='已存「'+name+'」'; loadCustomParts(); $('#partName').value='';}
-}
-async function loadCustomParts(){
-  try{
-    const r=await (await fetch('/api/custom_parts')).json();
-    const parts=r.parts||{};
-    const sel=$('#custHead');
-    sel.querySelectorAll('option[data-custom]').forEach(o=>o.remove());
-    sel.insertAdjacentHTML('beforeend', Object.keys(parts).map(k=>`<option data-custom value="__${k}">${k}（自訂）</option>`).join(''));
-  }catch(e){}
-}
-async function custHeadChange(){
-  const v=$('#custHead').value;
-  HEAD_V=[];
-  if(v.startsWith('__')){
-    const r=await (await fetch('/api/custom_parts')).json();
-    const p=(r.parts||{})[v.slice(2)];
-    if(p){
-      $('#custHead').value=p.base||'round';
-      $('#custHeadSx').value=p.sx!=null?p.sx:1;
-      $('#custHeadSy').value=p.sy!=null?p.sy:1;
-      $('#custHeadRot').value=p.rot!=null?p.rot:0;
-      if(Array.isArray(p.v)) HEAD_V=p.v.map(q=>[+q[0],+q[1]]);
-    }
+function placeHairHandles(){
+  if(!HEAD_PREVIEW) return;
+  const hm=(HEAD_PREVIEW.meta||{}).hair;
+  if(!hm) return;
+  const box=$('#hairSculptBox');
+  const bw=(box && box.clientWidth)||260;
+  const s=bw/HEAD_PREVIEW.size[0];
+  const m=HEAD_PREVIEW.meta;
+  const on=(hm.style && hm.style!=='none');
+  const hcx=(m.cx+(hm.ox||0))*s, hcy=(m.cy+(hm.oy||0))*s;
+  const rot=(hm.rot||0)*Math.PI/180;
+  const cos=Math.cos(rot), sin=Math.sin(rot);
+  const pos=(lx,ly)=>{
+    const Lx=lx*s, Ly=ly*s;
+    return [hcx+Lx*cos-Ly*sin-10, hcy+Lx*sin+Ly*cos-10];
+  };
+  const moveEl=$('#hairMove');
+  if(moveEl){moveEl.style.display=on?'block':'none'; if(on){moveEl.style.left=(hcx-10)+'px'; moveEl.style.top=(hcy-10)+'px';}}
+  for(const [id,lx,ly] of [['hairRot',0,-(hm.ry+24)],['hairScaleX',hm.rx+24,0],['hairScaleY',0,hm.ry+24]]){
+    const el=$('#'+id);
+    if(!el) continue;
+    el.style.display=on?'block':'none';
+    if(on){const [l,t]=pos(lx,ly); el.style.left=l+'px'; el.style.top=t+'px';}
   }
-  custPreview();
 }
+function hairHandle(id,kind){
+  $('#'+id).addEventListener('mousedown',e=>{
+    e.preventDefault();
+    if(!HEAD_PREVIEW)return;
+    const move=ev=>{
+      const box=$('#hairSculptBox').getBoundingClientRect();
+      const s=box.width/HEAD_PREVIEW.size[0];
+      const hm=HEAD_PREVIEW.meta.hair;
+      const m=HEAD_PREVIEW.meta;
+      const r=m.r||70;
+      if(kind==='move'){
+        const dxi=(ev.clientX-box.left)/s-m.cx;
+        const dyi=(ev.clientY-box.top)/s-m.cy;
+        HAIR_DX=Math.round(dxi/r*100)/100;
+        HAIR_DY=Math.round(dyi/r*100)/100;
+      }else{
+        const hcx=(m.cx+(hm.ox||0))*s, hcy=(m.cy+(hm.oy||0))*s;
+        const dx=ev.clientX-box.left-hcx, dy=ev.clientY-box.top-hcy;
+        if(kind==='rot'){
+          let ang=Math.round(Math.atan2(dy,dx)*180/Math.PI+90);
+          ang=Math.max(-45,Math.min(45,ang));
+          $('#custHairRot').value=ang;
+        }else if(kind==='sx'){
+          let v=Math.abs(dx)/(hm.rx*s);
+          v=Math.max(0.5,Math.min(1.8,Math.round(v*20)/20));
+          $('#custHairSx').value=v;
+        }else if(kind==='sy'){
+          let v=Math.abs(dy)/(hm.ry*s);
+          v=Math.max(0.5,Math.min(1.8,Math.round(v*20)/20));
+          $('#custHairSy').value=v;
+        }
+      }
+      scheduleCustPreview();
+    };
+    const up=()=>{window.removeEventListener('mousemove',move);window.removeEventListener('mouseup',up);};
+    window.addEventListener('mousemove',move);
+    window.addEventListener('mouseup',up);
+  });
+}
+hairHandle('hairMove','move'); hairHandle('hairRot','rot'); hairHandle('hairScaleX','sx'); hairHandle('hairScaleY','sy');
+async function saveLook(){
+  const name=$('#lookName').value.trim();
+  if(!name){alert('請輸入造型名。');return;}
+  const head={base:$('#custHead').value, sx:parseFloat($('#custHeadSx').value)||1, sy:parseFloat($('#custHeadSy').value)||1, rot:parseFloat($('#custHeadRot').value)||0, v:HEAD_V};
+  const hair={base:$('#custHair').value, sx:parseFloat($('#custHairSx').value)||1, sy:parseFloat($('#custHairSy').value)||1, rot:parseFloat($('#custHairRot').value)||0, dx:HAIR_DX, dy:HAIR_DY};
+  const preset={head, hair};
+  const r=await (await fetch('/api/custom_part',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'looks',name,preset})})).json();
+  if(r.ok){$('#lookHint').textContent='已存造型「'+name+'」'; $('#lookName').value='';}
+}
+async function custHairChange(){ HAIR_DX=0; HAIR_DY=0; custPreview(); }
+function applyLook(preset){
+  const h=preset.head||{}, w=preset.hair||{};
+  $('#custHead').value=h.base||'round';
+  $('#custHeadSx').value=h.sx!=null?h.sx:1;
+  $('#custHeadSy').value=h.sy!=null?h.sy:1;
+  $('#custHeadRot').value=h.rot!=null?h.rot:0;
+  HEAD_V=Array.isArray(h.v)?h.v.map(q=>[+q[0],+q[1]]):[];
+  $('#custHair').value=w.base||'chord';
+  $('#custHairSx').value=w.sx!=null?w.sx:1;
+  $('#custHairSy').value=w.sy!=null?w.sy:1;
+  $('#custHairRot').value=w.rot!=null?w.rot:0;
+  HAIR_DX=w.dx!=null?+w.dx:0; HAIR_DY=w.dy!=null?+w.dy:0;
+  custPreview();
+  $('#partsLib').style.display='none';
+}
+async function deleteLook(name){
+  if(!confirm('刪除造型「'+name+'」？'))return;
+  await fetch('/api/custom_part',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'looks',name,delete:true})});
+}
+async function openPartsLib(){
+  $('#partsLib').style.display='flex';
+  const r=await (await fetch('/api/custom_parts')).json();
+  const mkCard=(name,preset)=>{
+    const card=document.createElement('div');
+    card.style.cssText='width:160px;border:1px solid var(--line);border-radius:10px;padding:8px;background:var(--soft);text-align:center';
+    card.innerHTML='<img style="width:100%;height:120px;object-fit:contain;background:#fff;border-radius:6px"><div style="font-size:12.5px;margin:6px 0">'+esc(name)+'</div>';
+    $('#libLooks').appendChild(card);
+    const h=preset.head||{}, w=preset.hair||{};
+    const spec={head:h.base||'round', head_sx:h.sx||1, head_sy:h.sy||1, head_rot:h.rot||0, head_v:h.v||[],
+                hair:w.base||'chord', hair_sx:w.sx||1, hair_sy:w.sy||1, hair_rot:w.rot||0, hair_dx:w.dx||0, hair_dy:w.dy||0};
+    fetch('/api/render_char_head',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({spec})})
+      .then(x=>x.blob()).then(b=>{const u=URL.createObjectURL(b); card.querySelector('img').src=u;});
+    const bar=document.createElement('div'); bar.style.cssText='display:flex;gap:5px;justify-content:center;margin-top:4px';
+    bar.innerHTML='<button class="mini" style="flex:1">套用</button><button class="mini" style="background:#a3502a">刪</button>';
+    bar.children[0].onclick=()=>applyLook(preset);
+    bar.children[1].onclick=async()=>{await deleteLook(name); openPartsLib();};
+    card.appendChild(bar);
+  };
+  $('#libLooks').innerHTML='';
+  for(const [n,p] of Object.entries(r.looks||{})) mkCard(n,p);
+}
+async function custHeadChange(){ HEAD_V=[]; custPreview(); }
 function placeCharHandle(el,pos,sx,sy){
   el.style.left=(pos[0]*sx-10)+'px';
   el.style.top=(pos[1]*sy-10)+'px';

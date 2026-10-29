@@ -936,7 +936,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"catalog": getattr(_char_parts_mod, "PART_CATALOG", {}),
                         "default": getattr(_char_parts_mod, "DEFAULT_SPEC", {})})
         elif p == "/api/custom_parts":
-            self._json({"parts": _char_parts_mod.list_custom_parts("heads")})
+            self._json({"looks": _char_parts_mod.list_custom_parts("looks")})
         elif p == "/api/motion":
             self._json({"poses": MOTION_POSES, "kinds": MOTION_KINDS,
                         "facing": MOTION_FACING, "params": MOTION_PARAMS,
@@ -1143,11 +1143,14 @@ class Handler(BaseHTTPRequestHandler):
             b64 = base64.b64encode(buf.getvalue()).decode("ascii")
             self._json({"image": b64, "meta": meta, "size": list(img.size)})
         elif p == "/api/custom_part":
-            kind = data.get("kind") or "heads"
+            kind = data.get("kind") or "looks"
             name = data.get("name") or ""
-            preset = data.get("preset") or {}
-            ok = _char_parts_mod.save_custom_part(kind, name, preset)
-            self._json({"ok": ok, "parts": _char_parts_mod.list_custom_parts(kind)})
+            if data.get("delete"):
+                ok = _char_parts_mod.delete_custom_part(kind, name)
+            else:
+                preset = data.get("preset") or {}
+                ok = _char_parts_mod.save_custom_part(kind, name, preset)
+            self._json({"ok": ok, "looks": _char_parts_mod.list_custom_parts("looks")})
         elif p == "/api/motion":
             cfg = data.get("config") or data
             _write_json(MOTION_JSON, cfg)
