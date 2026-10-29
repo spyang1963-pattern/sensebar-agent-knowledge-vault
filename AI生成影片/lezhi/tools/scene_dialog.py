@@ -39,6 +39,7 @@ NAME = {"ren": "阿忍", "le": "小樂"}
 
 import char_modes as cm  # noqa: E402
 import char_parts as cp  # noqa: E402
+import char_trajectory as ct  # noqa: E402
 _CHAR_MODE = cm.DEFAULT
 _mode = cm.get(_CHAR_MODE)
 draw_char = _mode.draw_char
@@ -81,29 +82,52 @@ HEAD_SHIFT = {
     "stand": {"le": (0, 0), "ren": (0, 0)},
     "sitstand": {"le": (16, 0), "ren": (-38, -21)},
 }
+# 角色位置基準（像素）。實際背景尺寸（flux 長邊壓 1024）：直式 576×1024、橫式 1024×576；渲染時依畫布等比縮放。
 CHAR_POS = {
-    "le": {"sit": (150, 470), "stand": (150, 750)},
-    "ren": {"sit": (435, 470), "stand": (435, 750)},
+    "portrait": {
+        "W": 576, "H": 1024,
+        "le":  {"sit": (150, 470), "stand": (150, 750)},
+        "ren": {"sit": (435, 470), "stand": (435, 750)},
+    },
+    "landscape": {
+        "W": 1024, "H": 576,
+        "le":  {"sit": (307, 280), "stand": (307, 315)},
+        "ren": {"sit": (573, 280), "stand": (573, 315)},
+    },
 }
 POS = None  # 覆寫（預覽介面套用）：{"le": {x,y,pose}, "ren": {x,y,pose}, "seat": bool}
 
 
-def resolve_pose(pose):
-    """依場景 pose（或 POS 覆寫）回傳 (le_p, ren_p, le_x, le_y, ren_x, ren_y)。"""
+def _orient(W, H):
+    return "landscape" if W > H else "portrait"
+
+
+def _char_r(W, H):
+    """角色頭半徑隨畫布高度縮放，讓角色與背景物件（家具）比例一致（直式 1024 高→55、橫式 576 高→約 31）。"""
+    return max(28, round(55 * H / 1024))
+
+
+def resolve_pose(pose, W=1080, H=1920):
+    """依場景 pose（或 POS 覆寫）回傳 (le_p, ren_p, le_x, le_y, ren_x, ren_y)，座標隨畫布縮放。"""
+    cfg = CHAR_POS[_orient(W, H)]
+    sx, sy = W / cfg["W"], H / cfg["H"]
     if POS:
         le = POS.get("le") or {}
         ren = POS.get("ren") or {}
         le_p = le.get("pose") or POSE_MAP.get(pose, POSE_MAP["sit"])["le"]
         ren_p = ren.get("pose") or POSE_MAP.get(pose, POSE_MAP["sit"])["ren"]
-        le_x = int(le.get("x", CHAR_POS["le"].get(le_p, (150, 470))[0]))
-        le_y = int(le.get("y", CHAR_POS["le"].get(le_p, (150, 470))[1]))
-        ren_x = int(ren.get("x", CHAR_POS["ren"].get(ren_p, (435, 750))[0]))
-        ren_y = int(ren.get("y", CHAR_POS["ren"].get(ren_p, (435, 750))[1]))
+        le_fx, le_fy = cfg["le"].get(le_p, cfg["le"]["sit"])
+        ren_fx, ren_fy = cfg["ren"].get(ren_p, cfg["ren"]["stand"])
+        le_x = int(le.get("x", le_fx * sx))
+        le_y = int(le.get("y", le_fy * sy))
+        ren_x = int(ren.get("x", ren_fx * sx))
+        ren_y = int(ren.get("y", ren_fy * sy))
         return le_p, ren_p, le_x, le_y, ren_x, ren_y
     le_p = POSE_MAP.get(pose, POSE_MAP["sit"])["le"]
     ren_p = POSE_MAP.get(pose, POSE_MAP["sit"])["ren"]
-    return le_p, ren_p, CHAR_POS["le"][le_p][0], CHAR_POS["le"][le_p][1], \
-        CHAR_POS["ren"][ren_p][0], CHAR_POS["ren"][ren_p][1]
+    le_fx, le_fy = cfg["le"][le_p]
+    ren_fx, ren_fy = cfg["ren"][ren_p]
+    return le_p, ren_p, int(le_fx * sx), int(le_fy * sy), int(ren_fx * sx), int(ren_fy * sy)
 
 
 def resolve_seat(pose):
@@ -225,33 +249,44 @@ def encode(frames, out, fps):
 
 
 def render_entrance(out, bg, fps, pose="sit"):
-    """進場：阿忍走路→揮手→（依姿勢）坐下或站定。回傳 (clip, dur)。"""
-    le_p, ren_p, le_x, le_y, ren_x, ren_y = resolve_pose(pose)
+    """進場：阿忍走路→揮手→（依姿勢）坐下或站定。回傳 (clip, dur)。
+
+    用 char_trajectory.compile_path 取代硬編的 x 內插走路：
+      站（場外）→ walk → sit_down/stand → hold(揮手)。
+    """
+    W, H = Image.open(bg).size
+    le_p, ren_p, le_x, le_y, ren_x, ren_y = resolve_pose(pose, W, H)
+    r = _char_r(W, H)
     seat = resolve_seat(pose)
     wave = resolve_wave()
     le_dir, le_tilt, le_shift, le_lean = look_at_gated("le", le_x, le_y, ren_x, ren_y)
-    ren_dir, ren_tilt, ren_shift, ren_lean = look_at_gated("ren", ren_x, ren_y, le_x, le_y)
+
+    target = ren_p if ren_p in ("sit", "stand") else "sit"
+    wps = [
+        {"x": ren_x + round(0.17 * W), "y": ren_y, "pose": "stand", "hold": 0.0},
+        {"x": ren_x, "y": ren_y, "pose": target, "wave": wave, "hold": 1.2},
+    ]
+    segs = [
+        {"motion": "walk", "dur": 2.0, "steps_per_sec": 2.0, "amp": 1.0},
+    ]
+    traj = ct.compile_path(wps, segs)
+
     clip = out / "entrance.mp4"
-    dur = 3.8
+    dur = traj.duration()
     n = int(dur * fps)
     frames = []
     for fi in range(n):
         t = fi / fps
         img = Image.open(bg).convert("RGB")
         d = ImageDraw.Draw(img)
-        draw_char(d, "le", le_x, le_y, 55, le_dir, t, le_p, "flat", "normal", "closed", seat=seat, tilt=le_tilt, shift=le_shift, lean=le_lean)
-        if t < 2.0:
-            prog = t / 2.0
-            x = int(620 - prog * (620 - ren_x))
-            draw_char_standing(d, "ren", x, ren_y, 55, ren_dir, t, wave=False)
-        elif t < 3.2:
-            draw_char_standing(d, "ren", ren_x, ren_y, 55, ren_dir, t, wave=wave, tilt=ren_tilt, shift=ren_shift, lean=ren_lean)
-        else:
-            if ren_p == "sit":
-                k = (t - 3.2) / 0.6
-                draw_char_seated(d, "ren", ren_x, ren_y + int((1 - k) * 40), 55, ren_dir, "flat", "normal", "closed", tilt=ren_tilt, shift=ren_shift, lean=ren_lean)
-            else:
-                draw_char_standing(d, "ren", ren_x, ren_y, 55, ren_dir, t, wave=False, tilt=ren_tilt, shift=ren_shift, lean=ren_lean)
+        # 小樂：靜態坐著（或依姿勢），維持原本對視
+        draw_char(d, "le", le_x, le_y, r, le_dir, t, le_p, "flat", "normal", "closed",
+                  seat=seat, tilt=le_tilt, shift=le_shift, lean=le_lean)
+        # 阿忍：沿軌跡走→坐/站＋揮手
+        tpose, x, y, mode, wv, facing = traj.sample(t)
+        dir_ = -1 if facing == "left" else 1
+        draw_char(d, "ren", x, y, r, dir_, t, mode, "flat", "normal", "closed",
+                  seat=seat, wave=wv, facing=facing, pose_override=tpose)
         frames.append(img)
     encode(frames, clip, fps)
     return clip, dur
@@ -259,7 +294,9 @@ def render_entrance(out, bg, fps, pose="sit"):
 
 def render_line(out, bg, who, text, idx, fps, pose="sit", tail=0.35):
     """單句對白：TTS→音量對嘴→渲染（含字幕）。回傳 scene_dur。"""
-    le_p, ren_p, le_x, le_y, ren_x, ren_y = resolve_pose(pose)
+    W, H = Image.open(bg).size
+    le_p, ren_p, le_x, le_y, ren_x, ren_y = resolve_pose(pose, W, H)
+    r = _char_r(W, H)
     seat = resolve_seat(pose)
     le_dir, le_tilt, le_shift, le_lean = look_at_gated("le", le_x, le_y, ren_x, ren_y)
     ren_dir, ren_tilt, ren_shift, ren_lean = look_at_gated("ren", ren_x, ren_y, le_x, le_y)
@@ -281,11 +318,11 @@ def render_line(out, bg, who, text, idx, fps, pose="sit", tail=0.35):
         img = Image.open(bg).convert("RGB")
         d = ImageDraw.Draw(img)
         if who == "ren":
-            draw_char(d, "ren", ren_x, ren_y, 55, ren_dir, t, ren_p, brow, eye, mouth, seat=seat, tilt=ren_tilt, shift=ren_shift, lean=ren_lean)
-            draw_char(d, "le", le_x, le_y, 55, le_dir, t, le_p, "flat", "normal", "closed", seat=seat, tilt=le_tilt, shift=le_shift, lean=le_lean)
+            draw_char(d, "ren", ren_x, ren_y, r, ren_dir, t, ren_p, brow, eye, mouth, seat=seat, tilt=ren_tilt, shift=ren_shift, lean=ren_lean)
+            draw_char(d, "le", le_x, le_y, r, le_dir, t, le_p, "flat", "normal", "closed", seat=seat, tilt=le_tilt, shift=le_shift, lean=le_lean)
         else:
-            draw_char(d, "le", le_x, le_y, 55, le_dir, t, le_p, brow, eye, mouth, seat=seat, tilt=le_tilt, shift=le_shift, lean=le_lean)
-            draw_char(d, "ren", ren_x, ren_y, 55, ren_dir, t, ren_p, "flat", "normal", "closed", seat=seat, tilt=ren_tilt, shift=ren_shift, lean=ren_lean)
+            draw_char(d, "le", le_x, le_y, r, le_dir, t, le_p, brow, eye, mouth, seat=seat, tilt=le_tilt, shift=le_shift, lean=le_lean)
+            draw_char(d, "ren", ren_x, ren_y, r, ren_dir, t, ren_p, "flat", "normal", "closed", seat=seat, tilt=ren_tilt, shift=ren_shift, lean=ren_lean)
         draw_subtitle(d, who, text, img.size[0], img.size[1])
         frames.append(img)
     encode(frames, clip, fps)

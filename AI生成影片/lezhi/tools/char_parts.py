@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -18,16 +19,82 @@ SKIN = (247, 219, 196)
 
 # ---------------------------------------------------------------- 零件：頭
 
-def head_round(ld, cx, cy, r, skin, ink):
-    ld.ellipse([cx - r, cy - r, cx + r, cy + r], fill=skin, outline=ink, width=5)
+def head_round(ld, cx, cy, rx, ry, skin, ink):
+    ld.ellipse([cx - rx, cy - ry, cx + rx, cy + ry], fill=skin, outline=ink, width=5)
 
 
-def head_square(ld, cx, cy, r, skin, ink):
-    ld.rounded_rectangle([cx - r, cy - r, cx + r, cy + r], radius=int(r * 0.3),
+def head_square(ld, cx, cy, rx, ry, skin, ink):
+    ld.rounded_rectangle([cx - rx, cy - ry, cx + rx, cy + ry], radius=int(min(rx, ry) * 0.3),
                          fill=skin, outline=ink, width=5)
 
 
-HEADS = {"round": head_round, "square": head_square}
+def head_triangle(ld, cx, cy, rx, ry, skin, ink):
+    """三角頭：寬額（底邊在上）、尖下巴（頂點在下）。"""
+    ld.polygon([(cx - rx, cy - ry), (cx + rx, cy - ry), (cx, cy + ry)], fill=skin, outline=ink, width=5)
+
+
+HEADS = {"round": head_round, "square": head_square, "triangle": head_triangle}
+
+# 多邊形頭的基本頂點（r 單位，中心 0）。round 為橢圓、無頂點。
+BASE_VERTS = {
+    "square": [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)],
+    "triangle": [(-1.0, -1.0), (1.0, -1.0), (0.0, 1.0)],
+}
+
+
+def _head_verts(recipe):
+    """回傳頭的頂點（變形後，r 單位）。round 回傳 []。"""
+    shape = recipe.get("head", "round")
+    base = BASE_VERTS.get(shape)
+    if not base:
+        return []
+    v = recipe.get("head_v")
+    if isinstance(v, list) and len(v) == len(base):
+        return [tuple(float(x) for x in p) for p in v]
+    return list(base)
+
+
+def _head_poly_points(recipe, r, sx, sy, rot, cx, cy):
+    """回傳多邊形頭的頂點（像素座標，含變形＋縮放＋旋轉＋平移）。round 回傳 []。"""
+    verts = _head_verts(recipe)
+    if not verts:
+        return []
+    th = math.radians(rot)
+    cos, sin = math.cos(th), math.sin(th)
+    pts = []
+    for vx, vy in verts:
+        x = vx * r * sx
+        y = vy * r * sy
+        pts.append((cx + x * cos - y * sin, cy + x * sin + y * cos))
+    return pts
+
+
+def _head_shape_layer(recipe, r, skin, ink):
+    """畫頭基本型（套用 head_sx/head_sy 拉伸與 head_rot 旋轉），回傳 RGBA layer。"""
+    shape = recipe.get("head", "round")
+    sx = float(recipe.get("head_sx", 1.0) or 1.0)
+    sy = float(recipe.get("head_sy", 1.0) or 1.0)
+    rot = float(recipe.get("head_rot", 0.0) or 0.0)
+    if shape in BASE_VERTS:
+        m = 1.0
+        for vx, vy in _head_verts(recipe):
+            m = max(m, abs(vx), abs(vy))
+        ext = int(m * max(r * sx, r * sy) * 1.6) + 8
+    else:
+        ext = int(max(r * sx, r * sy) * 1.5) + 8
+    size = ext * 2
+    hl = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    ld = ImageDraw.Draw(hl)
+    c = size // 2
+    if shape in BASE_VERTS:
+        pts = _head_poly_points(recipe, r, sx, sy, rot, c, c)
+        if pts:
+            ld.polygon(pts, fill=skin, outline=ink, width=5)
+    else:
+        HEADS.get(shape, head_round)(ld, c, c, r * sx, r * sy, skin, ink)
+        if abs(rot) > 1e-3:
+            hl = hl.rotate(rot, resample=Image.BICUBIC, center=(c, c))
+    return hl
 
 # ---------------------------------------------------------------- 零件：頭髮
 
@@ -224,7 +291,7 @@ def list_recipes():
 # ---------------------------------------------------------------- 零件目錄＋自訂角色
 
 PART_CATALOG = {
-    "heads": [{"key": "round", "name": "圓頭"}, {"key": "square", "name": "方頭"}],
+    "heads": [{"key": "round", "name": "圓頭"}, {"key": "square", "name": "方頭"}, {"key": "triangle", "name": "三角頭"}],
     "hairs": [{"key": "chord", "name": "短髮"}, {"key": "none", "name": "無"}],
     "hats": [{"key": "none", "name": "無"}, {"key": "cap", "name": "帽子"}],
     "eyes": [{"key": "dot", "name": "點眼"}, {"key": "big", "name": "大眼"}],
@@ -236,6 +303,7 @@ PART_CATALOG = {
 DEFAULT_SPEC = {
     "name": "新角色",
     "head": "round", "hair": "chord", "hat": "none", "eyes": "dot", "mouth": "line",
+    "head_sx": 1.0, "head_sy": 1.0, "head_rot": 0.0, "head_v": [],
     "ears": "none", "brow": "line", "glasses": False, "facing": "auto",
     "eye_dx": 0, "eye_dy": 0, "mouth_dx": 0, "mouth_dy": 0,
     "neck_dx": 0, "neck_dy": 0.7, "hip_dx": 0, "hip_dy": 2.0,
@@ -271,6 +339,10 @@ def build_recipe(spec):
         "name": spec.get("name", "新角色"),
         "skin": _hex_to_rgb(spec.get("skin")), "ink": INK,
         "head": spec.get("head", "round"),
+        "head_sx": float(spec.get("head_sx") if spec.get("head_sx") is not None else 1.0),
+        "head_sy": float(spec.get("head_sy") if spec.get("head_sy") is not None else 1.0),
+        "head_rot": float(spec.get("head_rot") if spec.get("head_rot") is not None else 0.0),
+        "head_v": spec.get("head_v") if isinstance(spec.get("head_v"), list) else [],
         "eyes": spec.get("eyes", "dot"),
         "mouth": spec.get("mouth", "line"),
         "ears": spec.get("ears", "none"),
@@ -314,6 +386,60 @@ def render_head_image(recipe, r=70, facing=None):
     bg = Image.new("RGBA", layer.size, (255, 255, 255, 255))
     bg.paste(layer, (0, 0), layer)
     return bg.convert("RGB")
+
+
+def head_preview_meta(recipe, r=70):
+    """渲染頭部預覽，回傳 (image, meta)。meta 含頭中心、半徑與頂點（供捏零件控制點定位）。"""
+    facing = recipe.get("facing", "auto")
+    if facing in ("auto", "side"):
+        facing = "right"
+    layer, cx, cy = render_head_layer(recipe, r, facing, "flat", "normal", "closed", 0)
+    bg = Image.new("RGBA", layer.size, (255, 255, 255, 255))
+    bg.paste(layer, (0, 0), layer)
+    sx = float(recipe.get("head_sx", 1.0) or 1.0)
+    sy = float(recipe.get("head_sy", 1.0) or 1.0)
+    rot = float(recipe.get("head_rot", 0.0) or 0.0)
+    verts = _head_poly_points(recipe, r, sx, sy, rot, cx, cy)
+    return bg.convert("RGB"), {"cx": cx, "cy": cy, "rx": r * sx, "ry": r * sy, "rot": rot,
+                               "verts": [[round(x, 1), round(y, 1)] for x, y in verts]}
+
+
+# ---------------------------------------------------------------- 自訂零件（捏零件存檔復用）
+
+_CUSTOM_PARTS_FILE = Path(__file__).resolve().parents[2] / "working" / "custom_parts.json"
+_CUSTOM_PARTS = {"heads": {}}
+
+
+def _load_custom_parts():
+    global _CUSTOM_PARTS
+    try:
+        data = json.loads(_CUSTOM_PARTS_FILE.read_text(encoding="utf-8-sig"))
+        if isinstance(data, dict):
+            _CUSTOM_PARTS = data
+    except Exception:
+        _CUSTOM_PARTS = {"heads": {}}
+    _CUSTOM_PARTS.setdefault("heads", {})
+
+
+def list_custom_parts(kind="heads"):
+    return _CUSTOM_PARTS.get(kind, {})
+
+
+def save_custom_part(kind, name, preset):
+    """存一個捏好的零件（kind=heads…，name=新名字，preset={base,sx,sy,rot}）。"""
+    name = (name or "").strip()
+    if not name:
+        return False
+    _CUSTOM_PARTS.setdefault(kind, {})[name] = preset
+    try:
+        _CUSTOM_PARTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _CUSTOM_PARTS_FILE.write_text(json.dumps(_CUSTOM_PARTS, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+    return True
+
+
+_load_custom_parts()
 
 
 def anchors_from(recipe, hx, hy, r):
@@ -525,12 +651,13 @@ def render_head_layer(recipe, r, facing, brow, eye, mouth, gaze):
     facing ∈ {"front","left","right","back"}：正視/側左/側右/後視。"""
     skin = recipe.get("skin", SKIN)
     ink = recipe.get("ink", INK)
-    pad = int(r)
+    pad = int(r * 1.6)
     size = 2 * (r + pad)
     layer = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     ld = ImageDraw.Draw(layer)
     cx = cy = r + pad
-    HEADS.get(recipe.get("head", "round"), head_round)(ld, cx, cy, r, skin, ink)
+    hl = _head_shape_layer(recipe, r, skin, ink)
+    layer.alpha_composite(hl, (cx - hl.width // 2, cy - hl.height // 2))
     hair = recipe.get("hair") or {}
     if facing == "back":
         # 後視：頭髮蓋滿整個頭（無五官）

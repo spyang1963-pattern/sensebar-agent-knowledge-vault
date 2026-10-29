@@ -200,6 +200,7 @@
     <div class="settings" style="gap:10px;align-items:flex-start">
       <span style="font-weight:700">＋ 生成背景（AI）</span>
       <select id="genSceneType" style="border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit;font-size:12.5px"></select>
+      <label class="ck"><input type="checkbox" id="genSceneWide"> 橫式</label>
       <button class="mini" id="genSceneBtn" onclick="genScene()">⬢ 生成背景</button>
       <span id="genSceneHint" style="font-size:12px;color:var(--sage)"></span>
     </div>
@@ -233,13 +234,19 @@
   <section class="col sys" id="pvCol">
     <h2>⑤ 場景式預覽<span>拖動角色位置 → 即時預覽合成</span></h2>
     <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
-      <div class="pvbox" id="previewBox">
-        <img id="previewImg" alt="預覽">
+      <div style="overflow:auto;max-width:100%;max-height:75vh;flex:0 1 auto">
+        <div class="pvbox" id="previewBox">
+          <img id="previewImg" alt="預覽">
+        </div>
       </div>
       <div class="pvctrl">
         <div class="pvrow"><b>背景</b>
           <select id="pvScene" onchange="pvSceneChange()" style="flex:1"></select>
           <label class="ck" style="font-size:12px"><input type="checkbox" id="pvSeat" checked onchange="pvSeatToggle(this)"> 畫椅子</label>
+        </div>
+        <div class="pvrow"><b>縮放</b>
+          <input type="range" id="pvZoom" min="1" max="3" step="0.25" value="1" oninput="pvZoom(parseFloat(this.value))">
+          <span id="pvZoomVal" style="font-size:12px">1×</span>
         </div>
         <div class="pvrow"><b>構圖</b>
           <select id="pvCharMode" onchange="pvRender()" style="flex:1"></select>
@@ -292,9 +299,14 @@
           <input type="text" id="custName" value="新角色" style="flex:1;border:1px solid var(--line);border-radius:6px;padding:5px 8px;font:inherit;font-size:12.5px">
         </div>
         <div class="pvrow">
-          <b>頭型</b><select id="custHead" onchange="custPreview()"></select>
+          <b>頭型</b><select id="custHead" onchange="custHeadChange()"></select>
           <b>髮</b><select id="custHair" onchange="custPreview()"></select>
           <b>帽</b><select id="custHat" onchange="custPreview()"></select>
+        </div>
+        <div class="pvrow" style="align-items:center">
+          <b>頭寬</b><input type="range" id="custHeadSx" min="0.5" max="1.8" step="0.05" value="1" oninput="scheduleCustPreview()" style="width:70px">
+          <b>頭高</b><input type="range" id="custHeadSy" min="0.5" max="1.8" step="0.05" value="1" oninput="scheduleCustPreview()" style="width:70px">
+          <b>旋轉</b><input type="range" id="custHeadRot" min="-45" max="45" step="1" value="0" oninput="scheduleCustPreview()" style="width:70px">
         </div>
         <div class="pvrow">
           <b>眼睛</b><select id="custEyes" onchange="custPreview()"></select>
@@ -337,6 +349,20 @@
           <button class="mini" onclick="custSave()">✓ 存為新角色</button>
           <span class="hint" id="custHint"></span>
         </div>
+      </div>
+      <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:8px">
+        <div style="font-weight:700">捏頭部<span style="font-weight:400;color:var(--sage);font-size:11px">拖控制點旋轉/拉伸</span></div>
+        <div id="headSculptBox" style="position:relative;width:260px;height:260px;border:1px solid var(--line);border-radius:10px;background:#fff;overflow:hidden">
+          <img id="headSculptImg" style="width:100%;height:100%;object-fit:fill" alt="頭部捏塑">
+          <div class="chandle" id="hsRotate" style="background:#c45c52"><span>轉</span></div>
+          <div class="chandle" id="hsScaleX" style="background:#3a6ea5"><span>寬</span></div>
+          <div class="chandle" id="hsScaleY" style="background:#8a6d3b"><span>高</span></div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input id="partName" type="text" placeholder="零件名（如 蛋型頭）" style="flex:1;border:1px solid var(--line);border-radius:6px;padding:5px 8px;font:inherit;font-size:12px">
+          <button class="mini" onclick="savePart()">＋ 存零件</button>
+        </div>
+        <span class="hint" id="partHint" style="font-size:11.5px">捏好的頭會出現在上方「頭型」選單，可重複套用</span>
       </div>
     </div>
   </section>
@@ -412,6 +438,7 @@ let PACKS=[]; let MODE='queue'; let expanded=null;
 const PICK={};
 let SCENES=[];
 const $=(s)=>document.querySelector(s);
+window.onerror=function(msg,src,line,col){try{$('#log').style.display='block';$('#log').textContent=('JS 錯誤: '+msg+' @'+line+':'+col);}catch(e){}};
 
 async function load(){
   Q=await (await fetch('/api/queue')).json();
@@ -657,6 +684,7 @@ async function loadCharParts(){
     const def=r.default||{};
     const fill=(id,items,val)=>{$('#'+id).innerHTML=(items||[]).map(i=>`<option value="${i.key}" ${i.key===val?'selected':''}>${i.name}</option>`).join('');};
     fill('custHead',cat.heads,def.head);
+    loadCustomParts();
     fill('custHair',cat.hairs,def.hair);
     fill('custHat',cat.hats,def.hat);
     fill('custEyes',cat.eyes,def.eyes);
@@ -670,6 +698,9 @@ async function loadCharParts(){
     $('#custMouthDx').value=def.mouth_dx||0;
     $('#custMouthDy').value=def.mouth_dy||0;
     $('#custSkin').value=def.skin||'#f7dbc4';
+    $('#custHeadSx').value=(def.head_sx!=null?def.head_sx:1);
+    $('#custHeadSy').value=(def.head_sy!=null?def.head_sy:1);
+    $('#custHeadRot').value=(def.head_rot!=null?def.head_rot:0);
     $('#custHairColor').value=def.hair_color||'#262a2d';
     $('#custHatColor').value=def.hat_color||'#c45c52';
     $('#custTop').value=def.top||'#758985';
@@ -681,6 +712,7 @@ function custSpec(){
   return {
     name:$('#custName').value.trim()||'新角色',
     head:$('#custHead').value, hair:$('#custHair').value, hat:$('#custHat').value,
+    head_sx:parseFloat($('#custHeadSx').value)||1, head_sy:parseFloat($('#custHeadSy').value)||1, head_rot:parseFloat($('#custHeadRot').value)||0, head_v:HEAD_V,
     eyes:$('#custEyes').value, mouth:$('#custMouth').value, glasses:$('#custGlasses').checked,
     ears:$('#custEars').value, brow:$('#custBrow').value,
     facing:$('#custFacing').value,
@@ -711,7 +743,169 @@ async function custPreview(){
     CHAR_BODY=j;
     $('#charBodyPreview').src='data:image/png;base64,'+j.image;
     updateCharHandles();
+    partPreview();
   }catch(e){}
+}
+let HEAD_PREVIEW=null;
+const BASE_V={square:[[-1,-1],[1,-1],[1,1],[-1,1]], triangle:[[-1,-1],[1,-1],[0,1]]};
+let HEAD_V=[];
+let VERT_HANDLES=[];
+async function partPreview(){
+  try{
+    const r=await fetch('/api/part_preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({spec:custSpec()})});
+    const j=await r.json();
+    HEAD_PREVIEW=j;
+    $('#headSculptImg').src='data:image/png;base64,'+j.image;
+    try{
+      placeHeadHandles();
+    }catch(e){
+      console.error('placeHeadHandles',e);
+      const lg=$('#log'); if(lg){lg.style.display='block'; lg.textContent='placeHeadHandles 錯誤: '+e.message+' @'+e.lineNumber;}
+    }
+  }catch(e){
+    console.error('partPreview',e);
+    const lg=$('#log'); if(lg){lg.style.display='block'; lg.textContent='partPreview 錯誤: '+e.message;}
+  }
+}
+function _headScale(){
+  const box=$('#headSculptBox').getBoundingClientRect();
+  if(!HEAD_PREVIEW) return box.width/364;
+  return box.width/HEAD_PREVIEW.size[0];
+}
+function placeHeadHandles(){
+  if(!HEAD_PREVIEW) return;
+  const box=$('#headSculptBox');
+  const bw=(box && box.clientWidth)||260;
+  const s=bw/HEAD_PREVIEW.size[0];
+  const m=HEAD_PREVIEW.meta;
+  const cx=m.cx*s, cy=m.cy*s;
+  const rot=m.rot*Math.PI/180;
+  const cos=Math.cos(rot), sin=Math.sin(rot);
+  const pos=(lx,ly)=>{ // lx,ly 是「圖像像素」偏移，先乘 s 換成 box 座標，再繞中心旋轉
+    const Lx=lx*s, Ly=ly*s;
+    const px=cx+Lx*cos-Ly*sin;
+    const py=cy+Lx*sin+Ly*cos;
+    return [px-10, py-10];
+  };
+  for(const [id,lx,ly] of [['hsRotate',0,-(m.ry+24)],['hsScaleX',m.rx+24,0],['hsScaleY',0,m.ry+24]]){
+    const [l,t]=pos(lx,ly);
+    const el=$('#'+id);
+    el.style.left=l+'px';
+    el.style.top=t+'px';
+  }
+  // 頂點控制點（方頭 4、三角頭 3）
+  const verts=m.verts||[];
+  const n=verts.length;
+  ensureVertexHandles(n);
+  for(let i=0;i<VERT_HANDLES.length;i++){
+    const h=VERT_HANDLES[i];
+    if(i<n){
+      h.el.style.display='block';
+      h.el.style.left=(verts[i][0]*s-10)+'px';
+      h.el.style.top=(verts[i][1]*s-10)+'px';
+    }else{
+      h.el.style.display='none';
+    }
+  }
+}
+function ensureVertexHandles(n){
+  while(VERT_HANDLES.length<n){
+    const el=document.createElement('div');
+    el.className='chandle';
+    el.style.background='#c45c52';
+    el.innerHTML='<span>角</span>';
+    $('#headSculptBox').appendChild(el);
+    const idx=VERT_HANDLES.length;
+    VERT_HANDLES.push({el,idx});
+    vertHandleDrag(el,idx);
+  }
+}
+function vertHandleDrag(el,idx){
+  el.addEventListener('mousedown',e=>{
+    e.preventDefault();
+    if(!HEAD_PREVIEW)return;
+    const move=ev=>{
+      const box=$('#headSculptBox').getBoundingClientRect();
+      const s=box.width/HEAD_PREVIEW.size[0];
+      const m=HEAD_PREVIEW.meta;
+      const dx=(ev.clientX-box.left)/s-m.cx;
+      const dy=(ev.clientY-box.top)/s-m.cy;
+      const rot=m.rot*Math.PI/180;
+      const cos=Math.cos(rot), sin=Math.sin(rot);
+      const lx=(dx*cos+dy*sin)/m.rx;   // 反向旋轉＋反向縮放 → r 單位
+      const ly=(-dx*sin+dy*cos)/m.ry;
+      const base=BASE_V[$('#custHead').value]||[];
+      if(HEAD_V.length!==base.length) HEAD_V=base.map(p=>[p[0],p[1]]);
+      HEAD_V[idx]=[Math.round(lx*100)/100, Math.round(ly*100)/100];
+      scheduleCustPreview();
+    };
+    const up=()=>{window.removeEventListener('mousemove',move);window.removeEventListener('mouseup',up);};
+    window.addEventListener('mousemove',move);
+    window.addEventListener('mouseup',up);
+  });
+}
+function hsHandle(id,kind){
+  $(id).addEventListener('mousedown',e=>{
+    e.preventDefault();
+    if(!HEAD_PREVIEW)return;
+    const move=ev=>{
+      const box=$('#headSculptBox').getBoundingClientRect();
+      const s=box.width/HEAD_PREVIEW.size[0];
+      const m=HEAD_PREVIEW.meta;
+      const cx=m.cx*s, cy=m.cy*s;
+      const dx=ev.clientX-box.left-cx, dy=ev.clientY-box.top-cy;
+      if(kind==='rot'){
+        let ang=Math.round(Math.atan2(dy,dx)*180/Math.PI+90);
+        ang=Math.max(-45,Math.min(45,ang));
+        $('#custHeadRot').value=ang;
+      }else if(kind==='sx'){
+        let v=Math.abs(dx)/(m.rx*s);
+        v=Math.max(0.5,Math.min(1.8,Math.round(v*20)/20));
+        $('#custHeadSx').value=v;
+      }else if(kind==='sy'){
+        let v=Math.abs(dy)/(m.ry*s);
+        v=Math.max(0.5,Math.min(1.8,Math.round(v*20)/20));
+        $('#custHeadSy').value=v;
+      }
+      scheduleCustPreview();
+    };
+    const up=()=>{window.removeEventListener('mousemove',move);window.removeEventListener('mouseup',up);};
+    window.addEventListener('mousemove',move);
+    window.addEventListener('mouseup',up);
+  });
+}
+hsHandle('#hsRotate','rot'); hsHandle('#hsScaleX','sx'); hsHandle('#hsScaleY','sy');
+async function savePart(){
+  const name=$('#partName').value.trim();
+  if(!name){alert('請輸入零件名。');return;}
+  const preset={base:$('#custHead').value, sx:parseFloat($('#custHeadSx').value)||1, sy:parseFloat($('#custHeadSy').value)||1, rot:parseFloat($('#custHeadRot').value)||0, v:HEAD_V};
+  const r=await (await fetch('/api/custom_part',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'heads',name,preset})})).json();
+  if(r.ok){$('#partHint').textContent='已存「'+name+'」'; loadCustomParts(); $('#partName').value='';}
+}
+async function loadCustomParts(){
+  try{
+    const r=await (await fetch('/api/custom_parts')).json();
+    const parts=r.parts||{};
+    const sel=$('#custHead');
+    sel.querySelectorAll('option[data-custom]').forEach(o=>o.remove());
+    sel.insertAdjacentHTML('beforeend', Object.keys(parts).map(k=>`<option data-custom value="__${k}">${k}（自訂）</option>`).join(''));
+  }catch(e){}
+}
+async function custHeadChange(){
+  const v=$('#custHead').value;
+  HEAD_V=[];
+  if(v.startsWith('__')){
+    const r=await (await fetch('/api/custom_parts')).json();
+    const p=(r.parts||{})[v.slice(2)];
+    if(p){
+      $('#custHead').value=p.base||'round';
+      $('#custHeadSx').value=p.sx!=null?p.sx:1;
+      $('#custHeadSy').value=p.sy!=null?p.sy:1;
+      $('#custHeadRot').value=p.rot!=null?p.rot:0;
+      if(Array.isArray(p.v)) HEAD_V=p.v.map(q=>[+q[0],+q[1]]);
+    }
+  }
+  custPreview();
 }
 function placeCharHandle(el,pos,sx,sy){
   el.style.left=(pos[0]*sx-10)+'px';
@@ -777,10 +971,11 @@ async function custSave(){
 async function genScene(){
   const scene=$('#genSceneType').value;
   if(!scene)return;
-  if(!confirm(`生成一個新的「${scene}」背景？會呼叫 AI，約 30-60 秒。`))return;
+  const wide=$('#genSceneWide').checked;
+  if(!confirm(`生成一個新的「${scene}」${wide?'橫式':'直式'}背景？會呼叫 AI，約 30-60 秒。`))return;
   $('#genSceneBtn').disabled=true;$('#genSceneHint').textContent='生成中…';
   $('#log').style.display='block';$('#log').textContent='生成背景中…';
-  const r=await (await fetch('/api/scene_gen',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene})})).json();
+  const r=await (await fetch('/api/scene_gen',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene,wide})})).json();
   if(!r.ok){$('#genSceneBtn').disabled=false;$('#genSceneHint').textContent='';alert('目前有任務在跑或場景未知。');return;}
   const orig=setInterval(async()=>{
     const s=await (await fetch('/api/runstatus')).json();
@@ -998,9 +1193,11 @@ function startPoll(){
 }
 
 // —— 場景式預覽 ——
-const PVW=400, PVH=711, PVSCALE=PVW/576;
+let PV_BOXW=400;
+let PV_ZOOM=1;
+let PV_W=576, PV_H=1024, PVSCALE=PV_BOXW/576;
 const WHOCAP={le:'Le',ren:'Ren'};
-const R=55;
+let R=55;
 const ANCHOR_KEYS=['head','neck','hip','elbowL','elbowR','handL','handR','kneeL','kneeR','footL','footR'];
 const ANCHOR_PARENT={neck:'head',hip:'neck',elbowL:'neck',elbowR:'neck',handL:'elbowL',handR:'elbowR',kneeL:'hip',kneeR:'hip',footL:'kneeL',footR:'kneeR'};
 const ANCHOR_FIELD={neck:['neck_dx','neck_dy'],hip:['hip_dx','hip_dy'],
@@ -1016,9 +1213,28 @@ let PV_HANDLES={};
 function pvDefaults(sceneKey){
   const sc=SCENES.find(s=>s.key===sceneKey);
   const pose=sc?sc.pose:'sitstand';
-  if(pose==='sit'){PV.le={x:150,y:470,pose:'sit'};PV.ren={x:435,y:470,pose:'sit'};}
-  else if(pose==='stand'){PV.le={x:150,y:750,pose:'stand'};PV.ren={x:435,y:750,pose:'stand'};}
-  else {PV.le={x:150,y:470,pose:'sit'};PV.ren={x:435,y:750,pose:'stand'};}
+  const wide=!!(sc&&sc.wide);
+  const L=wide?{sit:{x:307,y:280},stand:{x:307,y:315}}:{sit:{x:150,y:470},stand:{x:150,y:750}};
+  const N=wide?{sit:{x:573,y:280},stand:{x:573,y:315}}:{sit:{x:435,y:470},stand:{x:435,y:750}};
+  if(pose==='sit'){PV.le={...L.sit,pose:'sit'};PV.ren={...N.sit,pose:'sit'};}
+  else if(pose==='stand'){PV.le={...L.stand,pose:'stand'};PV.ren={...N.stand,pose:'stand'};}
+  else {PV.le={...L.sit,pose:'sit'};PV.ren={...N.stand,pose:'stand'};}
+}
+function pvSetDims(wide){
+  PV_W=wide?1024:576; PV_H=wide?576:1024;
+  R=Math.max(28,Math.round(55*PV_H/1024));
+  const baseW=wide?600:400;
+  PV_BOXW=Math.round(baseW*PV_ZOOM);
+  PVSCALE=PV_BOXW/PV_W;
+  $('#previewBox').style.width=PV_BOXW+'px';
+  $('#previewBox').style.height=Math.round(PV_BOXW*PV_H/PV_W)+'px';
+}
+function pvZoom(v){
+  PV_ZOOM=v;
+  $('#pvZoomVal').textContent=v+'×';
+  pvSetDims(PV_W===1024);
+  pvSyncUI();
+  pvRender();
 }
 function pvSyncUI(){
   $('#pvLePose').value=PV.le.pose; $('#pvRenPose').value=PV.ren.pose;
@@ -1029,6 +1245,8 @@ function pvSyncUI(){
 }
 function pvSceneChange(keep){
   PV.bg=$('#pvScene').value;
+  const sc=SCENES.find(s=>s.key===PV.bg);
+  pvSetDims(!!(sc&&sc.wide));
   if(!keep) pvDefaults(PV.bg);
   pvSyncUI();
   pvRender();
@@ -1037,8 +1255,8 @@ function pvPoseChange(who){
   const v=$('#pv'+WHOCAP[who]+'Pose').value;
   const c=who==='le'?PV.le:PV.ren;
   c.pose=v;
-  // 依姿勢切換預設高度
-  if(v==='sit')c.y=470; else c.y=750;
+  const wide=PV_W===1024;
+  if(v==='sit')c.y=wide?280:470; else c.y=wide?315:750;
   pvSyncUI(); pvRender();
 }
 function pvSeatToggle(el){PV.seat=el.checked;pvRender();}
@@ -1046,7 +1264,7 @@ function pvWaveToggle(el){PV.wave=el.checked;pvRender();}
 function pvNum(who,axis,val){
   const c=who==='le'?PV.le:PV.ren;
   c[axis]=parseInt(val||'0',10)||0;
-  if(axis==='x')c.x=Math.max(0,Math.min(576,c.x)); else c.y=Math.max(0,Math.min(1024,c.y));
+  if(axis==='x')c.x=Math.max(0,Math.min(PV_W,c.x)); else c.y=Math.max(0,Math.min(PV_H,c.y));
   $('#pv'+WHOCAP[who]+(axis==='x'?'X':'Y')).value=c[axis];
   updateHandles(); scheduleRender();
 }
@@ -1105,13 +1323,12 @@ function anchorDrag(el,who,k){
     e.preventDefault();
     if(!PV_ANCHORS)return;
     const box=$('#previewBox').getBoundingClientRect();
-    const scx=box.width/576, scy=box.height/1024;
     const move=ev=>{
-      const nx=(ev.clientX-box.left)/scx;
-      const ny=(ev.clientY-box.top)/scy;
+      const nx=(ev.clientX-box.left)/PVSCALE;
+      const ny=(ev.clientY-box.top)/PVSCALE;
       if(k==='head'){
-        PV[who].x=Math.round(Math.max(0,Math.min(576,nx)));
-        PV[who].y=Math.round(Math.max(0,Math.min(1024,ny)));
+        PV[who].x=Math.round(Math.max(0,Math.min(PV_W,nx)));
+        PV[who].y=Math.round(Math.max(0,Math.min(PV_H,ny)));
         $('#pv'+WHOCAP[who]+'X').value=PV[who].x;
         $('#pv'+WHOCAP[who]+'Y').value=PV[who].y;
       }else{
@@ -1176,7 +1393,7 @@ function dragHandle(el,who){
     const move=ev=>{
       const x=Math.round((ev.clientX-box.left)/PVSCALE);
       const y=Math.round((ev.clientY-box.top)/PVSCALE);
-      c.x=Math.max(0,Math.min(576,x)); c.y=Math.max(0,Math.min(1024,y));
+      c.x=Math.max(0,Math.min(PV_W,x)); c.y=Math.max(0,Math.min(PV_H,y));
       $('#pv'+WHOCAP[who]+'X').value=c.x; $('#pv'+WHOCAP[who]+'Y').value=c.y;
       scheduleRender();
     };

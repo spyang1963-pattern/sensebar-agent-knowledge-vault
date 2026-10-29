@@ -190,19 +190,25 @@ def background_list():
 
 
 def scan_scenes():
-    """掃描背景目錄，列出可用場景（編號，如 kitchen_1、pavilion_2）。"""
+    """掃描背景目錄，列出可用場景（編號，如 kitchen_1、pavilion_2、bus_stop_1_wide 橫式）。"""
     if not SCENE_BG_DIR.exists():
         return []
     items = []
     for f in sorted(SCENE_BG_DIR.glob("*.png")):
-        parts = f.stem.rsplit("_", 1)
+        stem = f.stem
+        wide = stem.endswith("_wide")
+        base = stem[:-len("_wide")] if wide else stem
+        parts = base.rsplit("_", 1)
         if len(parts) != 2 or not parts[1].isdigit():
             continue
         stype = parts[0]
         if stype not in SCENE_POSE:
             continue
-        items.append({"key": f.stem, "name": f"{SCENE_NAME.get(stype, stype)}{parts[1]}",
-                      "type": stype, "pose": SCENE_POSE[stype], "path": str(f)})
+        name = f"{SCENE_NAME.get(stype, stype)}{parts[1]}"
+        if wide:
+            name += "·橫"
+        items.append({"key": stem, "name": name,
+                      "type": stype, "pose": SCENE_POSE[stype], "wide": wide, "path": str(f)})
     return items
 
 
@@ -249,14 +255,17 @@ def render_scene_preview(data):
         sd.cp.set_pose_override({"le": le_pose_override, "ren": ren_pose_override})
     le = data.get("le") or {}
     ren = data.get("ren") or {}
-    r = int(data.get("r") or 55)
     try:
         img = Image.open(bg_path).convert("RGB")
     except Exception as e:
         return None, None, f"讀取背景失敗：{e}"
+    W, H = img.size
+    r = int(data.get("r") or sd._char_r(W, H))
     d = ImageDraw.Draw(img)
-    le_x = int(le.get("x", 150)); le_y = int(le.get("y", 470)); le_pose = le.get("pose", "sit")
-    ren_x = int(ren.get("x", 435)); ren_y = int(ren.get("y", 750)); ren_pose = ren.get("pose", "stand")
+    # 預設位置隨畫布（直/橫）縮放：le 坐、ren 站（sitstand），拖曳覆寫則用絕對座標
+    _, _, def_le_x, def_le_y, def_ren_x, def_ren_y = sd.resolve_pose("sitstand", W, H)
+    le_x = int(le.get("x", def_le_x)); le_y = int(le.get("y", def_le_y)); le_pose = le.get("pose", "sit")
+    ren_x = int(ren.get("x", def_ren_x)); ren_y = int(ren.get("y", def_ren_y)); ren_pose = ren.get("pose", "stand")
     le_dir, le_tilt, le_shift, le_lean = sd.look_at_gated("le", le_x, le_y, ren_x, ren_y)
     ren_dir, ren_tilt, ren_shift, ren_lean = sd.look_at_gated("ren", ren_x, ren_y, le_x, le_y)
     seat = bool(data.get("seat", True))
@@ -700,7 +709,8 @@ def run_jobs(ids, script_map=None, scene=None, scene_mode=False, char_mode=None)
                 lines_file.write_text(json.dumps(lines, ensure_ascii=False), encoding="utf-8")
                 scene_key = scene or "living_1"
                 bg_path = SCENE_BG_DIR / f"{scene_key}.png"
-                stype = scene_key.rsplit("_", 1)[0] if "_" in scene_key else scene_key
+                base_key = scene_key[:-len("_wide")] if scene_key.endswith("_wide") else scene_key
+                stype = base_key.rsplit("_", 1)[0] if "_" in base_key else base_key
                 if not bg_path.exists():
                     emit(f"[跳過] {t['title']}：場景「{scene_key}」背景不存在，請先生成背景（python lezhi/tools/scene_bg_gen.py --scene {stype}）")
                     _RUN["results"].append({"id": tid, "ok": False, "reason": "missing_bg"})
@@ -751,7 +761,7 @@ def run_jobs(ids, script_map=None, scene=None, scene_mode=False, char_mode=None)
             _RUN["running"] = False
 
 
-def run_scene_gen(scene):
+def run_scene_gen(scene, wide=False):
     """生成一個 AI 背景（呼叫 scene_bg_gen.py），沿用 _RUN 日誌輪詢。"""
     with _LOCK:
         _RUN["running"] = True
@@ -767,6 +777,8 @@ def run_scene_gen(scene):
     try:
         cmd = [sys.executable, "-u", "-X", "utf8", str(SCENE_BG_GEN),
                "--out", str(SCENE_BG_DIR), "--scene", scene]
+        if wide:
+            cmd.append("--wide")
         emit("[生成背景] " + " ".join(cmd))
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                              text=True, encoding="utf-8", errors="replace", bufsize=1)
@@ -923,6 +935,8 @@ class Handler(BaseHTTPRequestHandler):
         elif p == "/api/char_parts":
             self._json({"catalog": getattr(_char_parts_mod, "PART_CATALOG", {}),
                         "default": getattr(_char_parts_mod, "DEFAULT_SPEC", {})})
+        elif p == "/api/custom_parts":
+            self._json({"parts": _char_parts_mod.list_custom_parts("heads")})
         elif p == "/api/motion":
             self._json({"poses": MOTION_POSES, "kinds": MOTION_KINDS,
                         "facing": MOTION_FACING, "params": MOTION_PARAMS,
@@ -1081,7 +1095,8 @@ class Handler(BaseHTTPRequestHandler):
             if _RUN["running"]:
                 self._json({"ok": False, "reason": "running"})
                 return
-            threading.Thread(target=run_scene_gen, args=(scene,), daemon=True).start()
+            wide = bool(data.get("wide"))
+            threading.Thread(target=run_scene_gen, args=(scene, wide), daemon=True).start()
             self._json({"ok": True})
         elif p == "/api/scene_pos":
             if data.get("clear"):
@@ -1119,6 +1134,20 @@ class Handler(BaseHTTPRequestHandler):
             img.save(buf, "PNG")
             b64 = base64.b64encode(buf.getvalue()).decode("ascii")
             self._json({"image": b64, "anchors": anchors, "size": [W, H]})
+        elif p == "/api/part_preview":
+            import io, base64
+            recipe = _char_parts_mod.build_recipe(data.get("spec") or {})
+            img, meta = _char_parts_mod.head_preview_meta(recipe, r=70)
+            buf = io.BytesIO()
+            img.save(buf, "PNG")
+            b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+            self._json({"image": b64, "meta": meta, "size": list(img.size)})
+        elif p == "/api/custom_part":
+            kind = data.get("kind") or "heads"
+            name = data.get("name") or ""
+            preset = data.get("preset") or {}
+            ok = _char_parts_mod.save_custom_part(kind, name, preset)
+            self._json({"ok": ok, "parts": _char_parts_mod.list_custom_parts(kind)})
         elif p == "/api/motion":
             cfg = data.get("config") or data
             _write_json(MOTION_JSON, cfg)

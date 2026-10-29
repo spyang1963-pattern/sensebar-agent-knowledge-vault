@@ -31,6 +31,9 @@ def draw_char_seated(d, who, sx, sy, r, dir, brow, eye, mouth, gaze=0, tilt=0, s
 def _draw_half(d, who, sx, sy, r, dir, brow, eye, mouth, gaze, tilt, shift, facing=None):
     """半身：肩胸（底端超出畫面下緣）＋頭。"""
     recipe = cp.get_recipe(who)
-    tw = int(r * 1.35)
-    cp.render_torso(d, recipe, sx, sy, r, dir, tw, sy + int(r * 0.9), sy + int(r * 4.5), 0)
+    nx = sx
+    ny = sy + int(r * 0.9)
+    px = sx
+    py = sy + int(r * 4.5)
+    cp.render_torso(d, recipe, nx, ny, px, py, r, int(r * 1.35), int(r * 1.35))
     cp.render_head(d, recipe, sx, sy, r, dir, brow, eye, mouth, gaze, tilt, shift, facing)

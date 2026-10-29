@@ -42,21 +42,29 @@ SCENES = {
 }
 
 
-def next_num(outdir: Path, scene: str) -> int:
+def next_num(outdir: Path, scene: str, wide: bool = False) -> int:
     nums = []
     for f in outdir.glob(f"{scene}_*.png"):
+        stem = f.stem
+        is_wide = stem.endswith("_wide")
+        if is_wide != wide:
+            continue
+        if is_wide:
+            stem = stem[:-len("_wide")]
         try:
-            nums.append(int(f.stem.rsplit("_", 1)[-1]))
+            nums.append(int(stem.rsplit("_", 1)[-1]))
         except Exception:
             pass
     return (max(nums) + 1) if nums else 1
 
 
-def gen(outdir: Path, scene: str, seed: int) -> Path | None:
+def gen(outdir: Path, scene: str, seed: int, wide: bool = False) -> Path | None:
     desc = SCENES.get(scene, SCENES["living"])
     full = f"{desc}, {STYLE}, avoid {NEG}"
     enc = urllib.parse.quote(full)
-    url = f"https://image.pollinations.ai/prompt/{enc}?width=1080&height=1920&model=flux&nologo=true&seed={seed}"
+    # Pollinations flux 免費層會把長邊壓到 1024：直式 9:16 → 576×1024、橫式 16:9 → 1024×576。
+    w, h = (1024, 576) if wide else (576, 1024)
+    url = f"https://image.pollinations.ai/prompt/{enc}?width={w}&height={h}&model=flux&nologo=true&seed={seed}"
     for attempt, wait in enumerate([0, 8, 15, 25]):
         if wait:
             time.sleep(wait)
@@ -64,8 +72,9 @@ def gen(outdir: Path, scene: str, seed: int) -> Path | None:
             req = urllib.request.Request(url, headers={"User-Agent": "lezhi-bg/1.0"})
             data = urllib.request.urlopen(req, timeout=240).read()
             if len(data) > 8000:
-                n = next_num(outdir, scene)
-                p = outdir / f"{scene}_{n}.png"
+                n = next_num(outdir, scene, wide)
+                suffix = "_wide" if wide else ""
+                p = outdir / f"{scene}_{n}{suffix}.png"
                 p.write_bytes(data)
                 return p
         except Exception as e:
@@ -78,6 +87,7 @@ def main():
     ap.add_argument("--out", default="working/ai_bg3")
     ap.add_argument("--scene", default="living", choices=list(SCENES))
     ap.add_argument("--seed", type=int, default=None)
+    ap.add_argument("--wide", action="store_true", help="橫式（水平 > 垂直，1920×1080）；預設直式 1080×1920")
     ap.add_argument("--list", action="store_true", help="列出可用場景")
     args = ap.parse_args()
 
@@ -92,8 +102,8 @@ def main():
         return
 
     seed = args.seed if args.seed is not None else int(time.time()) % 100000
-    print(f"gen {args.scene} ...")
-    p = gen(outdir, args.scene, seed)
+    print(f"gen {args.scene} ({'橫式' if args.wide else '直式'}) ...")
+    p = gen(outdir, args.scene, seed, args.wide)
     if p:
         print(f"  -> {p.name} ({p.stat().st_size} bytes)")
     else:
