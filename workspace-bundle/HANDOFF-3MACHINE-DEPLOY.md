@@ -98,7 +98,11 @@ deploy.ps1 -RegisterTasks -DryRun → 正確列出 4 個排程
 health_check --json services → FinanceNews_* / ChannelWatcherDaily / XQ_Snapshot_Loop / StockMonitor_Scheduler 皆 ✅
 ```
 
-### Step 4 — PC1 實機驗收（進行中：乾跑已通過 2026-11-04）
+### Step 4 — PC1 實機驗收 ✅ 安裝完成（2026-11-04）
+
+**正式安裝結果（`deploy.ps1 -Machine pc1`，13:12）**：❌ 0、⚠️ 1（排程未註冊，預期）、ℹ️ 7（全為資料類）。外部工具（ffmpeg/VLC/Obsidian）與三個 bundle 套件皆安裝成功、`machine.yaml` 已自動產生、Groq/Gemini key 都在。
+
+剩兩件事：①資料同步（下方表格）②`worker.py --test` 或縮小版 `channel_watcher.py --once` 實跑驗證。
 
 1. 在 PC1 執行 `deploy.ps1 -Machine pc1 -DryRun` 先看，再 `deploy.ps1 -Machine pc1`。
    - 若 PC1 主機名尚未在 `config.py` 的 `MACHINE_ALIASES`，先在 notebook 補上並 push（PC1 才能 pull 到）。
