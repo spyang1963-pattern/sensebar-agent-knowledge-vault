@@ -86,7 +86,7 @@ deploy.ps1 -SkipSetup -UnregisterTasks
 - **程式碼狀態**：印分支/版本/未提交變更數，並 `git fetch` 比對 `origin`。未提交變更 >0 會警告 —— `setup_new_pc.bat` 的 `git pull --ff-only` 會被拒絕，機器會停在舊碼（PC1/PC2 很可能有這種狀況，先處理再部署）。
 - **健檢摘要**：只列 ❌（任務線/能力）與 ⚠️（缺套件、未註冊排程），結尾給待補項數。
 - **排程預設不註冊**；`-RegisterTasks` 才建立 4 個任務（`StartWhenAvailable` + 電池可跑 + `IgnoreNew`），`-UnregisterTasks` 供切換日舊機使用。
-- 排程名稱**不帶機器後綴**（`FinanceNews_Pipeline` 等）：排程是各機本地的，同名不衝突；`health_check.py` 的 `TASK_KEYWORDS` 已同步改成這些實際名稱（原本是 `Autonomy_*` 舊名，導致排程區永遠全 ❌）。
+- 排程名稱**不帶機器後綴**（`FinanceNews_Pipeline` 等）：排程是各機本地的，同名不衝突。`health_check.py` 的排程檢查改為**分組比對**（同一件事接受多種任務名，例如金融 pipeline ＝ `FinanceNews_Pipeline` 或 `Autonomy_finance-pipeline`），因此 notebook 與 PC3 都會正確顯示 ✅（舊版只認 `Autonomy_*`，notebook 全紅）。
 - `ONBOARDING.md` 已加「快速路徑」段落、修正 clone 路徑（原寫 `D:\sensebar-agent-knowledge-vault`）、排程表改為實際名稱。
 
 驗證（notebook）：
@@ -109,15 +109,61 @@ health_check --json services → FinanceNews_* / ChannelWatcherDaily / XQ_Snapsh
 
 ### Step 5 — PC3 遷移（最後做）
 
-PC3 仍跑在 `D:\sensebar-agent-knowledge-vault`，先不動以免中斷現役收成。遷移日執行：
+#### PC3 現況（2026-11-04 盤點，勿憑印象）
 
-1. 先停 PC3 排程（單一寫入者）。
-2. 把資料複製到 `D:\AI-Agent-Workspace`：`output/`、`working/`、`D:\YouTube_Videos` 影片庫。
-3. 改 `config.py` 兩處：
+| 項目 | 現況 |
+|---|---|
+| 工作目錄 | `D:\sensebar-agent-knowledge-vault`（獨立 clone，含舊資料） |
+| 金融報告 | 由 **autonomy mission** 執行，不是 `FinanceNews_*` 任務：`workspace-bundle\infra\autonomy\missions\finance-{pipeline,morning,evening}.json` → `workdir=D:\sensebar-agent-knowledge-vault\financial_news`、指令 `pipeline.py --report --deep --slot ...` |
+| 頻道監控 | 同層 `channel-watcher.json`（workdir=舊根目錄）；notebook 的 `ChannelWatcherDaily` 目前仍「就緒」，PC3 那份是否也在跑待確認 |
+| 自動更新 | `self_heal.py` 每 ~6 小時（或 05:45 視窗）在此 clone 內 `git pull --ff-only`，**但受 `autonomy_config.json` 的 `repos[].hosts` 比對限制** |
+| notebook 端 | `FinanceNews_Pipeline / MorningReport / EveningReport` 皆「已停用」（已交接）；`ChannelWatcherDaily` 仍啟用 |
+
+#### 本次改動對 PC3 的影響：**無功能影響**
+
+| 改動 | PC3 會不會用到 | 結論 |
+|---|---|---|
+| `MACHINE_PATHS["pc3"]` | autonomy/finance 不讀 `config.py`；`worker.py`/`scheduler.py` 才用 | **刻意未改**，仍指舊路徑 |
+| `MACHINE_ROLES["pc3"]` | 只有 `worker.py` 寫 log 用；值仍是 `harvester` | 無變化 |
+| `TAILSCALE_IPS["pc3"]=None` | 只有 `task_manager_gui.py`/`health_check.py`/`_test_worker_mgr.py` 讀；報告流程不讀 | 無影響（GUI 顯示「未設定」） |
+| `health_check.py` | PC3 報告任務不呼叫 | 無影響；且已改成「同組任一任務名即可」，PC3 的 `Autonomy_*` 也判 ✅ |
+| `deploy.ps1` / `setup_new_pc.bat` / `update.py` | 只有人手动執行 | 無影響 |
+
+驗證方式（靜態）：`financial_news\*.py` 沒有任何 `import config`；`autonomy\*.py` 只 import `common`，不讀 `config`。PC3 只在 `self_heal` 觸發 `git pull` 時才會拿到新 `config.py`，而新 `config.py` 對它沒有行為差異。
+
+#### 待確認（會影響 PC3 是否自動更新／看門狗）
+
+**主機名拼法不一致**：
+
+| 位置 | 值 |
+|---|---|
+| `config.py` `MACHINE_ALIASES` | `desktop-mfkvcso`（m-f-k-**v-c**-s-o） |
+| `autonomy_config.json` 與 4 個 mission 的 `hosts` | `desktop-mfkcvso`（m-f-k-**c-v**-s-o，5 個檔案一致） |
+
+`matches_host()` 是字串比對（`h in hostname`）。兩種可能：
+
+1. 真主機名是 `desktop-mfkcvso` → **`config.py` 的 key 是錯的**，PC3 目前被判定成 `unknown-desktop-mfkcvso`（`get_machine_paths()` 會退回 notebook 路徑），但報告照跑（不讀 config）。
+2. 真主機名是 `desktop-mfkvcso` → **autonomy 那 5 處是錯的**，`self_heal` 的 git pull 與看門狗在 PC3 上等於停用（任務仍會被 Task Scheduler 觸發，但不會自動補跑/告警）。
+
+**請在 PC3 執行以下三行並回報**，再決定改哪一邊（一次改對，別兩邊都塞）：
+
+```powershell
+hostname
+git -C D:\sensebar-agent-knowledge-vault rev-parse --short HEAD
+schtasks /Query /FO CSV | findstr /I "Autonomy"
+```
+
+#### 遷移日步驟
+
+1. 先停 PC3 排程（`Autonomy_*`；單一寫入者），確認 notebook 的 `ChannelWatcherDaily` 由誰接手。
+2. 把資料複製到 `D:\AI-Agent-Workspace`：`financial_news\finance.db`、`output/`、`working/`、`D:\YouTube_Videos`、`shared\watched_channels_state.json`。
+3. 改 `config.py` 三處：
    - `MACHINE_PATHS["pc3"]` → 與 pc1/pc2 相同的 `D:\AI-Agent-Workspace\...`
-   - `TAILSCALE_IPS["pc3"]` → `tailscale ip -4` 取得的實際值
-4. 在 PC3 跑 `setup_new_pc.bat` → `health_check.py` 驗收（應顯示 pc3 + 正確 IP）。
-5. 重建排程，觀察一天；舊目錄保留一週再刪。
+   - `TAILSCALE_IPS["pc3"]` → `tailscale ip -4` 的實際值
+   - 主機名拼法（依上面三行的結果修正，`config.py` 或 autonomy 兩者擇一）
+4. 改 `autonomy_config.json` 與 `missions\*.json` 的 `workdir`/`log` → 新路徑（**PC3 的報告任務靠這些硬寫路徑**，不改就還是跑舊目錄）。
+5. 在 PC3 跑 `deploy.ps1 -Machine pc3 -DryRun` → 再正式跑；`health_check.py` 應顯示 `pc3` + 正確 IP。
+6. 重建排程（`deploy.ps1 -SkipSetup -RegisterTasks` 或沿用 `Autonomy_*`），觀察一天；舊目錄保留一週再刪。
 
 ### Step 6 — 三機上線後再調整工作分配
 

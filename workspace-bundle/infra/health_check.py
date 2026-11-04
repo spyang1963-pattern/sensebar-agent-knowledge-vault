@@ -81,18 +81,19 @@ LINES = {
     },
 }
 
-# 排程任務關鍵字（動態掃描 schtasks 比對子字串）
-# 2026-11-04：改為實際存在的名稱。舊清單是 Autonomy_* 系列，現已全部改名/重建，
-# 導致排程區永遠全 ❌。名稱不帶機器後綴（排程是各機本地的，不需區分；
-# deploy.ps1 -RegisterTasks 也建立同名任務）。
-TASK_KEYWORDS = [
-    "FinanceNews_Pipeline",
-    "FinanceNews_MorningReport",
-    "FinanceNews_EveningReport",
-    "ChannelWatcherDaily",
-    "AI-Agent-Sync",
-    "XQ_Snapshot_Loop",
-    "StockMonitor_Scheduler",
+# 排程任務（動態掃描 schtasks 比對子字串）
+# 2026-11-04：改為「同一件事可接受多種任務名」。
+# 背景：notebook 用 FinanceNews_* 任務，PC3 用的是 autonomy mission 的 Autonomy_* 任務；
+# 舊版只列 Autonomy_*（PC3 正確、notebook 全紅），只列 FinanceNews_* 則相反。
+# 每組只要命中其中一個名稱就算 ✅。
+TASK_GROUPS = [
+    ("金融 pipeline", ["FinanceNews_Pipeline", "Autonomy_finance-pipeline"]),
+    ("金融早報", ["FinanceNews_MorningReport", "Autonomy_finance-morning"]),
+    ("金融晚報", ["FinanceNews_EveningReport", "Autonomy_finance-evening"]),
+    ("頻道監控", ["ChannelWatcherDaily"]),
+    ("shared 同步", ["AI-Agent-Sync"]),
+    ("XQ 快照", ["XQ_Snapshot_Loop"]),
+    ("股票監控", ["StockMonitor_Scheduler"]),
 ]
 
 
@@ -312,7 +313,7 @@ def check_config_files():
 
 
 def check_services():
-    """檢查排程任務是否存在（動態掃描 schtasks 比對關鍵字）"""
+    """檢查排程任務是否存在（動態掃描 schtasks；同組任一任務名命中即可）"""
     all_names = []
     if sys.platform == "win32":
         out, _ = run(["schtasks", "/Query", "/FO", "CSV"], timeout=20)
@@ -321,8 +322,9 @@ def check_services():
             if parts and parts[0].startswith('"'):
                 all_names.append(parts[0].strip('"'))
     tasks = []
-    for kw in TASK_KEYWORDS:
-        tasks.append({"name": kw, "exists": any(kw in n for n in all_names)})
+    for label, keywords in TASK_GROUPS:
+        hit = next((k for k in keywords if any(k in n for n in all_names)), None)
+        tasks.append({"name": label, "matched": hit, "exists": hit is not None})
     return tasks
 
 
@@ -504,7 +506,8 @@ def build_report(as_json=False):
     print(f"  排程任務：")
     for svc in report["services"]:
         status = "✅" if svc["exists"] else "❌"
-        print(f"    {status} {svc['name']}")
+        matched = f"（{svc['matched']}）" if svc.get("matched") else ""
+        print(f"    {status} {svc['name']}{matched}")
 
     print(f"\n  {'─'*46}")
     print(f"  視覺能力（Vision Sidecar）：")
