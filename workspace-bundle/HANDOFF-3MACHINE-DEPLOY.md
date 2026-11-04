@@ -115,9 +115,10 @@ health_check --json services → FinanceNews_* / ChannelWatcherDaily / XQ_Snapsh
 |---|---|
 | 工作目錄 | `D:\sensebar-agent-knowledge-vault`（獨立 clone，含舊資料） |
 | 金融報告 | 由 **autonomy mission** 執行，不是 `FinanceNews_*` 任務：`workspace-bundle\infra\autonomy\missions\finance-{pipeline,morning,evening}.json` → `workdir=D:\sensebar-agent-knowledge-vault\financial_news`、指令 `pipeline.py --report --deep --slot ...` |
-| 頻道監控 | 同層 `channel-watcher.json`（workdir=舊根目錄）；notebook 的 `ChannelWatcherDaily` 目前仍「就緒」，PC3 那份是否也在跑待確認 |
+| 頻道監控 | 只跑在 **notebook**（`ChannelWatcherDaily` 就緒）；PC3 的 `channel-watcher.json` mission 未在跑（2026-11-04 使用者確認） |
 | 自動更新 | `self_heal.py` 每 ~6 小時（或 05:45 視窗）在此 clone 內 `git pull --ff-only`，**但受 `autonomy_config.json` 的 `repos[].hosts` 比對限制** |
 | notebook 端 | `FinanceNews_Pipeline / MorningReport / EveningReport` 皆「已停用」（已交接）；`ChannelWatcherDaily` 仍啟用 |
+| 運作驗證（2026-11-04） | 每日報告最新產出 **12:20**、XQ 盤中儀表正常 → PC3 現役運作正常，**遷移前不要動它** |
 
 #### 本次改動對 PC3 的影響：**無功能影響**
 
@@ -130,6 +131,8 @@ health_check --json services → FinanceNews_* / ChannelWatcherDaily / XQ_Snapsh
 | `deploy.ps1` / `setup_new_pc.bat` / `update.py` | 只有人手动執行 | 無影響 |
 
 驗證方式（靜態）：`financial_news\*.py` 沒有任何 `import config`；`autonomy\*.py` 只 import `common`，不讀 `config`。PC3 只在 `self_heal` 觸發 `git pull` 時才會拿到新 `config.py`，而新 `config.py` 對它沒有行為差異。
+
+**補充（2026-11-04）**：`channel_watcher.py` 從 config 只取 `log / PROJECT_ROOT / SHARED_ROOT / 狀態檔函式`，這些都沒動；且它以 `PROJECT_ROOT` 組路徑，不是 `MACHINE_PATHS`，所以 PC3 若有跑頻道監控也不受影響（目前確認只在 notebook 跑）。
 
 #### 待確認（會影響 PC3 是否自動更新／看門狗）
 
@@ -146,6 +149,8 @@ health_check --json services → FinanceNews_* / ChannelWatcherDaily / XQ_Snapsh
 2. 真主機名是 `desktop-mfkvcso` → **autonomy 那 5 處是錯的**，`self_heal` 的 git pull 與看門狗在 PC3 上等於停用（任務仍會被 Task Scheduler 觸發，但不會自動補跑/告警）。
 
 **請在 PC3 執行以下三行並回報**，再決定改哪一邊（一次改對，別兩邊都塞）：
+
+> **2026-11-04 決策：延到遷移日再做，不必特地跑。** PC3 目前報告與 XQ 都正常，且報告/XQ/頻道監控都不讀 `config.py`，拼字不影響現役運作。三行都是唯讀，遷移當天一次做完即可（主機名要在 `config.py` 登記正確，`deploy.ps1` 的身份檢查才過得了）。
 
 ```powershell
 hostname
