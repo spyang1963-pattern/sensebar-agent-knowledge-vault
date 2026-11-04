@@ -74,9 +74,12 @@ def main():
     check("專案根目錄", project.is_dir(), project)
     check("shared 目錄", shared.is_dir(), shared)
 
-    for sub in ("working", "output", "knowledge-base"):
+    for sub, hint in (("working", "執行期目錄，deploy.ps1 會建立"),
+                      ("output", "執行期目錄，deploy.ps1 會建立"),
+                      ("knowledge-base", "資料目錄，由收割／筆記產生")):
         p = project / sub
-        check(f"{sub} 目錄", p.is_dir(), p)
+        check(f"{sub} 目錄", p.is_dir(),
+              p if p.is_dir() else f"{p}（缺；{hint}）")
 
     try:
         videos = Path(config.get_machine_paths()["videos"])

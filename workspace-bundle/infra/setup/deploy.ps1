@@ -234,6 +234,20 @@ function Show-HealthSummary {
     return ($fails.Count + $warns.Count)
 }
 
+function Ensure-RuntimeDirs {
+    # git 不追蹤空目錄，新機 clone 後不會有這些執行期目錄
+    param([string]$Root)
+    $made = @()
+    foreach ($d in @("working", "output", "videos")) {
+        $p = Join-Path $Root $d
+        if (-not (Test-Path -LiteralPath $p)) {
+            New-Item -ItemType Directory -Force -Path $p | Out-Null
+            $made += $d
+        }
+    }
+    return $made
+}
+
 function Invoke-Setup {
     param([string]$Root, [bool]$Preview)
 
@@ -387,10 +401,22 @@ Show-RepoState -Root $root
 # 3. 安裝
 Write-Host ""
 if ($SkipSetup) {
-    Write-Host "[3/5] 安裝 — 已用 -SkipSetup 跳過"
+    Write-Host "[3/5] 安裝與執行期目錄 — 安裝已用 -SkipSetup 跳過"
 } else {
-    Write-Host "[3/5] 安裝（setup_new_pc.bat）..."
+    Write-Host "[3/5] 安裝與執行期目錄（setup_new_pc.bat）..."
     Invoke-Setup -Root $root -Preview $DryRun.IsPresent
+}
+
+# git 不追蹤空目錄，新機 clone 後不會有 working/output/videos，這裡補上
+if ($DryRun) {
+    Write-Host "  [dry] 建立執行期目錄：working、output、videos"
+} else {
+    $made = Ensure-RuntimeDirs -Root $root
+    if ($made.Count -gt 0) {
+        Write-Host "  已建立目錄：$($made -join '、')"
+    } else {
+        Write-Host "  執行期目錄已存在"
+    }
 }
 
 # 4. 健檢
