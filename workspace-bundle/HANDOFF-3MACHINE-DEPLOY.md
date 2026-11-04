@@ -232,6 +232,59 @@ schtasks /Query /FO CSV | findstr /I "Autonomy"
 
 **結論**：方向可行，且比雙向同步乾淨；但 `shared/` 派工通道與「PC 端分享權限」兩件事要先解，才會真的省事。此輪不動手。
 
+### Step 8 — 舊工作區清理（PC1/PC2）｜腳本已備，待執行
+
+PC1 在本次部署前已有兩次早期測試留下的工作區（PC2 可能也有）：
+
+| 路徑 | 日期 |
+|---|---|
+| `D:\!!AI agent 專案夾\三師爸的 AI agent 學習 AI agent` | 2026-09-11 |
+| `D:\sensebar-agent-knowledge-vault` | 2026-09-20 |
+
+> 注意：`sensebar-agent-knowledge-vault` 在 **PC3 是現役目錄**，在 PC1/PC2 只是舊測試殘留，別搞混。
+
+**先盤點、再決定**（腳本唯讀，不刪不改任何東西）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File workspace-bundle\infra\setup\audit_old_workspace.ps1
+```
+
+它會逐一路徑列出：大小／檔案數、Git 遠端與分支、**未推送 commit 數**、未提交變更數、`finance.db`、`knowledge-base` 的 `.md` 數與大小、`shared\watched_channels_state.json`、`output`／`working`／`videos` 容量、以及**是否有排程任務仍指向該路徑**。
+
+**判斷原則**
+
+| 情況 | 處理 |
+|---|---|
+| 未推送 commit > 0 | 先 `git push`（或確認是測試垃圾），否則刪了就救不回 |
+| 有排程指向它 | 先停用／改路徑，否則排程天天失敗 |
+| `finance.db` 或 KB 比新工作區新／更完整 | 先複製需要的部分再刪 |
+| 以上都沒有 | 整包壓縮留一份到 NAS／外接，再刪資料夾 |
+
+**注意**：舊目錄若沒有 `.git`（例如 `D:\!!AI agent 專案夾\...` 在 notebook 上就是純資料夾、315MB／1330 檔），就沒有 commit 可救，只需確認裡面沒有獨有的 KB／影片。
+
+### Step 9 — OC 額度小窗（`oc_widget`）推廣到三機｜已可攜
+
+`oc_widget.py` + `oc_usage.py` + `oc_widget.bat` 已納入 git（原本只在 notebook、且 `sys.path` 寫死 `D:\AI-Agent-Workspace`）。
+
+**可攜化修正**：`sys.path` 改由 `Path(__file__).resolve().parent` 決定；`oc_widget.bat` 重寫為**純 ASCII**（原本含中文註解，在 cp950/UTF-8 之間會把 `cd /d` 併進 `rem` 行而失效）。
+
+**每台裝法（含 PC3，在任何目錄都能跑）**：
+
+```powershell
+cd D:\AI-Agent-Workspace
+pythonw oc_widget.py          # 背景常駐（建議）
+# 或雙擊 oc_widget.bat
+python oc_widget.py --check    # 只印一次數字
+```
+
+開機自動啟動（可選）：`shell:startup` 放 `oc_widget.bat` 的捷徑。
+
+**先決條件**：該機要有 opencode 並登入過（`%LOCALAPPDATA%\opencode\auth.json` 才有 `opencode-go` key）。
+- 有 key → 顯示 Go（5h／週／月，**官方精確值、帳號級**）
+- 沒 key → 顯示「Go —」，免費數字仍可算（讀本機 `opencode.db`）
+
+**重要語意**：「免費 200/5h」的計數是**讀本機 DB 估算**，所以每台只看到自己那台的用量；三台加起來才是帳號真實用量。Go 是官方 API，三台看到同一個數字。
+
 
 ## 3. 人工不可自動化（每台都一樣）
 
@@ -297,6 +350,13 @@ setup_new_pc.bat                # 實際安裝
 # 切換日排程
 powershell -ExecutionPolicy Bypass -File workspace-bundle\infra\setup\deploy.ps1 -SkipSetup -RegisterTasks
 powershell -ExecutionPolicy Bypass -File workspace-bundle\infra\setup\deploy.ps1 -SkipSetup -UnregisterTasks
+
+# 舊工作區盤點（唯讀；刪任何東西之前先跑）
+powershell -ExecutionPolicy Bypass -File workspace-bundle\infra\setup\audit_old_workspace.ps1
+
+# 額度小窗（零 token）
+pythonw oc_widget.py            # 常駐；或雙擊 oc_widget.bat
+python oc_widget.py --check     # 只印一次
 
 # 健檢
 python -X utf8 workspace-bundle\infra\health_check.py
