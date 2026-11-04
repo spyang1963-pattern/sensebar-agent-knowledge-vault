@@ -52,7 +52,7 @@ def read_version(bundle_dir):
 def git_pull(cwd):
     """執行 git pull"""
     print(f"  執行 git pull...")
-    out, code = run(["git", "pull"], cwd=str(cwd))
+    out, code = run(["git", "pull"], cwd=str(cwd), timeout=300)
     if code == 0:
         print(f"  ✅ {out[:100]}")
         return True
@@ -69,9 +69,10 @@ def install_requirements(bundle_dir, requirements_file):
         return True
 
     print(f"  安裝 {requirements_file}...")
+    # 首次安裝（尤其 whisper/torch 相依）常超過 2 分鐘，勿沿用預設 60s
     out, code = run([
         sys.executable, "-m", "pip", "install", "-r", str(req_path), "-q"
-    ], timeout=120)
+    ], timeout=900)
 
     if code == 0:
         print(f"  ✅ 套件安裝完成")
