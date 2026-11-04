@@ -203,6 +203,36 @@ schtasks /Query /FO CSV | findstr /I "Autonomy"
 - 切換順序：同步 state → 停舊機排程 → 建新機排程 → 觀察一天。
 - 開放問題：notebook 的 `videos` 是 `D:\!!!!!理周學院老師`，PC1/PC2 是 `D:\AI-Agent-Workspace\videos`。建議各機保留既有教材庫（只同步任務所需），不強制搬移。
 
+### Step 7 — 單向收割架構（PC 產出 → notebook 收）｜待決策、未實作（2026-11-04 提出）
+
+**方向改變**：三機不再「互相同步整份資料」，改成**單向收割**。
+
+- **PC1/PC2 不必從 notebook 拿 `finance.db`、`knowledge-base/`**（省下 60MB + 124MB 的複製與後續同步負擔）。
+- **產出物反向流回 notebook**：逐字稿 `.md`／`.srt`、課程筆記、摘要報告、直播報告 → 收割到 notebook 的 `knowledge-base/`，notebook 是 KB 的唯一正本。
+- **影音不搬**：影片留在產出機的 `D:\YouTube_Videos`，KB 條目只寫「位置指標」，notebook 端點連結就能播放（SMB/UNC）。
+
+**可行的部分**：KB 條目本來就是純文字，收割只需複製 `.md`/`.srt`/`.docx`（單支幾百 KB～幾 MB）；影片用 UNC 路徑即可線上播放，不必佔 notebook 空間。
+
+**要改的地方**
+
+1. KB 條目的影片路徑改成**雙欄**：`本機影片`（產出機 `D:\YouTube_Videos\...`）＋ `網路影片`（`\\100.84.223.110\YouTube_Videos\...`）。notebook 點「網路影片」；產出機點「本機影片」。目前條目只寫本機路徑，直接拿到 notebook 會點不到。
+2. `\\<PC>\...` 要能連 → **反向 SMB 權限**：PC1/PC2 需開 `AI-Agent-Workspace`（或至少 `YouTube_Videos`、KB 目錄）分享並給 notebook 讀取權。今天在 notebook 上遇到的「分享 Everyone Full 但 NTFS 沒有 Everyone → 錯誤 5」會一模一樣發生在 PC 端（見第 5 節第 10 條）。
+3. 收割方向建議 **notebook 主動 pull**（單一讀者、權限只需唯讀），排程例如每日一次；PC 端不需要寫入 notebook。
+4. 去重仍用 `video_id`（`channel_watcher.kb_video_index()` 已具備），收割前比對，避免同支重複進 KB。
+
+**已知障礙／待決**
+
+| 問題 | 說明 |
+|---|---|
+| `shared/` 不能不同步 | 任務派工（`task_status.json`、`shared/tasks/*.json`）與 heartbeat 都在 `shared/`，PC 若不與 notebook 共用，跨機派工就斷。**收割架構只適用 KB 與 finance.db，`shared/` 仍需共用（或有替代的派工通道）** |
+| PC 離線＝影片斷鏈 | 指標路徑失效。KB 條目需標「離線」或保留 thumbnail/摘要；或日後把冷片搬 NAS |
+| `finance.db` 不同步 | PC1/PC2 不跑金融線（PC3 跑），所以現階段沒差；但若日後把金融線分到 PC1/PC2，空 DB 會失去去重與歷史 |
+| PC 端儲存壓力 | 影片只進不出會長大，需保留策略（例如 30 天後搬 NAS 或刪） |
+| 現況（2026-11-04） | notebook 端已對 `financial_news\`、`shared\`、`knowledge-base\` 加 `Everyone:(OI)(CI)(RX)`；這是「notebook → PC」方向，與收割需要的「PC → notebook」方向相反，屆時要在 PC 端做一次 |
+
+**結論**：方向可行，且比雙向同步乾淨；但 `shared/` 派工通道與「PC 端分享權限」兩件事要先解，才會真的省事。此輪不動手。
+
+
 ## 3. 人工不可自動化（每台都一樣）
 
 | 項目 | 位置 |
@@ -244,6 +274,13 @@ schtasks /Query /FO CSV | findstr /I "Autonomy"
 7. **PowerShell 傳參給原生程式會吃掉雙引號**：`python -c 'sys.path.insert(0, r"$Root")'` 到 python 手上變成 `rD:\...`。改用環境變數傳值，或 python 端用單引號。
 8. **含中文的 `.ps1` 要存 UTF-8 with BOM**：PS 5.1 對無 BOM 的檔案會以 ANSI 解讀，中文全亂。`deploy.ps1` 已加 BOM。
 9. **套件會在 import 時印 warning 到 stdout，把 JSON 弄壞**（2026-11-04 在 PC1 實踩）：`PyMuPDF` 的 `fitz` 會印 `warning: The 'fitz' API is deprecated...`，`health_check.py --json` 的輸出前面多這一行，`ConvertFrom-Json` 直接拋「無效的 JSON 基本型別: warning」。修法：`deploy.ps1` 只取第一個 `{` 到最後一個 `}` 的區段，並用 `2>$null` 抑制 stderr；多餘輸出會印成「（健檢附帶輸出，已忽略：…）」方便追查。**不要改回 `$raw | ConvertFrom-Json`**。
+10. **SMB「分享 Full 但複製被拒（錯誤 5）」＝ NTFS 沒有 Everyone**（2026-11-04 實踩）：notebook 的 `AI-Agent-Workspace` 分享是 `Everyone: Full`，但 NTFS ACL 只有 `Authenticated Users(M)` / `Users(RX)`。PC1 用本機帳號（`user`）連過來時是匿名身分，兩個群組都不屬於它 → 分享層放行、檔案層 Access Denied。修法（唯讀，不動寫入）：
+    ```powershell
+    foreach ($p in @("financial_news","shared","knowledge-base")) {
+        icacls "D:\AI-Agent-Workspace\$p" /grant "*S-1-1-0:(OI)(CI)(RX)" /T /C /Q
+    }
+    ```
+    用 SID `S-1-1-0` 而非 `Everyone` 字串，避免多語系／本機化名稱問題。正式解法是 `net use \\host\share /user:<host>\<account> *` 走帳號驗證，不必開 Everyone。
 
 ## 6. 快速指令
 
