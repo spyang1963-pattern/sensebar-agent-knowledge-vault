@@ -14,7 +14,7 @@
 | Python 套件 | google-genai、groq、feedparser、requests、PyYAML、markdown、python-docx、pywin32、flask、（base 皆含） | yt-dlp、openai-whisper、groq、requests、PyYAML、watchdog、plyer、psutil、PIL、beautifulsoup4、pymupdf、pypdf、pytesseract、python-docx、google-genai、auto-editor、openai、python-dotenv | requests、pandas、PyYAML、beautifulsoup4 |
 | Key / 設定 | `~/.gemini_api_key`（每個案獨立）、`~/.groq_api_key`、`~/.telegram_env`（BOT_TOKEN/CHAT_ID）、（選）`~/.openrouter_api_key` | `~/.groq_api_key`（轉錄）、`~/.gemini_api_key`（摘要/整理）、`notify_config.yaml`（LINE/Email） | `stock-monitor/config.yaml`（email/webhook/LINE 通知） |
 | 資料檔 | `finance.db`（app 唯一真源）、`publisher/repo/` | `shared/watched_channels_state.json`、`knowledge-base/`、`videos/`、`raw/`、`output/`、`working/` | `output/cache/`（法人/融資券/K線，.gitignore） |
-| 排程 | `FinanceNews_<機>_Pipeline`（30min）、Morning（07:00）、Evening（19:00）、（PC3）`Autonomy_finance-*`、`Autonomy_Guard` | `ChannelWatcherDaily`（22:00）、三機 `sync_shared`（5min）、worker/supervisor | `StockMonitor_Fetch`（21:30）、自選股/GUI 排程 |
+| 排程 | `FinanceNews_<機>_Pipeline`（30min）、Morning（07:00）、Evening（19:00）、（PC3）`Autonomy_finance-*`、`Autonomy_Guard` | `ChannelWatcherDaily`（22:30）、三機 `sync_shared`（5min）、worker/supervisor | `StockMonitor_Fetch`（21:30）、自選股/GUI 排程 |
 | 驗證命令 | `python pipeline.py --report --no-push`、`publisher/build.py` | `python worker.py --test`、`python channel_watcher.py --once` | `python run_stock_analysis.py --fetch-only --no-notify` |
 
 ## 二、共同能力（Cross-cutting capabilities）

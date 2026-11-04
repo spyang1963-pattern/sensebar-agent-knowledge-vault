@@ -12,6 +12,8 @@
 | 開發/管理站 | 改程式、git push、agent session | Notebook |
 | collector | 純新聞收集（無分析，Python 3.8 限制） | NAS（角色待定） |
 
+> **2026-11-04 決策**：PC1 / PC2 / PC3 / Notebook **能力完全一致**（皆為完整副本，可獨立承接 finance / video / stock / XQ）。`MACHINE_ROLES` 只是主要職責註記，不代表能力限制。三機工作區一律 `D:\AI-Agent-Workspace`（PC3 待遷移）。
+
 單一寫入者原則：同一種排程任務全時間只能有一台機器在跑，切換時先停舊再啟新。
 
 ## 第 1 步：取得程式碼
@@ -69,7 +71,7 @@ powershell -ExecutionPolicy Bypass -File <REPO>\workspace-bundle\infra\setup\ext
 `<REPO>\config.py`：
 - `MACHINE_ALIASES` 加 `"hostname小寫": "pcN"`
 - `MACHINE_PATHS` 加該機路徑
-- `MACHINE_ROLES` 加角色
+- `MACHINE_ROLES` 加主要角色註記（全功能；角色不限制能力）
 
 改完 commit + push（所有機器同步這份設定）。驗證：
 ```powershell
@@ -94,7 +96,7 @@ python <REPO>\workspace-bundle\infra\health_check.py
 | FinanceNews_<機>_Pipeline | 每 30 分 | `python pipeline.py --full --batch 150 --time-budget 480` |
 | FinanceNews_<機>_MorningReport | 每天 07:00 | `python pipeline.py --report --deep --slot morning` |
 | FinanceNews_<機>_EveningReport | 每天 19:00 | `python pipeline.py --report --deep --slot evening` |
-| ChannelWatcherDaily | 每天 22:00 | `python channel_watcher.py --once` |
+| ChannelWatcherDaily | 每天 22:30 | `python channel_watcher.py --once` |
 
 **切換日順序**：
 1. 同步最新 watched_channels_state.json → 新機

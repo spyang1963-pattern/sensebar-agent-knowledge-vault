@@ -19,27 +19,24 @@ from datetime import datetime
 BUNDLE_DIR = Path(__file__).resolve().parents[1]
 WORKSPACE = Path(os.environ.get("WORKSPACE_ROOT") or BUNDLE_DIR.parent)
 
-# ── 機器定義 ──
-MACHINES = {
-    "LAPTOP-VAG7LBD2": {
-        "name": "筆電",
-        "role": ["collector", "analyzer", "reporter"],
-        "tailscale_ip": "100.111.44.63",
-        "os": "windows",
-    },
-    "DESKTOP-MFKVCSO": {
-        "name": "PC3",
-        "role": ["collector", "analyzer"],
-        "tailscale_ip": "100.111.44.63",  # TODO: 確認 PC3 Tailscale IP
-        "os": "windows",
-    },
-    "DS718+": {
-        "name": "NAS",
-        "role": ["collector"],
-        "tailscale_ip": "192.168.1.121",
-        "os": "linux",
-    },
+# ── 機器定義（單一來源：repo 根目錄 config.py）──
+MACHINE_LABELS = {
+    "notebook": "筆電",
+    "pc1": "PC1",
+    "pc2": "PC2",
+    "pc3": "PC3",
 }
+
+
+def _load_config():
+    """讀 repo 根的 config.py（機器身份 / 角色 / Tailscale IP 的唯一來源）"""
+    try:
+        if str(WORKSPACE) not in sys.path:
+            sys.path.insert(0, str(WORKSPACE))
+        import config as cfg
+        return cfg
+    except Exception:
+        return None
 
 # ── Bundle 定義 ──
 BUNDLES = {
@@ -292,15 +289,14 @@ LINE_CHECKERS = {
 
 
 def check_config_files():
-    """檢查必要的設定檔"""
+    """檢查必要的設定檔（路徑相對於 repo 根目錄）"""
     checks = []
     config_files = [
-        ("config/machine.yaml", "機器設定"),
-        ("config/notify_config.yaml", "通知設定"),
-        ("config/.env", "API Keys"),
+        ("workspace-bundle/infra/config/machine.yaml", "機器設定"),
+        ("notify_config.yaml", "通知設定（LINE/Email）"),
     ]
     for rel_path, desc in config_files:
-        path = WORKSPACE / "workspace-bundle" / rel_path
+        path = WORKSPACE / rel_path
         checks.append({
             "file": rel_path,
             "desc": desc,
@@ -421,13 +417,24 @@ def check_kb_capability():
 def build_report(as_json=False):
     """建立完整報告"""
     hostname = get_machine_name()
-    machine_info = MACHINES.get(hostname, {"name": hostname, "role": []})
+    cfg = _load_config()
+
+    if cfg is not None:
+        machine = cfg.MACHINE
+        machine_name = MACHINE_LABELS.get(machine, machine)
+        machine_role = [cfg.get_machine_role()]
+        machine_ip = cfg.TAILSCALE_IPS.get(machine)
+    else:
+        machine, machine_name = hostname, hostname
+        machine_role, machine_ip = [], None
 
     report = {
         "timestamp": datetime.now().isoformat(),
-        "machine": hostname,
-        "machine_name": machine_info["name"],
-        "machine_role": machine_info["role"],
+        "machine": machine,
+        "hostname": hostname,
+        "machine_name": machine_name,
+        "machine_role": machine_role,
+        "machine_ip": machine_ip,
         "python": get_python_version(),
         "git": {
             "repo_version": get_git_version(),
@@ -465,7 +472,9 @@ def build_report(as_json=False):
     print(f"  {report['timestamp']}")
     print(f"{'='*50}")
     print(f"\n  機器：{report['machine_name']} ({report['machine']})")
+    print(f"  主機名：{report['hostname']}")
     print(f"  角色：{', '.join(report['machine_role']) or '未設定'}")
+    print(f"  Tailscale：{report['machine_ip'] or '未設定'}")
     print(f"  Python：{report['python']}")
     print(f"  Git repo：{report['git']['repo_version'] or '無法取得'}")
     print(f"  未提交變更：{report['git']['uncommitted_changes']} 個檔案")

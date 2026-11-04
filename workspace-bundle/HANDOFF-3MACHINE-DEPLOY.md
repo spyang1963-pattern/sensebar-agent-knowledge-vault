@@ -41,20 +41,27 @@ setup_new_pc.bat --dry-run     # 應 exit 0、列出 10 步且不變更環境
 
 ## 2. 待辦（依序）
 
-### Step 2 — 統一「機器身份／角色」來源（未開始）
+### Step 2 — 統一「機器身份／角色」來源 ✅ 完成（2026-11-04）
 
-現況三處不一致：
+原本三處不一致，已收斂為 **`config.py` 單一來源**：
 
-| 位置 | 內容 |
+| 項目 | 修法 |
 |---|---|
-| `config.py:15` `MACHINE_ALIASES` | notebook / pc1 / pc2 / pc3 |
-| `config.py:89` `MACHINE_ROLES` | pc2=downloader、pc1=adhoc_worker、notebook/pc3=harvester（分工制，與「全功能」決策衝突） |
-| `health_check.py:23` `MACHINES` | 只列 notebook / PC3 / NAS；PC1、PC2 缺；PC3 的 Tailscale IP 是 TODO 且與 notebook 相同 |
+| `health_check.py` 自帶機器表（只列 notebook/PC3/NAS、PC3 IP 誤填 notebook） | 移除 `MACHINES`，改讀 `config.MACHINE / MACHINE_ROLES / TAILSCALE_IPS`；報告新增 `hostname`、`machine_ip` |
+| `config.py` 角色是分工制（downloader/adhoc_worker） | 改為 `worker / harvester` 的「主要職責註記」，並註明全功能；新增 `get_machine_info()` |
+| `TAILSCALE_IPS` 缺 PC3 | 加 `"pc3": None`（待遷移後以 `tailscale ip -4` 補），不再沿用 notebook IP |
+| `health_check.py` 設定檔路徑錯（`workspace-bundle/config/...`） | 改 `workspace-bundle/infra/config/...`＋root `notify_config.yaml`；移除永遠 ❌ 的 `.env` 檢查 |
+| `task_manager_gui.py` 硬寫 pc1/pc2 IP、PC3 會 KeyError | 卡片改由 `TAILSCALE_IPS` 產生（含 pc3，IP 未設定會顯示「未設定」） |
+| 文件排程時間 22:00 | 統一為實際值 **22:30**（ONBOARDING / PROVISIONING） |
 
-待做：
-1. `health_check.py` 的機器表改為讀 `config.py`（單一來源），補 pc1/pc2 與正確 IP。
-2. `MACHINE_ROLES` 改成「全功能 + 主要角色註記」（例：`pc1: harvester (primary)`），文件同步 `PROVISIONING.md`。
-3. `health_check.py:303` 設定檔路徑錯誤：找 `workspace-bundle/config/...`，實際在 `workspace-bundle/infra/config/...` → 永遠顯示 ❌。改路徑後重驗。
+驗證（notebook）：
+```
+machine=notebook  role=harvester  ip=100.111.44.63
+config: machine.yaml ✅ / notify_config.yaml ✅
+GUI get_machines(): notebook(本機) / pc1 / pc2 / pc3(未設定)
+```
+
+**刻意未改**：`MACHINE_PATHS["pc3"]` 仍指 `D:\sensebar-agent-knowledge-vault`。PC3 是現役收成機，先行改路徑會讓它拉到新 config 後找不到 output/working；改為遷移當天切換（見 Step 5）。
 
 ### Step 3 — 單一入口 `deploy.ps1`（未開始）
 
@@ -70,10 +77,23 @@ setup_new_pc.bat --dry-run     # 應 exit 0、列出 10 步且不變更環境
 4. 跑一次 `python channel_watcher.py --once` 的縮小版或 `worker.py --test` 驗證。
 5. 通過後才複製流程到 PC2 / PC3。
 
-### Step 5 — 三機上線後再調整工作分配
+### Step 5 — PC3 遷移（最後做）
+
+PC3 仍跑在 `D:\sensebar-agent-knowledge-vault`，先不動以免中斷現役收成。遷移日執行：
+
+1. 先停 PC3 排程（單一寫入者）。
+2. 把資料複製到 `D:\AI-Agent-Workspace`：`output/`、`working/`、`D:\YouTube_Videos` 影片庫。
+3. 改 `config.py` 兩處：
+   - `MACHINE_PATHS["pc3"]` → 與 pc1/pc2 相同的 `D:\AI-Agent-Workspace\...`
+   - `TAILSCALE_IPS["pc3"]` → `tailscale ip -4` 取得的實際值
+4. 在 PC3 跑 `setup_new_pc.bat` → `health_check.py` 驗收（應顯示 pc3 + 正確 IP）。
+5. 重建排程，觀察一天；舊目錄保留一週再刪。
+
+### Step 6 — 三機上線後再調整工作分配
 
 - 依 `PROVISIONING.md`「單一寫入者」原則重新分配排程。
 - 切換順序：同步 state → 停舊機排程 → 建新機排程 → 觀察一天。
+- 開放問題：notebook 的 `videos` 是 `D:\!!!!!理周學院老師`，PC1/PC2 是 `D:\AI-Agent-Workspace\videos`。建議各機保留既有教材庫（只同步任務所需），不強制搬移。
 
 ## 3. 人工不可自動化（每台都一樣）
 

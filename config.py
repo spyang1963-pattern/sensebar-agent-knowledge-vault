@@ -2,9 +2,10 @@
 # -*- coding: utf-8 -*-
 """
 共用設定檔 - 三機協同架構
-PC2: 下載站（YouTube下載+轉寫）
-PC1: 臨時站（臨時任務處理）
-Notebook: 收成站（KB管理+pipeline執行）
+2026-11-04 決策：PC1 / PC2 / PC3 / Notebook 皆為「完整能力副本」，
+任一台可獨立承接 finance / video / stock / XQ；MACHINE_ROLES 僅為
+主要職責註記（供日誌/排程辨識），不代表能力限制。
+工作區統一：三機一律 D:\\AI-Agent-Workspace（PC3 待遷移，見 MACHINE_PATHS）。
 """
 import os, sys, socket, json
 from pathlib import Path
@@ -32,6 +33,7 @@ TAILSCALE_IPS = {
     "pc2": "100.113.234.81",
     "pc1": "100.84.223.110",
     "notebook": "100.111.44.63",
+    "pc3": None,  # 待補：PC3 遷移後以 `tailscale ip -4` 取得（勿沿用 notebook 的 IP）
 }
 
 # === 路徑設定 ===
@@ -66,6 +68,8 @@ MACHINE_PATHS = {
         "shared": SHARED_ROOT,
     },
     "pc3": {
+        # TODO(2026-11-04 決策)：PC3 遷移到 D:\AI-Agent-Workspace 後改為與 pc1/pc2 相同路徑。
+        # 目前保留舊路徑，避免現役收成任務中斷；遷移步驟見 HANDOFF-3MACHINE-DEPLOY.md。
         "videos": r"D:\YouTube_Videos",
         "output": r"D:\sensebar-agent-knowledge-vault\output",
         "working": r"D:\sensebar-agent-knowledge-vault\working",
@@ -85,16 +89,27 @@ STATUS_DONE = "done"
 STATUS_FAILED = "failed"
 STATUS_ASSIGNED = "assigned"
 
-# === 機器角色 ===
+# === 機器角色（僅註記，非能力限制）===
+# 2026-11-04：所有機器都是完整副本；角色只用於日誌/排程辨識。
 MACHINE_ROLES = {
-    "pc2": "downloader",      # 負責YouTube下載+轉寫
-    "pc1": "adhoc_worker",    # 負責臨時任務
-    "notebook": "harvester",  # 負責收成+KB管理
-    "pc3": "harvester",       # 接手收成+KB管理（2026-08 起與 notebook 交接）
+    "pc1": "worker",       # 全功能；目前主要跑臨時任務
+    "pc2": "worker",       # 全功能；目前主要跑下載+轉寫
+    "notebook": "harvester",
+    "pc3": "harvester",    # 現役收成機；遷移後與 notebook 同路徑
 }
 
 def get_machine_role():
     return MACHINE_ROLES.get(MACHINE, "unknown")
+
+def get_machine_info():
+    """單一來源的機器資訊，供 health_check / GUI / 部署腳本使用"""
+    return {
+        "machine": MACHINE,
+        "role": get_machine_role(),
+        "tailscale_ip": TAILSCALE_IPS.get(MACHINE),
+        "full_capability": True,   # 所有機器能力一致（不分管制）
+        "root": LOCAL_ROOT,
+    }
 
 # === 功能函數 ===
 def load_task_status():

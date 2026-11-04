@@ -65,11 +65,22 @@ class WorkerManager:
         from ipc import Heartbeat
         heartbeat = Heartbeat(MACHINE)
         
-        base = {
-            "notebook": {"ip": "127.0.0.1", "status": "未知", "disk": "-", "last_seen": None},
-            "pc1": {"ip": "100.84.223.110", "status": "未知", "disk": "-", "last_seen": None},
-            "pc2": {"ip": "100.113.234.81", "status": "未知", "disk": "-", "last_seen": None},
-        }
+        # 機器清單來自 config.py（單一來源），避免各處硬寫 IP
+        order = ["notebook", "pc1", "pc2", "pc3"]
+        names = [m for m in order if m in TAILSCALE_IPS]
+        names += [m for m in TAILSCALE_IPS if m not in names]
+        if MACHINE not in names:
+            names.append(MACHINE)
+
+        base = {}
+        for _m in names:
+            _ip = TAILSCALE_IPS.get(_m)
+            base[_m] = {
+                "ip": _ip or "未設定",
+                "status": "本機" if _m == MACHINE else "未知",
+                "disk": "-",
+                "last_seen": None,
+            }
         
         # 從心跳模組取得各機狀態
         all_status = heartbeat.get_all_status()
