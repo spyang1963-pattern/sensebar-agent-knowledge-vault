@@ -4,6 +4,26 @@
 > 原則：能腳本化的全部腳本化；只有「金鑰、資料同步、GitHub 認證」三項必須人工。
 > 本手冊由 2026-08 PC3 實際佈署過程固化而來。
 
+## 快速路徑（建議：三機一鍵）
+
+新機（PC1 / PC2 / PC3）不必逐步照做，直接：
+
+```powershell
+# 1. 取得程式碼到統一工作區（三機一律 D:\AI-Agent-Workspace）
+git clone https://github.com/spyang1963-pattern/sensebar-agent-knowledge-vault.git D:\AI-Agent-Workspace
+
+# 2. 先看會做什麼（不寫入）
+powershell -ExecutionPolicy Bypass -File D:\AI-Agent-Workspace\workspace-bundle\infra\setup\deploy.ps1 -Machine pc1 -DryRun
+
+# 3. 實際部署（Git/Python/外部工具/套件/健檢）
+powershell -ExecutionPolicy Bypass -File D:\AI-Agent-Workspace\workspace-bundle\infra\setup\deploy.ps1 -Machine pc1
+
+# 4. 切換日才註冊排程（單一寫入者）
+powershell -ExecutionPolicy Bypass -File D:\AI-Agent-Workspace\workspace-bundle\infra\setup\deploy.ps1 -SkipSetup -RegisterTasks
+```
+
+`deploy.ps1` 會先比對 `config.py` 的機器身份，不符合就中止（避免在錯的機器建任務）；接著呼叫 `setup_new_pc.bat`，最後印出只含 ❌ / ⚠️ 的健檢摘要。以下第 1～8 步是它背後的細節，需要手動排查時再看。
+
 ## 架構角色
 
 | 角色 | 職責 | 現役 |
@@ -19,9 +39,9 @@
 ## 第 1 步：取得程式碼
 
 ```powershell
-git clone https://github.com/spyang1963-pattern/sensebar-agent-knowledge-vault.git D:\sensebar-agent-knowledge-vault
+git clone https://github.com/spyang1963-pattern/sensebar-agent-knowledge-vault.git D:\AI-Agent-Workspace
 ```
-（已 clone 過則 `git pull`。之後所有路徑以 `<REPO>` 代表 repo 根目錄）
+（已 clone 過則 `git pull`。之後所有路徑以 `<REPO>` 代表 repo 根目錄；三機統一為 `D:\AI-Agent-Workspace`）
 
 ## 第 2 步：Python 套件安裝（依任務線）
 
@@ -93,10 +113,14 @@ python <REPO>\workspace-bundle\infra\health_check.py
 
 | 任務名稱 | 觸發 | 指令 |
 |---|---|---|
-| FinanceNews_<機>_Pipeline | 每 30 分 | `python pipeline.py --full --batch 150 --time-budget 480` |
-| FinanceNews_<機>_MorningReport | 每天 07:00 | `python pipeline.py --report --deep --slot morning` |
-| FinanceNews_<機>_EveningReport | 每天 19:00 | `python pipeline.py --report --deep --slot evening` |
+| FinanceNews_Pipeline | 每 30 分 | `python pipeline.py --full --batch 150 --time-budget 480` |
+| FinanceNews_MorningReport | 每天 07:00 | `python pipeline.py --report --deep --slot morning` |
+| FinanceNews_EveningReport | 每天 19:00 | `python pipeline.py --report --deep --slot evening` |
 | ChannelWatcherDaily | 每天 22:30 | `python channel_watcher.py --once` |
+
+> 任務名稱不帶機器後綴：排程是各機本地的，同名不衝突，且 `health_check.py` 以這些名稱判讀。
+> 用 `deploy.ps1 -RegisterTasks` 建立（會自動設定「充電/電池都可跑、錯過補跑、不重複啟動」）。
+> 切換日舊機移除：`deploy.ps1 -UnregisterTasks`。
 
 **切換日順序**：
 1. 同步最新 watched_channels_state.json → 新機

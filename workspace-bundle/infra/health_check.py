@@ -81,12 +81,18 @@ LINES = {
     },
 }
 
-# 排程任務關鍵字（動態掃描 schtasks 比對；PC3 現役＝Autonomy_* 系列）
+# 排程任務關鍵字（動態掃描 schtasks 比對子字串）
+# 2026-11-04：改為實際存在的名稱。舊清單是 Autonomy_* 系列，現已全部改名/重建，
+# 導致排程區永遠全 ❌。名稱不帶機器後綴（排程是各機本地的，不需區分；
+# deploy.ps1 -RegisterTasks 也建立同名任務）。
 TASK_KEYWORDS = [
-    "Autonomy_finance-pipeline", "Autonomy_finance-morning",
-    "Autonomy_finance-evening", "Autonomy_Guard", "ChannelWatcherDaily",
-    "XQ_Snapshot_Loop2", "XQ_Postmarket_Evening", "XQ_Postmarket_Morning",
-    "StockMonitor_Fetch", "StockMonitor_Scheduler",
+    "FinanceNews_Pipeline",
+    "FinanceNews_MorningReport",
+    "FinanceNews_EveningReport",
+    "ChannelWatcherDaily",
+    "AI-Agent-Sync",
+    "XQ_Snapshot_Loop",
+    "StockMonitor_Scheduler",
 ]
 
 

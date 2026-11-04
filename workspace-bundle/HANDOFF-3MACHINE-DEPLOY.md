@@ -63,15 +63,43 @@ GUI get_machines(): notebook(本機) / pc1 / pc2 / pc3(未設定)
 
 **刻意未改**：`MACHINE_PATHS["pc3"]` 仍指 `D:\sensebar-agent-knowledge-vault`。PC3 是現役收成機，先行改路徑會讓它拉到新 config 後找不到 output/working；改為遷移當天切換（見 Step 5）。
 
-### Step 3 — 單一入口 `deploy.ps1`（未開始）
+### Step 3 — 單一入口 `deploy.ps1` ✅ 完成（2026-11-04）
 
-`workspace-bundle/infra/setup/deploy.ps1 -Machine pc1|pc2|pc3 [-RegisterTasks]`
-- 包裝 `setup_new_pc.bat`，加上：機器身份檢查（未註冊即提示）、健檢摘要（只看 ❌）、可選排程註冊。
-- 排程預設**不註冊**，需明確加 `-RegisterTasks`。
+`workspace-bundle/infra/setup/deploy.ps1`
+
+```powershell
+# 先看會做什麼（不安裝、不註冊）
+deploy.ps1 -Machine pc1 -DryRun
+
+# 實際部署（呼叫 setup_new_pc.bat）
+deploy.ps1 -Machine pc1
+
+# 已裝好，只做身份 + 健檢
+deploy.ps1 -SkipSetup
+
+# 切換日：註冊 / 移除排程
+deploy.ps1 -SkipSetup -RegisterTasks
+deploy.ps1 -SkipSetup -UnregisterTasks
+```
+
+- **身份檢查**：讀 `config.py`（與 health_check 同一來源）。主機名未註冊（`unknown-*`）或與 `-Machine` 不符 → **中止並印出要加的 `MACHINE_ALIASES` 那行**，避免在錯的機器建任務。
+- **健檢摘要**：只列 ❌（任務線/能力）與 ⚠️（缺套件、未註冊排程），結尾給待補項數。
+- **排程預設不註冊**；`-RegisterTasks` 才建立 4 個任務（`StartWhenAvailable` + 電池可跑 + `IgnoreNew`），`-UnregisterTasks` 供切換日舊機使用。
+- 排程名稱**不帶機器後綴**（`FinanceNews_Pipeline` 等）：排程是各機本地的，同名不衝突；`health_check.py` 的 `TASK_KEYWORDS` 已同步改成這些實際名稱（原本是 `Autonomy_*` 舊名，導致排程區永遠全 ❌）。
+- `ONBOARDING.md` 已加「快速路徑」段落、修正 clone 路徑（原寫 `D:\sensebar-agent-knowledge-vault`）、排程表改為實際名稱。
+
+驗證（notebook）：
+```
+deploy.ps1 -DryRun -SkipSetup  → 身份=notebook、exit 0、列出 3 ❌（telegram_env、XQ excel/snapshots）＋1 ⚠️
+deploy.ps1 -Machine pc1        → 身份不符，exit 1，提示要在 config.py 補 "laptop-vag7lbd2": "pc1"
+deploy.ps1 -RegisterTasks -DryRun → 正確列出 4 個排程
+health_check --json services → FinanceNews_* / ChannelWatcherDaily / XQ_Snapshot_Loop / StockMonitor_Scheduler 皆 ✅
+```
 
 ### Step 4 — PC1 實機驗收（未開始）
 
-1. 在 PC1 執行 `setup_new_pc.bat`（非 dry-run）。
+1. 在 PC1 執行 `deploy.ps1 -Machine pc1 -DryRun` 先看，再 `deploy.ps1 -Machine pc1`。
+   - 若 PC1 主機名尚未在 `config.py` 的 `MACHINE_ALIASES`，先在 notebook 補上並 push（PC1 才能 pull 到）。
 2. `health_check.py` 四條線（finance/video/stock/xq）依該機用途全綠；XQ 線若無 XQ/Excel 可接受 ❌（人工作業）。
 3. 補人工項：Gemini key（每台獨立）、Telegram、資料同步（`finance.db`、`knowledge-base/`、`shared/watched_channels_state.json`）。
 4. 跑一次 `python channel_watcher.py --once` 的縮小版或 `worker.py --test` 驗證。
@@ -133,14 +161,24 @@ PC3 仍跑在 `D:\sensebar-agent-knowledge-vault`，先不動以免中斷現役�
 4. **`pip install` 首次可能 >2 分鐘**：update.py timeout 已調到 900s。
 5. **PATH 需重開終端**：winget 裝完同一視窗仍找不到指令。
 6. **GUI 長駐程序**：改完 `task_manager_gui.py` 必須關閉重開，否則仍是舊碼。
+7. **PowerShell 傳參給原生程式會吃掉雙引號**：`python -c 'sys.path.insert(0, r"$Root")'` 到 python 手上變成 `rD:\...`。改用環境變數傳值，或 python 端用單引號。
+8. **含中文的 `.ps1` 要存 UTF-8 with BOM**：PS 5.1 對無 BOM 的檔案會以 ANSI 解讀，中文全亂。`deploy.ps1` 已加 BOM。
 
 ## 6. 快速指令
 
 ```powershell
-# 部署（新機）
+# 部署（新機）— 建議走 deploy.ps1（含身份檢查 + 健檢摘要）
 cd D:\AI-Agent-Workspace
+powershell -ExecutionPolicy Bypass -File workspace-bundle\infra\setup\deploy.ps1 -Machine pc1 -DryRun
+powershell -ExecutionPolicy Bypass -File workspace-bundle\infra\setup\deploy.ps1 -Machine pc1
+
+# 只跑安裝（不驗身份）
 setup_new_pc.bat --dry-run      # 先看會做什麼
 setup_new_pc.bat                # 實際安裝
+
+# 切換日排程
+powershell -ExecutionPolicy Bypass -File workspace-bundle\infra\setup\deploy.ps1 -SkipSetup -RegisterTasks
+powershell -ExecutionPolicy Bypass -File workspace-bundle\infra\setup\deploy.ps1 -SkipSetup -UnregisterTasks
 
 # 健檢
 python -X utf8 workspace-bundle\infra\health_check.py
@@ -149,3 +187,9 @@ python -X utf8 workspace-bundle\infra\health_check.py --json
 # 機器身份
 python -X utf8 -c "import config; print(config.MACHINE, config.get_machine_role())"
 ```
+
+## 7. 尚未處理的小事（下次順手做）
+
+1. `sync_shared.ps1`（未納入 git）內仍硬寫 PC1/PC2/notebook 的 Tailscale IP，且假設分享名稱為 `AI-Agent-Workspace`；改 IP 時要一起改。若要收斂，改成讀 `config.TAILSCALE_IPS`。
+2. `health_check.py` 的 `AI-Agent-Sync` 任務在 notebook 上不存在（sync 只在需要推送的機器上跑），新機健檢會顯示 ⚠️ 屬正常。
+3. notebook 的 `MACHINE_PATHS["notebook"]["videos"]` 指 `D:\!!!!!理周學院老師`，PC1/PC2 指 `D:\AI-Agent-Workspace\videos`；分配工作時再決定是否統一。
