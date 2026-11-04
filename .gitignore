@@ -29,3 +29,11 @@ stock-monitor/scheduler.lock
 stock-monitor/scheduler.pid
 stock-monitor/sent_log.json
 stock-monitor/*.log
+
+# shared/ 是跨機 IPC 通道與執行期狀態（heartbeat、tasks、results、頻道掃描游標）
+# 由各機器寫入，不進 git；新機不靠 git 取得這些檔案。
+shared/*
+
+# knowledge-base 是「資料」不是程式碼（新方向：PC 產出後由收割機制單向回 notebook）
+# 已追蹤的 4 個檔案不受 gitignore 影響，仍可正常 commit。
+knowledge-base/*

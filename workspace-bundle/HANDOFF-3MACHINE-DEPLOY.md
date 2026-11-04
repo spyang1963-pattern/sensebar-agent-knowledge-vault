@@ -102,15 +102,17 @@ health_check --json services → FinanceNews_* / ChannelWatcherDaily / XQ_Snapsh
 
 **正式安裝結果（`deploy.ps1 -Machine pc1`，13:12）**：❌ 0、⚠️ 1（排程未註冊，預期）、ℹ️ 7（全為資料類）。外部工具（ffmpeg/VLC/Obsidian）與三個 bundle 套件皆安裝成功、`machine.yaml` 已自動產生、Groq/Gemini key 都在。
 
-剩兩件事：①資料同步（下方表格）②`workspace-bundle\infra\setup\smoke_test.py` 或縮小版 `channel_watcher.py --once` 實跑驗證。
+剩兩件事：①`workspace-bundle\infra\setup\smoke_test.py` 實跑驗證（✅ 22/22）②git 衛生（見下節，已修）。
+
+> **資料同步已取消（2026-11-04 新方向）**：PC1/PC2 **不再複製** `finance.db`、`knowledge-base/`、`shared\watched_channels_state.json`。產出留在產出機，由 notebook 單向收割（見 Step 7）。PC1 先前那次複製屬舊方向，可清掉但不急。
 
 > **更正（2026-11-04）**：`worker.py` **沒有 `--test` 參數**（只有 `--once` / `--retry-failed` / `--id`）。根目錄的 `test_e2e.py` **沒有進 git**（PC1 拉不到），而且它會呼叫 `harvest()`（有副作用），不適合當驗收工具。已新增 **`workspace-bundle/infra/setup/smoke_test.py`**（唯讀、可攜、結束碼＝失敗數），三機統一用它。`channel_watcher.py --once` 會寫 `shared\watched_channels_state.json`，**PC1/PC2 在 notebook 仍跑 `ChannelWatcherDaily` 期間不要執行**，否則雙寫。
 
 1. 在 PC1 執行 `deploy.ps1 -Machine pc1 -DryRun` 先看，再 `deploy.ps1 -Machine pc1`。
    - 若 PC1 主機名尚未在 `config.py` 的 `MACHINE_ALIASES`，先在 notebook 補上並 push（PC1 才能 pull 到）。
 2. `health_check.py` 四條線（finance/video/stock/xq）依該機用途全綠；XQ 線若無 XQ/Excel 可接受 ❌（人工作業）。
-3. 補人工項：Gemini key（每台獨立）、Telegram、資料同步（`finance.db`、`knowledge-base/`、`shared/watched_channels_state.json`）。
-4. 跑一次 `python channel_watcher.py --once` 的縮小版或 `workspace-bundle\infra\setup\smoke_test.py` 驗證。
+3. 補人工項：Gemini key（每台獨立）、Telegram（**不要**再複製 `finance.db`／`knowledge-base/`／`shared/watched_channels_state.json`，見下方新方向）。
+4. 跑 `python -X utf8 workspace-bundle\infra\setup\smoke_test.py` 驗證（唯讀，結束碼＝失敗數）。
 5. 通過後才複製流程到 PC2 / PC3。
 
 #### PC1 乾跑結果（2026-11-04，`c879c1e`）
@@ -127,7 +129,7 @@ PC1 缺的都是**資料類**，不是程式缺漏：
 
 | 缺項 | 性質 | 補法 |
 |---|---|---|
-| `financial_news/finance.db` | 資料（60MB，含新聞去重歷史） | 從 notebook 複製（gitignore，不在 repo） |
+| `financial_news/finance.db` | 資料（57MB，含新聞去重歷史） | **PC1/PC2 不需要**（新方向）；只在 harvester（notebook）維護。PC1 已複製的那份可刪 |
 | `financial_news/publisher/repo` | 另一個 repo | `git clone https://github.com/spyang1963-pattern/financial-reports.git` 到該路徑 |
 | `~/.telegram_env` | 共用憑證 | 手動放（notebook 目前也沒有） |
 | `stock-monitor/output/cache` | **執行時自動建立**，不必處理 | — |
@@ -135,6 +137,39 @@ PC1 缺的都是**資料類**，不是程式缺漏：
 | `workspace-bundle/infra/config/machine.yaml` | 由 `update.py` 從 `defaults.yaml` 自動產生 | 正式跑 `deploy.ps1` 時自動出現 |
 
 > 健檢分類規則（`health_check.py` 的 `LINE_NOT_CAPABILITY`）：能力類缺 → ❌；資料／憑證／該機專屬 → ℹ️（不計入待補）。這樣新機不會因為「還沒同步資料」被誤判成安裝失敗。
+
+#### PC1 驗收（2026-11-04）✅ 22/22
+
+`deploy.ps1 -Machine pc1 -SkipSetup` → `smoke_test.py` 全綠：身份 `pc1/worker`、六個路徑、五個核心模組、`ffmpeg`/`ffprobe`/VLC、Groq+Gemini key、`finance.db` 51580 筆。
+
+`working/`、`output/` 一開始報 ❌ 是**空目錄不進 git** 的正常現象，已由 `deploy.ps1` 第 3 步冪等建立（`working`/`output`/`videos`）。
+
+#### Git 衛生：執行期狀態不該進 git（2026-11-04）
+
+PC1 驗收後出現「24 個未提交變更」，實際成分：
+
+| 類型 | 檔案 | 處理 |
+|---|---|---|
+| 真的被改的 tracked 檔 | `shared/watched_channels_state.json`（17+/21-） | **untrack + gitignore** |
+| 無內容差異（只有換行屬性） | `knowledge-base/kb_query.py`、`split_transcript.py` | 保留 tracked，必要時 `git checkout --` |
+| 大量未追蹤的 KB 資料 | `knowledge-base/**`（21 項） | **gitignore** |
+
+**這不是換行問題**（`core.autocrlf=true`，`git diff --stat` 只有 1 個檔案有內容差異）。
+
+`.gitignore` 新增兩條：
+
+```
+shared/*           # IPC 通道與執行期狀態（heartbeat、tasks、results、掃描游標）
+knowledge-base/*   # 資料不是程式碼；已追蹤的 4 檔不受影響
+```
+
+`shared/watched_channels_state.json` 已 `git rm --cached`（**檔案留在磁碟**）。理由是：它是**執行期狀態**，單一寫作者應該是 notebook；被 git 追蹤只會讓 PC1/PC2 的 `git pull --ff-only` 週期性被拒。
+
+**PC1/PC2 更新時會少掉這個檔案**（upstream 把它刪了），這是預期行為：
+- 若該機根本沒跑頻道掃描 → 不需要它，略過即可。
+- 若要保留 → 先 `Copy-Item shared\watched_channels_state.json` 到暫存，pull 後再複製回去（但之後它仍會與 notebook 分歧，因為它已不受 git 管理）。
+
+⚠️ **PC3 注意**：PC3 的 `self_heal` 會自動 `git pull`，同一個 commit 會讓 PC3 的 `shared/watched_channels_state.json` **被刪除**。PC3 目前沒跑頻道監控，風險低；遷移日若需要，從 notebook 用 SMB 複製一份過去即可。
 
 ### Step 5 — PC3 遷移（最後做）
 
@@ -316,7 +351,7 @@ python oc_widget.py --check    # 只印一次數字
 | Gemini key（每台獨立） | `%USERPROFILE%\.gemini_api_key` |
 | Groq key（共用） | `%USERPROFILE%\.groq_api_key` |
 | Telegram 告警（共用） | `%USERPROFILE%\.telegram_env` |
-| 資料同步 | `finance.db`、`knowledge-base/`、`shared/watched_channels_state.json`（**必須最新**） |
+| 資料同步 | **不再複製**（PC1/PC2）：產出留本機，由 notebook 單向收割（Step 7）；`finance.db`／`knowledge-base/` 只留在 harvester |
 | GitHub 認證 | 首次 push 輸入帳號 + Token |
 | 排程切換 | 確認單一寫入者後才啟用 |
 
