@@ -116,10 +116,25 @@ function Get-HealthReport {
 
     $prev = [Console]::OutputEncoding
     try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
-    $raw = & $Python -X utf8 $hc --json
+    # 有些機器上的套件（fitz / win32com 等）會在 import 時把 warning 印到 stdout，
+    # 混在 JSON 前面會讓 ConvertFrom-Json 失敗。這裡只取 JSON 區段。
+    $raw = & $Python -X utf8 $hc --json 2>$null
     [Console]::OutputEncoding = $prev
 
-    return ($raw | Out-String | ConvertFrom-Json)
+    $text = ($raw | Out-String)
+    $start = $text.IndexOf("{")
+    $end = $text.LastIndexOf("}")
+    if ($start -lt 0 -or $end -le $start) {
+        throw "健檢沒有回傳 JSON。原始輸出：`n$($text.Trim())"
+    }
+
+    $stray = $text.Substring(0, $start).Trim()
+    if ($stray) {
+        $first = ($stray -split "`r?`n")[0]
+        Write-Host "  （健檢附帶輸出，已忽略：$first）" -ForegroundColor DarkGray
+    }
+
+    return ($text.Substring($start, $end - $start + 1) | ConvertFrom-Json)
 }
 
 function Show-HealthSummary {
@@ -359,9 +374,11 @@ if ($SkipSetup) {
 Write-Host ""
 Write-Host "[4/5] 健檢..."
 $pending = 0
+$healthOk = $false
 try {
     $report = Get-HealthReport -Python $python -Root $root
     $pending = Show-HealthSummary -Report $report
+    $healthOk = $true
 } catch {
     Write-Warning "  健檢失敗：$($_.Exception.Message)"
 }
@@ -383,7 +400,12 @@ if ($UnregisterTasks) {
 # 收尾
 Write-Section "完成"
 Write-Host "  機器：$detected"
-Write-Host "  待補項目：$pending 項（詳見上方 ❌ / ⚠️）"
+if ($healthOk) {
+    Write-Host "  待補項目：$pending 項（詳見上方 ❌ / ⚠️）"
+} else {
+    Write-Host "  待補項目：未知 — 健檢沒有完成，請看上方警告並手動執行：" -ForegroundColor Yellow
+    Write-Host "    python -X utf8 workspace-bundle\infra\health_check.py"
+}
 Write-Host ""
 Write-Host "  仍須人工處理："
 Write-Host "    1. Gemini key：$env:USERPROFILE\.gemini_api_key（每台獨立）"
