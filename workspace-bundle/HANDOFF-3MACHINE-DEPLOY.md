@@ -98,7 +98,7 @@ deploy.ps1 -RegisterTasks -DryRun → 正確列出 4 個排程
 health_check --json services → FinanceNews_* / ChannelWatcherDaily / XQ_Snapshot_Loop / StockMonitor_Scheduler 皆 ✅
 ```
 
-### Step 4 — PC1 實機驗收（未開始）
+### Step 4 — PC1 實機驗收（進行中：乾跑已通過 2026-11-04）
 
 1. 在 PC1 執行 `deploy.ps1 -Machine pc1 -DryRun` 先看，再 `deploy.ps1 -Machine pc1`。
    - 若 PC1 主機名尚未在 `config.py` 的 `MACHINE_ALIASES`，先在 notebook 補上並 push（PC1 才能 pull 到）。
@@ -106,6 +106,29 @@ health_check --json services → FinanceNews_* / ChannelWatcherDaily / XQ_Snapsh
 3. 補人工項：Gemini key（每台獨立）、Telegram、資料同步（`finance.db`、`knowledge-base/`、`shared/watched_channels_state.json`）。
 4. 跑一次 `python channel_watcher.py --once` 的縮小版或 `worker.py --test` 驗證。
 5. 通過後才複製流程到 PC2 / PC3。
+
+#### PC1 乾跑結果（2026-11-04，`c879c1e`）
+
+| 項目 | 結果 |
+|---|---|
+| 身份 | ✅ `pc1`（`DESKTOP-NDLV9LI`，worker，`100.84.223.110`） |
+| 程式碼 | ✅ 與遠端一致、0 未提交變更 |
+| 安裝步驟 | ✅ `setup_new_pc.bat` 乾跑通過（Git/Python/Groq key/gh/opencode 都在） |
+| 健檢 | ✅ 解析成功（先前失敗原因是 `fitz` 的 deprecation warning 印到 stdout，已修） |
+| 健檢 ❌ | **0 項**（分類修正後） |
+
+PC1 缺的都是**資料類**，不是程式缺漏：
+
+| 缺項 | 性質 | 補法 |
+|---|---|---|
+| `financial_news/finance.db` | 資料（60MB，含新聞去重歷史） | 從 notebook 複製（gitignore，不在 repo） |
+| `financial_news/publisher/repo` | 另一個 repo | `git clone https://github.com/spyang1963-pattern/financial-reports.git` 到該路徑 |
+| `~/.telegram_env` | 共用憑證 | 手動放（notebook 目前也沒有） |
+| `stock-monitor/output/cache` | **執行時自動建立**，不必處理 | — |
+| XQ 三項 | 只有 XQ 主機（PC3）才會有 | 略過 |
+| `workspace-bundle/infra/config/machine.yaml` | 由 `update.py` 從 `defaults.yaml` 自動產生 | 正式跑 `deploy.ps1` 時自動出現 |
+
+> 健檢分類規則（`health_check.py` 的 `LINE_NOT_CAPABILITY`）：能力類缺 → ❌；資料／憑證／該機專屬 → ℹ️（不計入待補）。這樣新機不會因為「還沒同步資料」被誤判成安裝失敗。
 
 ### Step 5 — PC3 遷移（最後做）
 
@@ -216,6 +239,7 @@ schtasks /Query /FO CSV | findstr /I "Autonomy"
 6. **GUI 長駐程序**：改完 `task_manager_gui.py` 必須關閉重開，否則仍是舊碼。
 7. **PowerShell 傳參給原生程式會吃掉雙引號**：`python -c 'sys.path.insert(0, r"$Root")'` 到 python 手上變成 `rD:\...`。改用環境變數傳值，或 python 端用單引號。
 8. **含中文的 `.ps1` 要存 UTF-8 with BOM**：PS 5.1 對無 BOM 的檔案會以 ANSI 解讀，中文全亂。`deploy.ps1` 已加 BOM。
+9. **套件會在 import 時印 warning 到 stdout，把 JSON 弄壞**（2026-11-04 在 PC1 實踩）：`PyMuPDF` 的 `fitz` 會印 `warning: The 'fitz' API is deprecated...`，`health_check.py --json` 的輸出前面多這一行，`ConvertFrom-Json` 直接拋「無效的 JSON 基本型別: warning」。修法：`deploy.ps1` 只取第一個 `{` 到最後一個 `}` 的區段，並用 `2>$null` 抑制 stderr；多餘輸出會印成「（健檢附帶輸出，已忽略：…）」方便追查。**不要改回 `$raw | ConvertFrom-Json`**。
 
 ## 6. 快速指令
 

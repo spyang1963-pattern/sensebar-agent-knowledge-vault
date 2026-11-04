@@ -142,6 +142,16 @@ function Show-HealthSummary {
 
     $fails = @()
     $warns = @()
+    $infos = @()
+
+    # health_check 會標記哪些檢查項「不是程式缺漏」（資料／憑證／該機專屬）。
+    # 那些缺少時只列在 ℹ️，不算 ❌，避免新機被誤判成安裝失敗。
+    $lineNotes = @{}
+    if ($Report.PSObject.Properties["line_notes"] -and $Report.line_notes) {
+        foreach ($p in $Report.line_notes.PSObject.Properties) {
+            $lineNotes[$p.Name] = $p.Value
+        }
+    }
 
     foreach ($b in $Report.bundles.PSObject.Properties) {
         $info = $b.Value
@@ -174,9 +184,17 @@ function Show-HealthSummary {
 
     foreach ($ln in $Report.lines.PSObject.Properties) {
         $info = $ln.Value
+        $notes = $lineNotes[$ln.Name]
         foreach ($p in $info.PSObject.Properties) {
             if ($p.Name -eq "name") { continue }
-            if ($p.Value -is [bool] -and -not $p.Value) {
+            if (-not ($p.Value -is [bool]) -or $p.Value) { continue }
+            $note = $null
+            if ($notes -and $notes.PSObject.Properties[$p.Name]) {
+                $note = $notes.PSObject.Properties[$p.Name].Value
+            }
+            if ($note) {
+                $infos += "$($info.name)：$($p.Name) — $note"
+            } else {
                 $fails += "任務線 $($info.name)：$($p.Name)"
             }
         }
@@ -191,7 +209,7 @@ function Show-HealthSummary {
     Write-Host "  主機名：$($Report.hostname)  Tailscale：$(if ($Report.machine_ip) { $Report.machine_ip } else { '未設定' })"
     Write-Host "  Python：$($Report.python)  Git：$($Report.git.repo_version)"
 
-    if ($fails.Count -eq 0 -and $warns.Count -eq 0) {
+    if ($fails.Count -eq 0 -and $warns.Count -eq 0 -and $infos.Count -eq 0) {
         Write-Host ""
         Write-Host "  ✅ 四條任務線與能力檢查全綠" -ForegroundColor Green
         return 0
@@ -206,6 +224,11 @@ function Show-HealthSummary {
         Write-Host ""
         Write-Host "  ⚠️  提醒（$($warns.Count) 項）" -ForegroundColor Yellow
         foreach ($w in $warns) { Write-Host "    - $w" }
+    }
+    if ($infos.Count -gt 0) {
+        Write-Host ""
+        Write-Host "  ℹ️  資料與環境（$($infos.Count) 項，不算安裝失敗）" -ForegroundColor DarkGray
+        foreach ($i in $infos) { Write-Host "    - $i" -ForegroundColor DarkGray }
     }
 
     return ($fails.Count + $warns.Count)
@@ -401,7 +424,7 @@ if ($UnregisterTasks) {
 Write-Section "完成"
 Write-Host "  機器：$detected"
 if ($healthOk) {
-    Write-Host "  待補項目：$pending 項（詳見上方 ❌ / ⚠️）"
+    Write-Host "  待補＋提醒：$pending 項（詳見上方 ❌ / ⚠️；ℹ️ 資料項不計入）"
 } else {
     Write-Host "  待補項目：未知 — 健檢沒有完成，請看上方警告並手動執行：" -ForegroundColor Yellow
     Write-Host "    python -X utf8 workspace-bundle\infra\health_check.py"

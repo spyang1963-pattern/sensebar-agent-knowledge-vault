@@ -81,6 +81,26 @@ LINES = {
     },
 }
 
+# 任務線檢查項中「不是程式缺漏」的部分（缺了不代表這台機器壞掉）
+# cap    = 能力（缺 → ❌，要裝）
+# 其他   = 資料／憑證／該機專屬狀態（缺 → ⚠️，要同步或本來就只在某台跑）
+# 新機剛 clone 下來時，這一整批一定都不存在，若報成 ❌ 會讓人誤以為安裝失敗。
+LINE_NOT_CAPABILITY = {
+    "finance": {
+        "finance_db": "資料：finance.db 需從現役機同步（60MB，含新聞去重歷史）",
+        "telegram_env": "憑證：~/.telegram_env（BOT_TOKEN / CHAT_ID，共用）",
+        "publisher_repo": "資料：publisher/repo 需 git clone financial-reports",
+    },
+    "stock": {
+        "cache_dir": "執行時自動建立（margin_cache 會 mkdir），不必同步",
+    },
+    "xq": {
+        "excel_running": "環境：僅在 XQ 主機需要（Excel COM）",
+        "snapshots_exist": "資料：僅在 XQ 主機產生",
+        "snapshots_fresh": "資料：僅在 XQ 主機產生",
+    },
+}
+
 # 排程任務（動態掃描 schtasks 比對子字串）
 # 2026-11-04：改為「同一件事可接受多種任務名」。
 # 背景：notebook 用 FinanceNews_* 任務，PC3 用的是 autonomy mission 的 Autonomy_* 任務；
@@ -456,6 +476,7 @@ def build_report(as_json=False):
         "kb": check_kb_capability(),
         "lines": {k: {"name": LINES[k]["name"], **LINE_CHECKERS[k]()}
                   for k in LINES},
+        "line_notes": LINE_NOT_CAPABILITY,
         "line_packages": {k: {"total": t, "missing": m}
                           for k, (t, m) in [(kk, check_line_requirements(kk))
                                             for kk in LINES]},
@@ -548,11 +569,19 @@ def build_report(as_json=False):
     print(f"  任務線能力：")
     for lk, linfo in report["lines"].items():
         print(f"    ● {linfo['name']}（{lk}）:")
+        notes = LINE_NOT_CAPABILITY.get(lk, {})
         for key, ok in linfo.items():
             if key == "name":
                 continue
-            status = "✅" if ok else "❌"
-            print(f"      {status} {key}")
+            if ok:
+                status = "✅"
+            elif key in notes:
+                status = "ℹ️"
+            else:
+                status = "❌"
+            note = notes.get(key)
+            suffix = f"  ← {note}" if (note and not ok) else ""
+            print(f"      {status} {key}{suffix}")
         lp = report["line_packages"].get(lk, {})
         if lp.get("total"):
             miss = lp["missing"]
