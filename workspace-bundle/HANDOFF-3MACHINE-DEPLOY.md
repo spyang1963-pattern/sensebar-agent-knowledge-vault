@@ -102,13 +102,15 @@ health_check --json services → FinanceNews_* / ChannelWatcherDaily / XQ_Snapsh
 
 **正式安裝結果（`deploy.ps1 -Machine pc1`，13:12）**：❌ 0、⚠️ 1（排程未註冊，預期）、ℹ️ 7（全為資料類）。外部工具（ffmpeg/VLC/Obsidian）與三個 bundle 套件皆安裝成功、`machine.yaml` 已自動產生、Groq/Gemini key 都在。
 
-剩兩件事：①資料同步（下方表格）②`worker.py --test` 或縮小版 `channel_watcher.py --once` 實跑驗證。
+剩兩件事：①資料同步（下方表格）②`test_e2e.py` 或縮小版 `channel_watcher.py --once` 實跑驗證。
+
+> **更正（2026-11-04）**：`worker.py` **沒有 `--test` 參數**（只有 `--once` / `--retry-failed` / `--id`）。驗證請用 `python -X utf8 test_e2e.py`（跑 config / ipc / scheduler / harvest / worker / task_manager 六項，都是唯讀或空跑）。`channel_watcher.py --once` 會寫 `shared\watched_channels_state.json`，**PC1/PC2 在 notebook 仍跑 `ChannelWatcherDaily` 期間不要執行**，否則雙寫。
 
 1. 在 PC1 執行 `deploy.ps1 -Machine pc1 -DryRun` 先看，再 `deploy.ps1 -Machine pc1`。
    - 若 PC1 主機名尚未在 `config.py` 的 `MACHINE_ALIASES`，先在 notebook 補上並 push（PC1 才能 pull 到）。
 2. `health_check.py` 四條線（finance/video/stock/xq）依該機用途全綠；XQ 線若無 XQ/Excel 可接受 ❌（人工作業）。
 3. 補人工項：Gemini key（每台獨立）、Telegram、資料同步（`finance.db`、`knowledge-base/`、`shared/watched_channels_state.json`）。
-4. 跑一次 `python channel_watcher.py --once` 的縮小版或 `worker.py --test` 驗證。
+4. 跑一次 `python channel_watcher.py --once` 的縮小版或 `test_e2e.py` 驗證。
 5. 通過後才複製流程到 PC2 / PC3。
 
 #### PC1 乾跑結果（2026-11-04，`c879c1e`）
