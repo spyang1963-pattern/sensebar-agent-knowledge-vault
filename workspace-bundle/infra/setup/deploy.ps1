@@ -210,6 +210,36 @@ function Invoke-Setup {
     if ($LASTEXITCODE -ne 0) { throw "setup_new_pc.bat 失敗（exit $LASTEXITCODE）" }
 }
 
+function Show-RepoState {
+    param([string]$Root)
+
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        Write-Host "  ⚠️  找不到 git（setup 會嘗試安裝）"
+        return
+    }
+
+    $branch = (& git -C $Root rev-parse --abbrev-ref HEAD 2>$null | Select-Object -First 1)
+    $sha = (& git -C $Root rev-parse --short HEAD 2>$null | Select-Object -First 1)
+    $dirty = @(& git -C $Root status --porcelain 2>$null).Count
+
+    Write-Host "  分支：$branch  目前版本：$sha  未提交變更：$dirty 個檔案"
+
+    $remoteSha = $null
+    try {
+        & git -C $Root fetch --quiet origin 2>$null | Out-Null
+        $remoteSha = (& git -C $Root rev-parse --short "origin/$branch" 2>$null | Select-Object -First 1)
+    } catch { }
+
+    if ($dirty -gt 0) {
+        Write-Host "  ⚠️  有 $dirty 個未提交變更：git pull --ff-only 會被拒絕，機器會留在舊版程式。" -ForegroundColor Yellow
+        Write-Host "      部署前先處理（commit / stash / 還原），或在該機確認這些變更是預期的。"
+    } elseif ($remoteSha -and $remoteSha -ne $sha) {
+        Write-Host "  ⚠️  與 origin/$branch ($remoteSha) 不同：setup 會嘗試 git pull --ff-only。" -ForegroundColor Yellow
+    } else {
+        Write-Host "  ✅ 程式碼與遠端一致" -ForegroundColor Green
+    }
+}
+
 function Register-DeployTasks {
     param([string]$Root, [string]$Python, [bool]$Preview)
 
@@ -285,7 +315,7 @@ if ($DryRun) { Write-Host "  模式     ：DRY-RUN（不安裝、不寫入、不
 
 # 1. 機器身份
 Write-Host ""
-Write-Host "[1/4] 機器身份檢查..."
+Write-Host "[1/5] 機器身份檢查..."
 $info = Get-MachineInfo -Python $python -Root $root
 $detected = $info.machine
 
@@ -311,18 +341,23 @@ if ($Machine -and $detected -ne $Machine) {
 
 Write-Host "  ✅ 身份確認：$detected" -ForegroundColor Green
 
-# 2. 安裝
+# 2. 程式碼狀態（PC1/PC2 可能已有本地變更，會讓 git pull 失敗）
+Write-Host ""
+Write-Host "[2/5] 程式碼狀態..."
+Show-RepoState -Root $root
+
+# 3. 安裝
 Write-Host ""
 if ($SkipSetup) {
-    Write-Host "[2/4] 安裝 — 已用 -SkipSetup 跳過"
+    Write-Host "[3/5] 安裝 — 已用 -SkipSetup 跳過"
 } else {
-    Write-Host "[2/4] 安裝（setup_new_pc.bat）..."
+    Write-Host "[3/5] 安裝（setup_new_pc.bat）..."
     Invoke-Setup -Root $root -Preview $DryRun.IsPresent
 }
 
-# 3. 健檢
+# 4. 健檢
 Write-Host ""
-Write-Host "[3/4] 健檢..."
+Write-Host "[4/5] 健檢..."
 $pending = 0
 try {
     $report = Get-HealthReport -Python $python -Root $root
@@ -331,17 +366,17 @@ try {
     Write-Warning "  健檢失敗：$($_.Exception.Message)"
 }
 
-# 4. 排程
+# 5. 排程
 Write-Host ""
 if ($UnregisterTasks) {
-    Write-Host "[4/4] 移除排程（切換日舊機用）..."
+    Write-Host "[5/5] 移除排程（切換日舊機用）..."
     Unregister-DeployTasks -Preview $DryRun.IsPresent
 } elseif ($RegisterTasks) {
-    Write-Host "[4/4] 註冊排程..."
+    Write-Host "[5/5] 註冊排程..."
     Write-Host "  ⚠️  排程是單一寫入者：請確認其他機器的同名任務已停用。" -ForegroundColor Yellow
     Register-DeployTasks -Root $root -Python $python -Preview $DryRun.IsPresent
 } else {
-    Write-Host "[4/4] 排程 — 未指定 -RegisterTasks，維持不註冊（預設）"
+    Write-Host "[5/5] 排程 — 未指定 -RegisterTasks，維持不註冊（預設）"
     Write-Host "      切換日再執行：deploy.ps1 -SkipSetup -RegisterTasks"
 }
 

@@ -83,6 +83,7 @@ deploy.ps1 -SkipSetup -UnregisterTasks
 ```
 
 - **身份檢查**：讀 `config.py`（與 health_check 同一來源）。主機名未註冊（`unknown-*`）或與 `-Machine` 不符 → **中止並印出要加的 `MACHINE_ALIASES` 那行**，避免在錯的機器建任務。
+- **程式碼狀態**：印分支/版本/未提交變更數，並 `git fetch` 比對 `origin`。未提交變更 >0 會警告 —— `setup_new_pc.bat` 的 `git pull --ff-only` 會被拒絕，機器會停在舊碼（PC1/PC2 很可能有這種狀況，先處理再部署）。
 - **健檢摘要**：只列 ❌（任務線/能力）與 ⚠️（缺套件、未註冊排程），結尾給待補項數。
 - **排程預設不註冊**；`-RegisterTasks` 才建立 4 個任務（`StartWhenAvailable` + 電池可跑 + `IgnoreNew`），`-UnregisterTasks` 供切換日舊機使用。
 - 排程名稱**不帶機器後綴**（`FinanceNews_Pipeline` 等）：排程是各機本地的，同名不衝突；`health_check.py` 的 `TASK_KEYWORDS` 已同步改成這些實際名稱（原本是 `Autonomy_*` 舊名，導致排程區永遠全 ❌）。
@@ -91,6 +92,7 @@ deploy.ps1 -SkipSetup -UnregisterTasks
 驗證（notebook）：
 ```
 deploy.ps1 -DryRun -SkipSetup  → 身份=notebook、exit 0、列出 3 ❌（telegram_env、XQ excel/snapshots）＋1 ⚠️
+                                 （notebook 有 283 個未提交變更 → 程式碼狀態會顯示警告，屬正常）
 deploy.ps1 -Machine pc1        → 身份不符，exit 1，提示要在 config.py 補 "laptop-vag7lbd2": "pc1"
 deploy.ps1 -RegisterTasks -DryRun → 正確列出 4 個排程
 health_check --json services → FinanceNews_* / ChannelWatcherDaily / XQ_Snapshot_Loop / StockMonitor_Scheduler 皆 ✅
