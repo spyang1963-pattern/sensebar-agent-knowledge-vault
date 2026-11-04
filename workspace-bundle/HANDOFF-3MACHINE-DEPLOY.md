@@ -262,6 +262,27 @@ powershell -ExecutionPolicy Bypass -File workspace-bundle\infra\setup\audit_old_
 
 **注意**：舊目錄若沒有 `.git`（例如 `D:\!!AI agent 專案夾\...` 在 notebook 上就是純資料夾、315MB／1330 檔），就沒有 commit 可救，只需確認裡面沒有獨有的 KB／影片。
 
+#### PC1 盤點結果（2026-11-04 18:10）
+
+| 項目 | `D:\!!AI agent 專案夾\三師爸的 AI agent 學習 AI agent` | `D:\sensebar-agent-knowledge-vault` |
+|---|---|---|
+| 大小／檔案 | 316 MB／347 | 75 MB／441 |
+| 最後寫入 | 2026-07-16 | 2026-09-20 |
+| Git | master @ `99d919a` | master @ `923d732` |
+| 未推送 commit | **0** | **0** |
+| 未提交變更 | **3 個檔案** | 0 |
+| `finance.db` | 無 | 無 |
+| KB | 26 個 `.md`／3 MB | 1 個 `.md`／0 MB |
+| 監控狀態 | 無 | 有（2026-09-20，已過期） |
+| `working/` | **306 MB／28 檔（佔绝大部分）** | — |
+| 排程指向 | 無 | 無 |
+
+**結論**：兩份都可安全封存後刪除。
+- `sensebar-agent-knowledge-vault`：git 完全乾淨、無本地 commit → 遠端可完整重建，**直接刪**。
+- `!!AI agent 專案夾\...`：有 3 個未提交變更，但整包只有 316 MB → **先壓縮留存再刪**（zip 內含 `.git`，可還原）。
+- 兩份的 `shared` 監控狀態都是舊的（7 月／9 月），現行正本在 notebook（`2026-11-03`），不需保留。
+- `working/` 306 MB 是舊處理暫存（影片／中間檔），沒有保留價值。
+
 ### Step 9 — OC 額度小窗（`oc_widget`）推廣到三機｜已可攜
 
 `oc_widget.py` + `oc_usage.py` + `oc_widget.bat` 已納入 git（原本只在 notebook、且 `sys.path` 寫死 `D:\AI-Agent-Workspace`）。
