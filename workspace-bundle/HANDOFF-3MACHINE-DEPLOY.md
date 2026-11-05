@@ -176,7 +176,15 @@ python -X utf8 workspace-bundle\infra\setup\e2e_pipeline_test.py
 - 10 項檢查：結束碼、`字幕.srt`／`音訊.mp3`／`metadata.md`、**不得出現 `剪輯後.mp4`**、字幕有文字、再加 `--resume` 重跑一次確認 `[SKIP] 沿用既有字幕` 且 `raw.json` 未變（= 沒有重送 Whisper）
 - 成本：一次 Groq Whisper（約 6 秒音訊），不呼叫 Gemini；預設跑完自動清理，`--keep` 可保留
 
-notebook 實測 **10/10**（第一次 2 秒、重試 1 秒，字幕正確轉出）。三機都應跑一次。
+**三機實測結果（2026-11-05）**：
+
+| 機器 | 結果 | 第一次 / 重試 | 備註 |
+|---|---|---|---|
+| notebook | **10/10** | 2s / 1s | 字幕正確轉出 |
+| PC1 | **10/10** | 1s / 0s | 走 worker 音訊分支無崩潰 |
+| PC2 | **10/10** | 1s / 0s | ffmpeg 9.0.2 有 `flite`，同一份腳本可直接跑 |
+
+→ 任務 1921/1923 的崩潰路徑（`--skip-cut` 音訊分支）與「重試重送 Whisper」在這三台都確認修好。
 
 #### Git 衛生：執行期狀態不該進 git（2026-11-04）
 
