@@ -223,6 +223,80 @@ YT_DL_FORMAT_720 = ("bestvideo[height<=720][ext=mp4][vcodec^=avc1]+bestaudio[ext
                     "best[height<=720][ext=mp4]/best")
 FORMAT_PRESETS = {"720": YT_DL_FORMAT_720, "1080": YT_DL_FORMAT}
 
+# ── JS runtime（2026-11-06 事故）──
+# yt-dlp 需要 deno／node／bun 才能解 YouTube 的 JS 挑戰；沒有 runtime 時
+# 「抓 metadata、列格式」都正常，但真正下載影片資料一律 HTTP 403 Forbidden，
+# 造成 PC1 上 66 支任務全部失敗、每支只花 14 秒。錯誤訊息必須說清楚。
+_JS_RUNTIME_CHECKED = False
+_LAST_FAIL = {"stage": "", "detail": ""}
+
+
+def _note_fail(stage, detail):
+    """記下最後一次失敗的階段與原始訊息（供 process_youtube_video 回報）。"""
+    _LAST_FAIL["stage"] = stage
+    _LAST_FAIL["detail"] = (detail or "").strip()
+
+
+def ensure_js_runtime(warn_once=True):
+    """確認 yt-dlp 找得到 JS runtime；必要時把常見安裝路徑補進 PATH。
+
+    已安裝但 PATH 還沒生效（例如 GUI 在裝 deno 之前就開著）也能救回來。
+    回傳找到的 runtime 路徑（找不到回 None）。
+    """
+    global _JS_RUNTIME_CHECKED
+    for exe in ("deno", "node", "bun", "qjs"):
+        found = shutil.which(exe)
+        if found:
+            _JS_RUNTIME_CHECKED = True
+            return found
+
+    # PATH 沒生效：把 deno／winget 的常見安裝位置補上
+    cands = [
+        Path.home() / ".deno" / "bin",
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WinGet" / "Links",
+        Path.home() / "AppData" / "Local" / "Microsoft" / "WinGet" / "Links",
+    ]
+    added = []
+    for d in cands:
+        try:
+            if d.is_dir() and str(d) not in os.environ.get("PATH", ""):
+                os.environ["PATH"] = os.environ.get("PATH", "") + os.pathsep + str(d)
+                added.append(str(d))
+        except Exception:
+            pass
+    if added:
+        for exe in ("deno", "node", "bun", "qjs"):
+            found = shutil.which(exe)
+            if found:
+                log(f"  [環境] 已把 JS runtime 路徑補進 PATH：{found}")
+                _JS_RUNTIME_CHECKED = True
+                return found
+
+    if warn_once and not _JS_RUNTIME_CHECKED:
+        log("  ⚠ 找不到 JS runtime（deno／node／bun）：yt-dlp 下載 YouTube 影片會回 403 Forbidden")
+        log("     修法：winget install --id DenoLand.Deno -e   （裝完要重開 GUI／worker）")
+    _JS_RUNTIME_CHECKED = True
+    return None
+
+
+def yt_fail_hint(text):
+    """把 yt-dlp 的 stderr 濃縮成一句人看得懂的原因（寫進任務 last_error）。"""
+    m = (text or "").lower()
+    if "no supported javascript runtime" in m or ("403" in m and "forbidden" in m):
+        return "缺少 JS runtime（deno／node），yt-dlp 被 YouTube 403 擋下"
+    if "sign in to confirm" in m or "not a bot" in m:
+        return "YouTube 要求驗證（bot check）"
+    if "requested format is not available" in m:
+        return "指定的下載格式不存在"
+    if "video unavailable" in m or "private video" in m:
+        return "影片不可用（私人／已刪除／地區限制）"
+    if "429" in m or "too many requests" in m:
+        return "YouTube 回 429（請求過多／被限流）"
+    if "timed out" in m or "timeout" in m:
+        return "逾時"
+    return ""
+
+
 
 def download_yt_video(video_id, title, format_spec=YT_DL_FORMAT, date_prefix=None):
     """下載完整影片（預設最高 1080p H.264，避免最差畫質字幕讀不清）
@@ -244,17 +318,21 @@ def download_yt_video(video_id, title, format_spec=YT_DL_FORMAT, date_prefix=Non
         url,
     ]
     try:
+        ensure_js_runtime()
         log("  [下載] 下載影片中（最高 1080p）...")
         result = subprocess.run(cmd, capture_output=True, text=False, timeout=1800)
         if out_path.exists() and out_path.stat().st_size > 0:
             log(f"  [下載] 完成：{out_path.name}")
             return out_path
-        err = result.stderr[-300:].decode("utf-8", errors="replace") if result.stderr else ""
-        log(f"  [下載] yt-dlp rc={result.returncode} {err}")
+        err = result.stderr[-800:].decode("utf-8", errors="replace") if result.stderr else ""
+        log(f"  [下載] yt-dlp rc={result.returncode} {err[-300:]}")
+        _note_fail("下載影片", err)
     except subprocess.TimeoutExpired:
         log("  [下載] 逾時")
+        _note_fail("下載影片", "yt-dlp 逾時（1800s）")
     except Exception as e:
         log(f"  [下載] 錯誤: {e}")
+        _note_fail("下載影片", f"{type(e).__name__}: {e}")
 
     # 找目前任一既有成功檔案當作驗證後再重試一次（排除已燒字幕檔 _字幕.mp4）
     for lp in out_path.parent.glob(f"{fname}*"):
@@ -287,16 +365,20 @@ def run_pipeline(video_path, title, video_id, skip_cut=True):
             log(f"  [Pipeline] 失敗（rc={result.returncode}）")
             err_text = result.stderr[-800:].decode("utf-8", errors="replace") if result.stderr else ""
             log(err_text)
+            _note_fail("Pipeline", err_text)
             return None
         log("  [Pipeline] 成功")
         output_dir = PROJECT_ROOT / "output" / slug
         if output_dir.exists():
             return output_dir
         log(f"  [Pipeline] 找不到輸出: {output_dir}")
+        _note_fail("Pipeline", f"找不到輸出目錄 {output_dir}")
     except subprocess.TimeoutExpired:
         log("  [Pipeline] 逾時（1800s）")
+        _note_fail("Pipeline", "run_pipeline.py 逾時（1800s）")
     except Exception as e:
         log(f"  [Pipeline] 異常: {e}")
+        _note_fail("Pipeline", f"{type(e).__name__}: {e}")
     return None
 
 def burn_subtitles(video_path, srt_path, output_path, font_size=18, margin_v=15, position="bottom",
@@ -611,6 +693,7 @@ def process_no_subs(video_id, title, langs, kb_dir, format_spec=None, save_to_kb
     srt_src = output_dir / "字幕.srt"
     if not srt_src.exists():
         log("  [轉錄] 找不到 Pipeline 產出的 SRT")
+        _note_fail("Pipeline", f"找不到 {srt_src}")
         return None
 
     transcript = srt_to_transcript(srt_src)
@@ -916,6 +999,7 @@ def process_youtube_video(video_id, title, langs=None, kb_dir=None, burn_subs=Fa
     kb_dir = Path(kb_dir) if kb_dir else (KB_ROOT / "youtube-clips")
 
     result = {"success": False, "kb_md": None, "kb_path": "", "error": ""}
+    _note_fail("", "")
     try:
         md_path = process_has_subs(
             video_id, title, langs, kb_dir,
@@ -932,7 +1016,20 @@ def process_youtube_video(video_id, title, langs=None, kb_dir=None, burn_subs=Fa
         return result
 
     if not md_path:
-        result["error"] = "下載或轉錄失敗（無字幕且 Pipeline 未產出）"
+        # 2026-11-06 事故：所有原因都收斂成同一句話，導致查不出真正死因。
+        # 現在把「哪個階段 + 原因 + stderr 尾巴」一起寫進 last_error。
+        err = "下載或轉錄失敗（無字幕且 Pipeline 未產出）"
+        stage = _LAST_FAIL.get("stage")
+        detail = _LAST_FAIL.get("detail") or ""
+        if stage:
+            err += f"：{stage} 失敗"
+            hint = yt_fail_hint(detail)
+            if hint:
+                err += f"（{hint}）"
+            tail = " ".join(detail.split())[-240:]
+            if tail:
+                err += f"｜{tail}"
+        result["error"] = err
         return result
 
     result["success"] = True
