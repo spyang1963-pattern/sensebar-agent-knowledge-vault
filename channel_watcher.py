@@ -86,6 +86,30 @@ def get_video_date(video_id):
     _VIDEO_DATE_CACHE[video_id] = date
     return date
 
+_VIDEO_TITLE_CACHE = {}
+
+def get_video_title(video_id):
+    """取得影片標題。任務由播放清單展開時，偶有 title 空白／等於 video_id 的情況，
+    會讓 KB 檔名變成 `zHCBKVqdaes.md`；收成前先用這個補回來。"""
+    if video_id in _VIDEO_TITLE_CACHE:
+        return _VIDEO_TITLE_CACHE[video_id]
+    title = ""
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    try:
+        r = subprocess.run(
+            ["yt-dlp", "--no-update", "--skip-download", "--no-warnings",
+             "--print", "%(title)s", url],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
+        )
+        if r.returncode == 0 and (r.stdout or "").strip():
+            title = r.stdout.strip().splitlines()[0].strip()
+        log(f"  [標題] {video_id} → {title[:50] or '（取不到）'}")
+    except Exception as e:
+        log(f"  [標題] 取得失敗 {video_id}: {e}")
+    _VIDEO_TITLE_CACHE[video_id] = title
+    return title
+
+
 def srt_to_transcript(srt_path):
     """從 .srt 提取純文字逐字稿"""
     text = srt_path.read_text(encoding="utf-8", errors="replace")
@@ -999,6 +1023,13 @@ def process_youtube_video(video_id, title, langs=None, kb_dir=None, burn_subs=Fa
     if langs is None:
         langs = ["zh-Hant", "zh-TW", "zh", "en"]
     kb_dir = Path(kb_dir) if kb_dir else (KB_ROOT / "youtube-clips")
+
+    # 任務標題空白或等於 video_id（播放清單展開失敗時會這樣）→ 收成前補抓，
+    # 否則 KB 檔名會變成 video_id。
+    if not str(title or "").strip() or str(title).strip() == video_id:
+        real_title = get_video_title(video_id)
+        if real_title:
+            title = real_title
 
     result = {"success": False, "kb_md": None, "kb_path": "", "error": ""}
     _note_fail("", "")

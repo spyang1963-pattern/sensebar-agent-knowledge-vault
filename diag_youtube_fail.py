@@ -11,6 +11,8 @@
     python diag_youtube_fail.py --download-probe 2 --with-pipeline
                                            # 真實下載 2 支失敗影片（抓真正的錯誤訊息），
                                            # 下載成功再跑一次 run_pipeline.py 定位問題點
+    python diag_youtube_fail.py --availability
+                                           # 檢查失敗任務的影片是否還下載得到（私人／已刪除）
 
 輸出同時印在畫面並寫入 working/diag_youtube_YYYYMMDD_HHMMSS.txt
 """
@@ -383,6 +385,53 @@ def download_probe(items: list, n: int, with_pipeline: bool = False,
         put("→ 下載全部失敗：看上面 stderr，多半是 bot check／403／格式選擇")
 
 
+def availability_check(items: list, ids: str = "") -> None:
+    """掃描失敗任務的影片是否還下載得到（私人／已刪除的重排也沒用）。
+
+    影片抓不到標題時，任務的 title 往往就是 video_id——那正是 playlist 展開
+    拿不到資料的徵兆，通常代表 Private／Members-only。
+    """
+    section("7. 影片可用性（私人／已刪除的重排也不會成功）")
+    if ids:
+        cand = [{"tid": "-", "video_id": v.strip(), "title": ""}
+                for v in ids.split(",") if v.strip()]
+    else:
+        cand = [i for i in items if i["type"] == "youtube" and i["video_id"]
+                and i["status"] in ("failed", "pending", "processing")]
+    if not cand:
+        put("沒有可檢查的任務")
+        return
+    if not shutil.which("yt-dlp"):
+        put("找不到 yt-dlp")
+        return
+
+    ok, bad = [], []
+    for i in cand:
+        vid = i["video_id"]
+        url = f"https://www.youtube.com/watch?v={vid}"
+        out, err, rc = run(["yt-dlp", "--no-update", "--skip-download", "--no-warnings",
+                            "--print", "%(title)s", url], timeout=120)
+        first = (out.strip().splitlines() or [""])[0]
+        if rc == 0 and first:
+            ok.append(vid)
+            put(f"  ✅ #{i['tid']:<5} {vid:<12} {first[:50]}")
+        else:
+            reason = " / ".join([ln for ln in err.strip().splitlines() if ln.strip()][-1:])
+            reason = reason.replace("ERROR: ", "")[:80] or f"rc={rc}"
+            bad.append((i["tid"], vid, reason))
+            put(f"  ❌ #{i['tid']:<5} {vid:<12} {reason}")
+
+    put("")
+    put(f"可用 {len(ok)} 支／不可用 {len(bad)} 支（共 {len(cand)} 支）")
+    if bad:
+        put("")
+        put("建議：以下任務不用重排，直接在 GUI 刪除（重排必定再失敗）：")
+        put("  " + " ".join(t for t, _, _ in bad))
+        put("對應 video_id：")
+        for t, v, r in bad:
+            put(f"  #{t} {v}  ← {r}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--all", action="store_true", help="不限制筆數")
@@ -392,7 +441,9 @@ def main() -> int:
     ap.add_argument("--with-pipeline", action="store_true",
                     help="搭配 --download-probe：下載成功後順便跑 run_pipeline.py")
     ap.add_argument("--ids", default="", metavar="ID,ID",
-                    help="搭配 --download-probe：直接指定 video_id（不看失敗清單）")
+                    help="搭配 --download-probe／--availability：直接指定 video_id")
+    ap.add_argument("--availability", action="store_true",
+                    help="檢查失敗任務的影片是否還下載得到（找私人／已刪除）")
     args = ap.parse_args()
 
     try:
@@ -407,6 +458,8 @@ def main() -> int:
     if args.download_probe:
         download_probe(items, args.download_probe, with_pipeline=args.with_pipeline,
                        ids=args.ids)
+    if args.availability:
+        availability_check(items, ids=args.ids)
 
     WORKING.mkdir(parents=True, exist_ok=True)
     out = WORKING / f"diag_youtube_{datetime.now():%Y%m%d_%H%M%S}.txt"
