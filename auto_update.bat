@@ -1,5 +1,6 @@
 @echo off
 chcp 65001 >nul
-cd /d "D:\!!AI agent 專案夾\三師爸的 AI agent 學習 AI agent"
+cd /d "D:\AI-Agent-Workspace"
 python auto_update.py
-pause
+rem 排程呼叫時帶 --no-pause，避免 cmd 卡在 pause 讓工作一直顯示「執行中」
+if /i not "%~1"=="--no-pause" pause

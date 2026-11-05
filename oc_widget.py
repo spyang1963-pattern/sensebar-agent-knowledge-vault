@@ -6,9 +6,9 @@ oc_widget.py — OpenCode 額度常駐小窗（零 token 成本）
 一個小小的置頂視窗，每 60 秒自己抓一次數字：
 
   Go   ：GET https://opencode.ai/inference/go/v1/usage（官方值，純 HTTP）
-  免費 ：本機 opencode.db 估算 5h 視窗用量
+  免費 ：本機 opencode.db 估算「免費池日」累計（08:55 換日）+ 5h 參考值
 
-**完全不經過模型**，不送任何 prompt、不佔 200 次/5h 配額、不花錢。
+**完全不經過模型**，不送任何 prompt、不佔任何額度、不花錢。
 關掉視窗就停止。
 
 用法:
@@ -27,13 +27,15 @@ from tkinter import font as tkfont
 # 可攜：從本檔所在目錄載入 oc_usage，任何機器／任何路徑都能跑
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from oc_usage import (find_db, read_go_key, fetch_go_usage, counts, is_free,  # noqa: E402
-                      last_hits, fmt_reset, fmt_local)
+                      last_hits, fmt_reset, fmt_local, free_day_start, free_used_before)
 
 import datetime as dt  # noqa: E402
 import sqlite3  # noqa: E402
 
-FREE_LIMIT = 200
 FREE_WINDOW_H = 5
+# 免費池上限是伺服器動態值（本機觀測撞牆點 206~337 次）。這裡只是「提醒色」門檻：
+FREE_WARN_AT = 150
+FREE_BAD_AT = 300
 
 
 def collect():
@@ -41,14 +43,32 @@ def collect():
     data = {"free": None, "go": None, "db": str(db) if db else None}
     if db:
         con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-        now_ts = int(dt.datetime.now(dt.timezone.utc).timestamp())
+        now = dt.datetime.now().astimezone()
+        now_ts = int(now.timestamp())
+        day_start = free_day_start(now)
+        uday = counts(con, int(day_start.timestamp()), now_ts)
+        used = sum(c for p, m, c in uday if is_free(p, m))
         win = counts(con, now_ts - FREE_WINDOW_H * 3600, now_ts)
-        used = sum(c for p, m, c in win if is_free(p, m))
+        used5 = sum(c for p, m, c in win if is_free(p, m))
+
+        hit = None
+        hits = last_hits(db.parent / "log" / "opencode.log", 1)
+        if hits:
+            try:
+                ht = dt.datetime.fromisoformat(hits[-1].replace("Z", "+00:00")).astimezone()
+                hts = int(ht.timestamp() * 1000)
+                ds = int(free_day_start(ht).timestamp() * 1000)
+                hit = {"at": fmt_local(hits[-1]),
+                       "day_used": free_used_before(con, hts, ds)}
+            except Exception:
+                pass
+
         data["free"] = {
             "used": used,
-            "limit": FREE_LIMIT,
-            "percent": min(100.0, used / FREE_LIMIT * 100),
-            "hits": [fmt_local(h) for h in last_hits(db.parent / "log" / "opencode.log", 1)],
+            "used_5h": used5,
+            "day_reset_at": day_start.strftime("%H:%M"),
+            "next_reset": (day_start + dt.timedelta(days=1)).strftime("%m/%d %H:%M"),
+            "hit": hit,
         }
     data["go"] = fetch_go_usage(read_go_key(db))
     return data
@@ -76,6 +96,9 @@ class Widget:
 
         self.free_lbl = tk.Label(root, font=f_big, bg=self.BG, fg=self.FG, anchor="w", padx=10, pady=2)
         self.free_lbl.pack(fill="x")
+        self.free_note = tk.Label(root, font=f_small, bg=self.BG, fg=self.DIM, anchor="w",
+                                  padx=10, justify="left")
+        self.free_note.pack(fill="x")
         self.go_lbl = tk.Label(root, font=f_big, bg=self.BG, fg=self.FG, anchor="w", padx=10, pady=2)
         self.go_lbl.pack(fill="x")
         self.detail_lbl = tk.Label(root, font=f_small, bg=self.BG, fg=self.DIM, anchor="w",
@@ -104,12 +127,17 @@ class Widget:
         d = collect()
         f = d.get("free")
         if f:
-            self.free_lbl.config(
-                text=f"免費 {f['used']}/{f['limit']}  {f['percent']:.0f}%",
-                fg=self.color(f["percent"]),
-            )
+            used = f["used"]
+            color = self.BAD if used >= FREE_BAD_AT else self.WARN if used >= FREE_WARN_AT else self.OK
+            self.free_lbl.config(text=f"免費 日 {used}（5h {f['used_5h']}）", fg=color)
+            note = f"{f['day_reset_at']} 換日 · 下次 {f['next_reset']} · 上限動態"
+            hit = f.get("hit")
+            if hit:
+                note += f"\n上次撞牆 {hit['at'][5:16]}（當時 {hit['day_used']} 次）"
+            self.free_note.config(text=note)
         else:
             self.free_lbl.config(text="免費 —（找不到 DB）", fg=self.DIM)
+            self.free_note.config(text="")
 
         g = d.get("go")
         if g:
@@ -123,7 +151,7 @@ class Widget:
             m = g.get("monthly") or {}
             extra = ""
             if (m.get("status") or "ok") != "ok":
-                extra = f"\n月額度用盡 → {fmt_reset(m.get('resetsAt'))} 重置"
+                extra = f"\n月 100%（官方 status={m.get('status')}）→ {fmt_reset(m.get('resetsAt'))} 重置"
             self.detail_lbl.config(
                 text=f"5h 重置 {fmt_reset((g.get('rolling') or {}).get('resetsAt'))}"
                      f" · 週 {fmt_reset((g.get('weekly') or {}).get('resetsAt'))}{extra}"

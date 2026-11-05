@@ -629,6 +629,8 @@ class TaskManagerGUI:
             counts = {"pending": 0, "processing": 0, "done": 0, "failed": 0, "paused": 0}
             for _, info in tasks.items():
                 s = info.get("status", "pending")
+                if s == "completed":
+                    s = "done"
                 counts[s] = counts.get(s, 0) + 1
             total = len(tasks)
             self.lbl_count.config(
@@ -657,12 +659,15 @@ class TaskManagerGUI:
                 
                 # 燒字幕任務顯示中文狀態
                 status_display = {
+                    "youtube": {"pending": "待下載", "assigned": "待下載", "processing": "下載/轉錄中",
+                                "completed": "已收成", "done": "已收成", "failed": "失敗"},
                     "subtitle": {"pending": "待燒錄", "processing": "燒錄中", "completed": "已燒錄", "failed": "失敗", "assigned": "待燒錄"},
                     "note": {"pending": "待產筆記", "processing": "產筆記中", "completed": "已產筆記", "failed": "失敗", "assigned": "待產筆記"},
                     "document": {"pending": "待處理", "processing": "處理中", "done": "已完成", "failed": "失敗", "paused": "等待額度"},
                     "audio": {"pending": "待處理", "processing": "處理中", "done": "已完成", "failed": "失敗", "paused": "等待額度"},
                     "web": {"pending": "待處理", "processing": "處理中", "done": "已完成", "failed": "失敗", "paused": "等待額度"},
-                }.get(task_type, {}).get(status, status)
+                }.get(task_type, {}).get(
+                    status, "已完成" if status == "completed" else status)
 
                 # 所有型別：讀取副程序進度（階段 / 已執行時間 / OCR 頁數）
                 progress_note = ""
@@ -719,7 +724,7 @@ class TaskManagerGUI:
 
                 priority_str = "高" if priority == 1 else "一般"
 
-                tags = [status]
+                tags = ["done" if status == "completed" else status]
                 if priority == 1:
                     tags.append("high")
                 if "critical" in error.lower() or "不足" in error or "空間" in error:
@@ -796,7 +801,7 @@ class TaskManagerGUI:
     def _new_task_dialog(self):
         win = tk.Toplevel(self.root)
         win.title("新增任務")
-        win.geometry("550x620")
+        win.geometry("550x680")
         win.configure(bg=COLOR_BG)
 
         type_frame = tk.Frame(win, bg=COLOR_BG)
@@ -977,7 +982,8 @@ class TaskManagerGUI:
         yt_frame = tk.Frame(container, bg=COLOR_BG)
         yt_entries = {}
         yt_fields = [
-            ("YouTube 網址 * (頻道或單一影片)", "yt_url", ""),
+            ("YouTube 網址 * (頻道、播放清單或單一影片)", "yt_url", ""),
+            ("最多處理支數 (空白=全部)", "yt_limit", ""),
             ("指派給 (pc1/pc2/notebook)", "yt_assigned", "notebook"),
             ("備註 (選填)", "yt_note", ""),
         ]
@@ -1465,12 +1471,46 @@ class TaskManagerGUI:
                         print_text = f"{course} ({created_count} 部影片)"
                 else:
                     size_str = e_vsize.get().strip()
-                    # 檢查是否已存在相同路徑的 pending 任務
+                    # 檢查是否已存在相同路徑的任務（含失敗）
+                    # 2026-11-04：失敗任務未刪就重新建立，會產生同影片的重複任務
+                    # （#1921/#1923 各轉錄一次，浪費 Groq/Gemini 額度），
+                    # 因此失敗時改為詢問「直接重排該任務」，不新增。
                     rel_path = os.path.basename(path)
                     for existing_tid, existing_task in data["tasks"].items():
-                        if (existing_task.get("status") in ("pending", "processing") and
-                            existing_task.get("video_relpath") == path):
+                        if existing_task.get("video_relpath") != path:
+                            continue
+                        st = existing_task.get("status")
+                        if st in ("pending", "processing"):
                             messagebox.showinfo("已存在", "此影片已有 pending 任務:\n#" + existing_tid)
+                            win.destroy()
+                            self._refresh()
+                            return
+                        if st == "failed":
+                            if messagebox.askyesno(
+                                    "已有失敗任務",
+                                    f"此影片的任務 #{existing_tid} 已失敗。\n\n"
+                                    "要直接把該任務重新排入佇列（沿用已完成的字幕，不重複轉錄）嗎？\n"
+                                    "選「否」＝放棄建立。"):
+                                _task = data["tasks"][existing_tid]
+                                _task["status"] = "pending"
+                                _task["retry_count"] = 0
+                                _task["last_error"] = None
+                                _task["started_at"] = None
+                                _task["completed_at"] = None
+                                _task["machine"] = None
+                                save_task_status(data)
+                                sp = os.path.join(SHARED_ROOT, "tasks", f"task_{existing_tid}.json")
+                                try:
+                                    ti_src = dict(_task)
+                                    dump = {"task_id": existing_tid, "task_info": ti_src,
+                                            "status": "pending",
+                                            "assigned_to": ti_src.get("assigned_to"),
+                                            "last_updated": datetime.now().isoformat(),
+                                            "updated_by": MACHINE}
+                                    with open(sp, "w", encoding="utf-8") as f:
+                                        json.dump(dump, f, indent=2, ensure_ascii=False)
+                                except Exception as e:
+                                    messagebox.showwarning("警告", f"重新排入 shared 任務失敗：{e}")
                             win.destroy()
                             self._refresh()
                             return
@@ -1531,42 +1571,171 @@ class TaskManagerGUI:
                 if not url:
                     messagebox.showerror("錯誤", "請輸入 YouTube 網址")
                     return
+                assigned = yt_entries["yt_assigned"].get().strip().lower()
+                if assigned not in ("pc1", "pc2", "notebook"):
+                    assigned = None
+                note = yt_entries["yt_note"].get().strip()
                 do_burn = yt_auto_sub.get()
                 do_kb = yt_harvest_kb.get()
                 do_note = yt_note_var.get()
                 do_sum = yt_sum_var.get()
+                limit_str = yt_entries["yt_limit"].get().strip()
+                try:
+                    limit = int(limit_str) if limit_str else None
+                except ValueError:
+                    messagebox.showerror("錯誤", "最多處理支數請輸入數字（空白=全部）")
+                    return
+                if limit is not None and limit <= 0:
+                    limit = None
 
-                win.destroy()
-                self.lbl_status.config(text=f"正在處理 YouTube: {url[:50]}...", fg="#89b4fa")
+                # 解析網址（播放清單／頻道可能較久）→ 背景執行，避免 GUI 凍結無回應
+                btn_create.config(state="disabled", text="解析中…")
+                lbl_form_status.config(text="正在解析 YouTube 網址…", fg="#89b4fa")
+                self.lbl_status.config(text=f"正在解析 YouTube: {url[:60]}...", fg="#89b4fa")
 
-                def _process_yt():
+                def _expand_yt():
+                    entries, err, kb_index = [], None, {}
                     try:
-                        from channel_watcher import process_youtube_url
-                        results = process_youtube_url(url, burn_sub=do_burn, save_to_kb=do_kb, note=do_note, summary=do_sum)
-                        self.root.after(0, lambda: _yt_done(results))
+                        from channel_watcher import expand_youtube_entries
+                        entries = expand_youtube_entries(url, limit=limit)
                     except Exception as e:
-                        self.root.after(0, lambda: messagebox.showerror("處理異常", str(e)))
-                        self.root.after(0, lambda: self.lbl_status.config(text="YouTube 處理失敗", fg="#f38ba8"))
+                        err = e
+                    if entries:
+                        try:
+                            # 去重索引較久（掃整個 KB，首次約 1 分鐘）→ 留在背景執行
+                            self.root.after(0, lambda: lbl_form_status.config(
+                                text="正在比對知識庫（首次約需 1 分鐘）…", fg="#89b4fa"))
+                            from channel_watcher import kb_video_index
+                            kb_index = kb_video_index(refresh=True)
+                        except Exception:
+                            kb_index = {}
+                    self.root.after(0, lambda: _create_yt_tasks(entries, err, kb_index))
 
-                def _yt_done(results):
-                    if results["status"] == "error":
-                        messagebox.showerror("處理失敗", results["message"])
-                        self.lbl_status.config(text="YouTube 處理失敗", fg="#f38ba8")
+                def _create_yt_tasks(entries, err, kb_index=None):
+                    try:
+                        exists = win.winfo_exists()
+                    except Exception:
+                        exists = False
+                    if not exists:
                         return
-                    msg_lines = [results["message"]]
-                    for v in results.get("videos", []):
-                        kb_path = v.get("kb_path", "")
-                        status = "✅" if v.get("success") else "❌"
-                        msg_lines.append(f"  {status} {v.get('title','?')[:30]}")
-                        if kb_path:
-                            msg_lines.append(f"     KB: {kb_path}")
-                    msg = "\n".join(msg_lines)
-                    messagebox.showinfo("YouTube 處理結果", msg)
-                    self._refresh()
-                    n = len([v for v in results.get("videos", []) if v.get("success")])
-                    self.lbl_status.config(text=f"YouTube 處理完成: {n} 支成功")
+                    if err:
+                        btn_create.config(state="normal", text="建立")
+                        lbl_form_status.config(text=f"解析失敗: {err}", fg=COLOR_FAILED)
+                        messagebox.showerror("解析失敗", str(err))
+                        return
+                    if not entries:
+                        btn_create.config(state="normal", text="建立")
+                        lbl_form_status.config(text="找不到任何影片", fg=COLOR_FAILED)
+                        messagebox.showerror("解析失敗",
+                                             "找不到任何影片（網址無效、未公開或清單為空）")
+                        return
 
-                threading.Thread(target=_process_yt, daemon=True).start()
+                    kb_index = kb_index or {}
+
+                    data = load_task_status()
+                    existing_ids = [int(k) for k in data.get("tasks", {}) if k.isdigit()]
+                    shared_tasks_dir = os.path.join(SHARED_ROOT, "tasks")
+                    if os.path.isdir(shared_tasks_dir):
+                        for fn in os.listdir(shared_tasks_dir):
+                            if fn.startswith("task_") and fn.endswith(".json"):
+                                try:
+                                    existing_ids.append(int(fn[5:-5]))
+                                except ValueError:
+                                    pass
+                    next_id = (max(existing_ids) if existing_ids else 0) + 1
+
+                    pending_vids = {
+                        t.get("video_id") for t in data.get("tasks", {}).values()
+                        if t.get("status") in ("pending", "processing", "assigned")
+                    }
+
+                    created, skipped_kb, skipped_dup = [], 0, 0
+                    now_iso = datetime.now().isoformat()
+                    for entry in entries:
+                        vid = entry.get("id", "")
+                        title = entry.get("title") or vid
+                        if not vid:
+                            continue
+                        if vid in kb_index:
+                            skipped_kb += 1
+                            continue
+                        if vid in pending_vids:
+                            skipped_dup += 1
+                            continue
+                        tid = str(next_id)
+                        next_id += 1
+                        data["tasks"][tid] = {
+                            "type": "youtube",
+                            "status": "pending",
+                            "assigned_to": assigned,
+                            "priority": 0,
+                            "name": title,
+                            "title": title,
+                            "video_id": vid,
+                            "url": f"https://www.youtube.com/watch?v={vid}",
+                            "kb_subdir": "youtube-clips",
+                            "harvest_to_kb": do_kb,
+                            "auto_note": do_note,
+                            "auto_summary": do_sum,
+                            "burn_subs": do_burn,
+                            "note": note,
+                            "discovered_at": now_iso,
+                            "started_at": None,
+                            "completed_at": None,
+                            "last_error": None,
+                            "machine": None,
+                            "output_keys": [],
+                        }
+                        pending_vids.add(vid)
+                        created.append(tid)
+
+                    if not created:
+                        win.destroy()
+                        self._refresh()
+                        msg = "沒有新增任務"
+                        if skipped_kb:
+                            msg += f"（{skipped_kb} 支已在知識庫）"
+                        if skipped_dup:
+                            msg += f"（{skipped_dup} 支已有待處理任務）"
+                        self.lbl_status.config(text=msg, fg=COLOR_WARN)
+                        messagebox.showinfo("YouTube 任務", msg)
+                        return
+
+                    data["task_counter"] = max(
+                        [int(k) for k in data["tasks"] if k.isdigit()] or [0])
+                    data["generated_at"] = now_iso
+                    save_task_status(data)
+
+                    # 寫入中央佇列 shared/tasks/（worker 由此領取）
+                    for tid in created:
+                        shared_task = {
+                            "task_id": tid,
+                            "task_info": data["tasks"][tid],
+                            "status": "pending",
+                            "assigned_to": assigned,
+                        }
+                        shared_task_file = os.path.join(SHARED_ROOT, "tasks", f"task_{tid}.json")
+                        os.makedirs(os.path.dirname(shared_task_file), exist_ok=True)
+                        with open(shared_task_file, "w", encoding="utf-8") as f:
+                            json.dump(shared_task, f, indent=2, ensure_ascii=False)
+
+                    win.destroy()
+                    self._refresh()
+                    for tid in created:
+                        if tid in self.tree.get_children():
+                            self.tree.see(tid)
+                            self.tree.selection_set(tid)
+                            break
+
+                    msg = f"已建立 {len(created)} 個 YouTube 任務"
+                    if skipped_kb:
+                        msg += f"，{skipped_kb} 支已在知識庫略過"
+                    if skipped_dup:
+                        msg += f"，{skipped_dup} 支已有待處理任務"
+                    self.lbl_status.config(text=msg, fg=COLOR_DONE)
+                    messagebox.showinfo("YouTube 任務", msg + "\n\n任務已加入清單，Worker 會逐支下載字幕／影片並收成。")
+
+                threading.Thread(target=_expand_yt, daemon=True).start()
                 return
 
             elif t == "subtitle":
@@ -1763,19 +1932,6 @@ class TaskManagerGUI:
             data["generated_at"] = datetime.now().isoformat()
             save_task_status(data)
             
-            # YouTube 任務也需要寫入 shared/tasks/
-            if t == "sensebar":
-                shared_task = {
-                    "task_id": tid,
-                    "task_info": data["tasks"][tid],
-                    "status": "pending",
-                    "assigned_to": data["tasks"][tid].get("assigned_to"),
-                }
-                shared_task_file = os.path.join(SHARED_ROOT, "tasks", f"task_{tid}.json")
-                os.makedirs(os.path.dirname(shared_task_file), exist_ok=True)
-                with open(shared_task_file, "w", encoding="utf-8") as f:
-                    json.dump(shared_task, f, indent=2)
-            
             win.destroy()
             self._refresh()
             
@@ -1793,12 +1949,16 @@ class TaskManagerGUI:
 
         btn_frame = tk.Frame(win, bg=COLOR_BG)
         btn_frame.pack(fill="x", padx=10, pady=15)
-        tk.Button(btn_frame, text="建立", command=submit,
-                  bg="#a6e3a1", fg="#1e1e2e", font=("Consolas", 10),
-                  relief="flat", padx=15).pack(side="left", padx=(0, 10))
+        btn_create = tk.Button(btn_frame, text="建立", command=submit,
+                               bg="#a6e3a1", fg="#1e1e2e", font=("Consolas", 10),
+                               relief="flat", padx=15)
+        btn_create.pack(side="left", padx=(0, 10))
         tk.Button(btn_frame, text="取消", command=win.destroy,
                   bg="#45475a", fg=COLOR_FG, font=("Consolas", 10),
                   relief="flat", padx=15).pack(side="left")
+        lbl_form_status = tk.Label(btn_frame, text="", bg=COLOR_BG, fg=COLOR_FG,
+                                   font=("Consolas", 9))
+        lbl_form_status.pack(side="left", padx=(12, 0))
 
     def _product_dialog(self):
         """產品回補：列出待補逐字稿、單筆／批量產出摘要報告與詳細筆記"""

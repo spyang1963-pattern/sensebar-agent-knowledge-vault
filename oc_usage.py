@@ -12,7 +12,17 @@ oc_usage.py — 查 OpenCode 額度（免費模型 + Go 付費）
 
 2. 免費模型（opencode/*）＝ **本機估算**
    伺服器端沒有公開「剩餘量」API；本工具用本機 session 資料庫數 assistant 訊息數
-   （≈ 請求數）估算 5 小時滾動視窗用量，並列出最近撞牆時間。
+   （≈ 請求數）估算用量。
+
+   **重要（2026-11-04 更正）**：免費池不是「200 次／5 小時」。
+   自 2026-10-23 起 Zen 免費額度是**每個 IP、每個「免費池日」**的**動態** bucket，
+   上限不公告（本機實測撞牆點 1~337 次，沒有固定值），且帳號／網路共用，
+   沒有 UI 或 API 可查剩餘量。撞牆訊息：
+   `You've used today's free messages. They reset at HH:MM` / `Free usage limit reached`。
+   因此本工具主數字改為「本機免費池日累計次數」，5 小時只是參考，不代表額度。
+
+   換日時間：使用者實測為**本機 08:55**（2026-11-04 21:43 被拒 → 隔日 09:47 恢復）。
+   可用 `FREE_DAY_RESET_H/M` 或 `--reset-at 08:55` 調整。
 
 用法:
   python oc_usage.py                # 精簡兩行（適合貼進對話）
@@ -24,7 +34,8 @@ oc_usage.py — 查 OpenCode 額度（免費模型 + Go 付費）
 
 注意:
   - 資料庫採唯讀（mode=ro），不會動到 OpenCode。
-  - 免費模型的 200/5h 是回推值（非官方公告），誤差約 ±10~15%。
+  - 免費池上限是伺服器**動態**值（無公告、無 API），本工具只能算「用了幾次」，
+    不能算「還剩幾次」；看到數字很高不代表一定還能用，反之亦然。
   - Go 的數字是官方值；monthly 100% 且 status=rate-limited 代表當期已用盡。
 """
 import argparse
@@ -45,6 +56,11 @@ except Exception:
 GO_USAGE_URL = "https://opencode.ai/inference/go/v1/usage"
 FREE_HINTS = ("-free", "big-pickle", "pulse-alpha", "beam-free", "flint-40b",
               "mimo-", "nemotron", "glm-5.3-flash-free", "deepseek-v4.1-flash-free")
+
+# 免費池換日時間（本機時間）。實測：2026-11-04 21:43 被拒，訊息「reset at 08:55」，
+# 隔日 09:47 恢復。可用 CLI --reset-at 覆寫。
+FREE_DAY_RESET_H = 8
+FREE_DAY_RESET_M = 55
 
 
 # ---------------------------------------------------------------- 資料來源定位
@@ -134,6 +150,28 @@ def last_hits(log, n):
     return hits[-n:]
 
 
+def free_day_start(now=None, reset_h=FREE_DAY_RESET_H, reset_m=FREE_DAY_RESET_M):
+    """目前「免費池日」的起點（本機時間，預設 08:55 換日）。"""
+    now = now or dt.datetime.now().astimezone()
+    if now.tzinfo is None:
+        now = now.astimezone()
+    b = now.replace(hour=reset_h, minute=reset_m, second=0, microsecond=0)
+    if now < b:
+        b -= dt.timedelta(days=1)
+    return b
+
+
+def free_used_before(con, end_ts_ms, start_ts=None):
+    """某時間點之前（預設：從 0 起算）的免費請求數。"""
+    rows = con.execute(
+        "select json_extract(data,'$.model.providerID'), json_extract(data,'$.model.id'), count(*)"
+        " from session_message where type='assistant' and time_created between ? and ?"
+        " group by 1,2",
+        (start_ts if start_ts is not None else 0, end_ts_ms)).fetchall()
+    return sum(c for p, m, c in rows if is_free(p, m))
+
+
+
 def fmt_local(iso):
     try:
         t = dt.datetime.fromisoformat(iso.replace("Z", "+00:00"))
@@ -151,8 +189,10 @@ def bar(pct, width=24):
 # ------------------------------------------------------------------------ main
 def main():
     ap = argparse.ArgumentParser(description="OpenCode 額度查詢（免費估算 + Go 官方）")
-    ap.add_argument("--limit", type=int, default=200, help="免費模型視窗上限（預設 200）")
-    ap.add_argument("--window", type=float, default=5, help="免費視窗小時數（預設 5）")
+    ap.add_argument("--limit", type=int, default=200, help="（舊）免費視窗上限，僅供相容")
+    ap.add_argument("--window", type=float, default=5, help="5 小時參考視窗（預設 5）")
+    ap.add_argument("--reset-at", default=f"{FREE_DAY_RESET_H:02d}:{FREE_DAY_RESET_M:02d}",
+                    help="免費池換日時間（本機，預設 08:55）")
     ap.add_argument("--log", type=int, default=5, help="列出最近 N 筆撞牆紀錄")
     ap.add_argument("--full", action="store_true", help="顯示明細")
     ap.add_argument("--go-only", action="store_true", help="只看 Go（零成本）")
@@ -171,31 +211,56 @@ def main():
             out["free"] = {"error": "db not found"}
         else:
             con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-            now_ts = int(dt.datetime.now(dt.timezone.utc).timestamp())
-            midnight = dt.datetime.now().astimezone().replace(
-                hour=0, minute=0, second=0, microsecond=0)
+            now = dt.datetime.now().astimezone()
+            now_ts = int(now.timestamp())
+            reset_h, reset_m = (int(x) for x in args.reset_at.split(":"))
+            day_start = free_day_start(now, reset_h, reset_m)
+            day_ts = int(day_start.timestamp())
+            midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
             today_ts = int(midnight.timestamp())
 
             win = counts(con, now_ts - int(args.window * 3600), now_ts)
-            day = counts(con, today_ts, now_ts)
+            fday = counts(con, day_ts, now_ts)
             d24 = counts(con, now_ts - 86400, now_ts)
+            localday = counts(con, today_ts, now_ts)
 
             free_win = sum(c for p, m, c in win if is_free(p, m))
             paid_win = sum(c for p, m, c in win if not is_free(p, m))
-            free_day = sum(c for p, m, c in day if is_free(p, m))
+            free_day = sum(c for p, m, c in fday if is_free(p, m))
             free_24 = sum(c for p, m, c in d24 if is_free(p, m))
-            pct = min(100.0, free_win / args.limit * 100) if args.limit else 0.0
+            free_today = sum(c for p, m, c in localday if is_free(p, m))
+
+            # 撞牆紀錄（本地時間）與「被拒當時的用量」對照
+            hit_iso = last_hits(db.parent / "log" / "opencode.log", args.log)
+            hits_local = [fmt_local(h) for h in hit_iso]
+            hit_info = None
+            if hit_iso:
+                try:
+                    ht = dt.datetime.fromisoformat(
+                        hit_iso[-1].replace("Z", "+00:00")).astimezone()
+                    hts = int(ht.timestamp() * 1000)
+                    hit_day_start = free_day_start(ht, reset_h, reset_m).timestamp()
+                    hit_info = {
+                        "at": ht.strftime("%Y-%m-%d %H:%M:%S"),
+                        "day_used": free_used_before(con, hts, int(hit_day_start * 1000)),
+                        "same_day": hts >= int(day_ts * 1000),
+                    }
+                except Exception:
+                    pass
+
             out["free"] = {
+                "day_used": free_day,
+                "day_reset_at": day_start.isoformat(),
+                "day_reset_hhmm": f"{reset_h:02d}:{reset_m:02d}",
                 "window_hours": args.window,
-                "limit": args.limit,
-                "used": free_win,
-                "remaining": max(0, args.limit - free_win),
-                "percent": round(pct, 1),
-                "today": free_day,
+                "window_used": free_win,
+                "today_local": free_today,
                 "last24h": free_24,
                 "paid_steps_in_window": paid_win,
-                "hits": [fmt_local(h) for h in last_hits(db.parent / "log" / "opencode.log", args.log)],
+                "hits": hits_local,
+                "last_hit": hit_info,
                 "by_model": [{"provider": p, "model": m, "steps": c} for p, m, c in win],
+                "by_model_day": [{"provider": p, "model": m, "steps": c} for p, m, c in fday],
             }
 
     # ---- Go（官方、零成本）
@@ -209,11 +274,16 @@ def main():
     # ---- 人類可讀輸出
     f = out["free"]
     if f and "error" not in f:
-        mark = ""
-        if f["percent"] >= 80:
-            mark = "  ⚠ 接近上限"
-        print(f"免費 5h {f['used']}/{f['limit']}（{f['percent']:.0f}%）｜今日 {f['today']}"
-              f"｜24h {f['last24h']}｜剩 ~{f['remaining']}{mark}")
+        hhmm = f["day_reset_hhmm"]
+        line = (f"免費 日 {f['day_used']} 次（{hhmm} 換日）"
+                f"｜5h 參考 {f['window_used']}")
+        hit = f.get("last_hit") or {}
+        if hit.get("same_day"):
+            line += f"｜本池日已被拒 {hit['at'][11:19]}（當時累計 {hit['day_used']} 次）"
+        elif f.get("hits"):
+            line += f"｜上次被拒 {f['hits'][-1][5:16]}（當時累計 {hit.get('day_used', 0)} 次）"
+        print(line)
+        print("      上限為伺服器動態值（無 API 可查剩餘）；本機觀測撞牆點 206~337 次，非固定")
 
     g = out["go"]
     if g:
@@ -233,13 +303,18 @@ def main():
     if args.full:
         print()
         if f and "error" not in f:
-            print(f"── 免費模型：最近 {f['window_hours']:g} 小時明細 ──")
-            for r in f["by_model"]:
-                tag = "FREE" if is_free(r["provider"], r["model"]) else "paid"
-                print(f"  [{tag}] {r['provider']}/{r['model']}: {r['steps']} steps")
-            if not f["by_model"]:
-                print("  （無）")
-            print(f"  [{bar(f['percent'])}] {f['percent']:.0f}%")
+            print("── 免費模型（本機估算；伺服器無公開用量 API）──")
+            print(f"  免費池日累計（{f['day_reset_hhmm']} 換日，本機時間）：{f['day_used']} 次")
+            print(f"  最近 {f['window_hours']:g} 小時：{f['window_used']} 次（僅參考，不是額度）")
+            print(f"  本機日曆日：{f['today_local']} 次｜最近 24h：{f['last24h']} 次")
+            if f.get("last_hit"):
+                h = f["last_hit"]
+                print(f"  上次被拒：{h['at']}（當時本池日累計 {h['day_used']} 次）")
+                print(f"  目前池日起點：{f['day_reset_at']}")
+            if f["by_model_day"]:
+                print("  本池日各模型：")
+                for r in f["by_model_day"]:
+                    print(f"    {r['provider']}/{r['model']}: {r['steps']} 次")
             if f["paid_steps_in_window"]:
                 print(f"  同視窗另有 Go 呼叫 {f['paid_steps_in_window']} 次（不佔免費額度）")
             if f["hits"]:

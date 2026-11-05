@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-cd /d "D:\!!AI agent 專案夾\三師爸的 AI agent 學習 AI agent"
+cd /d "D:\AI-Agent-Workspace"
 
 echo [%date% %time%] 開始同步...
 

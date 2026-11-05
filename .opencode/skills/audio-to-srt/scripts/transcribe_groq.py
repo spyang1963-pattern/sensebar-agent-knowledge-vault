@@ -88,9 +88,9 @@ def main() -> int:
     ap.add_argument(
         "--prompt",
         default=(
-            "以下為繁體中文口語內容。專有名詞：Claude、Claude Code、"
-            "NotebookLM、GPT-Image 2、ChatGPT、OpenAI、Gemini、Groq、"
-            "Whisper、GitHub、Obsidian。"
+            "以下為繁體中文口語內容，請使用繁體中文轉錄。可能包含投資理財、"
+            "程式交易、AI 工具等主題；專有名詞、股票代號與英文縮寫請保留原文，"
+            "不確定的內容不要自行編造。"
         ),
     )
     ap.add_argument("--chunk-min", type=float, default=15.0,

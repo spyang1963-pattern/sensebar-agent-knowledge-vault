@@ -53,6 +53,57 @@ def load_groq_key() -> str:
     sys.exit(1)
 
 
+def _mean_volume_db(path) -> float | None:
+    """ffmpeg volumedetect 平均音量（dB）；失敗回傳 None。"""
+    import re
+    try:
+        r = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-nostats", "-i", str(path),
+             "-af", "volumedetect", "-f", "null", "-"],
+            capture_output=True, text=False)
+        txt = (r.stderr or b"").decode("utf-8", errors="replace")
+        m = re.search(r"mean_volume:\s*(-?\d+(?:\.\d+)?)\s*dB", txt)
+        return float(m.group(1)) if m else None
+    except Exception:
+        return None
+
+
+def guard_audio(path) -> None:
+    """轉錄前檢查音訊是否為靜音/壞檔。
+
+    2026-11-02 事故：靜音 mp3 被送去 Whisper，產生日文與 AI 工具幻覺字幕。
+    平均音量低於 -60 dB 一律中止（寧可失敗，也不要污染知識庫）。
+    """
+    mean = _mean_volume_db(path)
+    print(f"[CHECK] 音訊平均音量：{mean if mean is not None else '未知'} dB")
+    if mean is not None and mean < -60:
+        sys.exit(f"[ERR] 音訊幾乎無聲（mean {mean:.1f} dB），中止轉錄；"
+                 "請確認來源影片音軌或刪除 working/compressed 的壞快取")
+
+
+def guard_transcript(raw_json: Path, duration_hint: float | None = None) -> None:
+    """轉錄後檢查是否為幻覺/錯誤語言，避免錯誤逐字稿進入 KB。"""
+    import json as _json
+    try:
+        data = _json.loads(raw_json.read_text(encoding="utf-8"))
+    except Exception as e:
+        sys.exit(f"[ERR] 無法讀取轉錄結果：{e}")
+    text = data.get("text") or ""
+    segs = data.get("segments") or []
+    if not text.strip() or not segs:
+        sys.exit("[ERR] 轉錄結果為空，中止")
+    kana = sum(1 for ch in text if "\u3040" <= ch <= "\u30ff")
+    han = sum(1 for ch in text if "\u4e00" <= ch <= "\u9fff")
+    ratio = kana / max(1, kana + han)
+    print(f"[CHECK] 轉錄語言檢查：漢字 {han}、日文假名 {kana}（{ratio:.2%}）")
+    if ratio > 0.02 or text.count("ご視聴ありがとうございました") >= 3:
+        sys.exit("[ERR] 轉錄結果含大量日文/幻覺字串，判定失敗（不寫入知識庫）")
+    dur = data.get("duration") or duration_hint
+    if dur and len(segs) < dur / 120:
+        print(f"[WARN] 轉錄段數偏少（{len(segs)} 段 / {dur:.0f} 秒），請人工抽查")
+
+
+
 def main():
     ap = argparse.ArgumentParser(description="YouTube 影片自動化生產線")
     ap.add_argument("video", type=Path, help="原始影片路徑（如 raw/課程/原始.mp4）")
@@ -60,6 +111,8 @@ def main():
     ap.add_argument("--slug", type=str, default=None, help="自訂資料夾代號（不指定則自動從路徑推斷）")
     ap.add_argument("--skip-cut", action="store_true", help="跳過智能剪輯")
     ap.add_argument("--skip-cover", action="store_true", help="跳過封面生成")
+    ap.add_argument("--resume", action="store_true",
+                    help="來源未更新時沿用既有 corrected.srt（重試不重複轉錄）")
     args = ap.parse_args()
 
     # 路徑設定
@@ -109,35 +162,48 @@ def main():
     else:
         src_video = video
 
-    # Step 2: 語音轉字幕
-    groq_key = load_groq_key()
-    os.environ["GROQ_API_KEY"] = groq_key
+    # Step 2~4：重試時可沿用既有字幕（--resume，避免同一支音訊重複送 Whisper）
+    # 僅在 corrected.srt 比來源音訊新時才沿用；來源被重新壓縮/更新就重跑。
+    reuse_srt = False
+    if args.resume and corrected_srt.exists():
+        try:
+            reuse_srt = corrected_srt.stat().st_mtime >= Path(src_video).stat().st_mtime
+        except OSError:
+            reuse_srt = False
+    if reuse_srt:
+        print(f"[SKIP] 沿用既有字幕（來源未更新）：{corrected_srt}")
+    else:
+        # Step 2: 語音轉字幕
+        guard_audio(src_video)
+        groq_key = load_groq_key()
+        os.environ["GROQ_API_KEY"] = groq_key
 
-    ok = run(
-        [sys.executable, "-X", "utf8", str(SKILLS / "audio-to-srt" / "scripts" / "transcribe_groq.py"),
-         str(src_video), "--out", str(raw_json)],
-        "Step 2: Groq Whisper 語音轉字幕"
-    )
-    if not ok:
-        sys.exit(1)
+        ok = run(
+            [sys.executable, "-X", "utf8", str(SKILLS / "audio-to-srt" / "scripts" / "transcribe_groq.py"),
+             str(src_video), "--out", str(raw_json)],
+            "Step 2: Groq Whisper 語音轉字幕"
+        )
+        if not ok:
+            sys.exit(1)
+        guard_transcript(raw_json)
 
-    # Step 3: 重新分段
-    ok = run(
-        [sys.executable, "-X", "utf8", str(SKILLS / "audio-to-srt" / "scripts" / "resegment.py"),
-         str(raw_json), "--out", str(reseg_srt), "--audio", str(src_video)],
-        "Step 3: AI 重新分段"
-    )
-    if not ok:
-        sys.exit(1)
+        # Step 3: 重新分段
+        ok = run(
+            [sys.executable, "-X", "utf8", str(SKILLS / "audio-to-srt" / "scripts" / "resegment.py"),
+             str(raw_json), "--out", str(reseg_srt), "--audio", str(src_video)],
+            "Step 3: AI 重新分段"
+        )
+        if not ok:
+            sys.exit(1)
 
-    # Step 4: 術語校正
-    ok = run(
-        [sys.executable, "-X", "utf8", str(SKILLS / "audio-to-srt" / "scripts" / "apply_vocab.py"),
-         str(reseg_srt), "--out", str(corrected_srt)],
-        "Step 4: 術語校正"
-    )
-    if not ok:
-        sys.exit(1)
+        # Step 4: 術語校正
+        ok = run(
+            [sys.executable, "-X", "utf8", str(SKILLS / "audio-to-srt" / "scripts" / "apply_vocab.py"),
+             str(reseg_srt), "--out", str(corrected_srt)],
+            "Step 4: 術語校正"
+        )
+        if not ok:
+            sys.exit(1)
 
     # Step 5: 驗證 SRT
     ok = run(
@@ -177,9 +243,21 @@ def main():
     shutil.copy2(corrected_srt, final_srt)
     print(f"[OK] {final_srt}")
 
-    final_video = output / "剪輯後.mp4"
-    shutil.copy2(src_video, final_video)
-    print(f"[OK] {final_video}")
+    # 注意：--skip-cut 時 src_video 是音訊（worker 傳入 working/compressed/*.mp3），
+    # 不可再複製成 .mp4（2026-11-02 事故：輸出目錄的「剪輯後.mp4」其實是靜音 mp3）。
+    src_suffix = Path(src_video).suffix.lower()
+    if src_suffix in (".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"):
+        final_audio = output / "音訊.mp3"
+        shutil.copy2(src_video, final_audio)
+        print(f"[OK] {final_audio}（無剪輯，僅音訊）")
+        final_media = final_audio
+        media_label = "音訊"
+    else:
+        final_video = output / "剪輯後.mp4"
+        shutil.copy2(src_video, final_video)
+        print(f"[OK] {final_video}")
+        final_media = final_video
+        media_label = "影片"
 
     # 產生 metadata
     txt_content = clean_txt.read_text(encoding="utf-8")[:500]
@@ -193,9 +271,9 @@ def main():
     print(f"{'='*50}")
     print(f"\n輸出目錄：{output}")
     print(f"  字幕：{final_srt.name}")
-    print(f"  影片：{final_video.name}")
+    print(f"  {media_label}：{final_media.name}")
     print(f"\n查詢知識庫：")
-    print(f"  python knowledge-base/kb_query.py \"關鍵字\" --srt \"{final_srt}\" --video \"{final_video}\"")
+    print(f"  python knowledge-base/kb_query.py \"關鍵字\" --srt \"{final_srt}\" --video \"{final_media}\"")
 
 
 if __name__ == "__main__":

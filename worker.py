@@ -65,7 +65,10 @@ def _write_task_progress(tid, **kw):
         pass
 
 def run_pipeline(video_path, slug=None):
-    cmd = [sys.executable, "-X", "utf8", str(PROJECT_ROOT / "run_pipeline.py"), video_path, "--skip-cut"]
+    # --resume：同一個任務工作目錄若已有比音訊新的 corrected.srt，就直接沿用，
+    # 避免失敗重試時把 2 小時音訊重複送 Whisper（重複燒 Groq 額度）。
+    cmd = [sys.executable, "-X", "utf8", str(PROJECT_ROOT / "run_pipeline.py"), video_path,
+           "--skip-cut", "--resume"]
     
     max_retries = 3
     for attempt in range(1, max_retries + 1):
@@ -120,22 +123,117 @@ def run_pipeline(video_path, slug=None):
     
     return False, "max retries exceeded"
 
+def _probe_duration(path):
+    """取得影音長度（秒）；失敗回傳 None"""
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=nw=1:nk=1", path],
+            capture_output=True, text=True, encoding="utf-8", errors="replace")
+        return float((r.stdout or "").strip())
+    except Exception:
+        return None
+
+
+def _mean_volume_db(path):
+    """用 ffmpeg volumedetect 取得平均音量（dB）；失敗回傳 None"""
+    try:
+        r = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-nostats", "-i", path,
+             "-af", "volumedetect", "-f", "null", "-"],
+            capture_output=True, text=False)
+        txt = (r.stderr or b"").decode("utf-8", errors="replace")
+        m = re.search(r"mean_volume:\s*(-?\d+(?:\.\d+)?)\s*dB", txt)
+        return float(m.group(1)) if m else None
+    except Exception:
+        return None
+
+
+def _cache_is_valid(src_path, local_dst, meta_path):
+    """檢查既有 mp3 快取是否真的對應這個來源檔。
+
+    2026-11-02 事故：不同來源影片同名時共用快取，且舊快取是靜音檔，
+    導致 110 分鐘課程被轉成幻覺字幕。此後快取必須通過：
+    1) sidecar 記錄的來源 size/mtime 相符（若有 sidecar）
+    2) 快取不比來源舊
+    3) 快取檔案不是異常小
+    4) 平均音量 > -60 dB（排除靜音/壞檔）
+    5) 長度與來源相差 < 2%（最低容許 5 秒）
+    任一不符即重建。
+    """
+    try:
+        if os.path.getsize(local_dst) < 64 * 1024:
+            log("  mp3 快取過小，重建")
+            return False
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+        except Exception:
+            meta = None
+        if meta and meta.get("source_size") != os.path.getsize(src_path):
+            log("  mp3 快取來源大小不符，重建")
+            return False
+        # 來源被更新過（容忍 2 秒檔案系統誤差）
+        if os.path.getmtime(src_path) > os.path.getmtime(local_dst) + 2:
+            log("  mp3 快取比來源舊，重建")
+            return False
+        mean_db = _mean_volume_db(local_dst)
+        if mean_db is not None and mean_db < -60:
+            log(f"  mp3 快取為靜音（mean {mean_db:.1f} dB），重建")
+            return False
+        src_dur = _probe_duration(src_path)
+        dst_dur = _probe_duration(local_dst)
+        if src_dur and dst_dur:
+            tolerance = max(5.0, src_dur * 0.02)
+            if abs(src_dur - dst_dur) > tolerance:
+                log(f"  mp3 快取長度不符（來源 {src_dur:.0f}s / 快取 {dst_dur:.0f}s），重建")
+                return False
+        return True
+    except Exception as e:
+        log(f"  mp3 快取檢查失敗（{e}），重建")
+        return False
+
+
 def compress_video(src_path):
     stem = Path(src_path).stem
     local_dst = os.path.join(str(PROJECT_ROOT), "working", "compressed", f"{stem}.mp3")
+    meta_path = local_dst + ".json"
     os.makedirs(os.path.dirname(local_dst), exist_ok=True)
     
-    if os.path.exists(local_dst):
-        log(f"  mp3 已存在，跳過壓縮")
+    if os.path.exists(local_dst) and _cache_is_valid(src_path, local_dst, meta_path):
+        log(f"  mp3 已存在且有效，跳過壓縮")
     else:
+        # 先移除舊/壞快取，避免中斷後留下半成品被當成有效檔
+        for p in (local_dst, meta_path):
+            try:
+                if os.path.exists(p):
+                    os.remove(p)
+            except Exception:
+                pass
         log(f"  壓縮中...")
+        tmp_dst = local_dst + ".part.mp3"
         cmd = ["ffmpeg", "-i", src_path, "-vn", "-acodec", "libmp3lame",
-               "-ab", "16k", "-ac", "1", "-ar", "16000", local_dst, "-y"]
+               "-ab", "16k", "-ac", "1", "-ar", "16000", tmp_dst, "-y"]
         r = subprocess.run(cmd, capture_output=True, text=False)
         if r.returncode != 0:
             err_text = r.stderr.decode("utf-8", errors="replace")[:500]
             log(f"  壓縮失敗: {err_text}")
+            try:
+                os.remove(tmp_dst)
+            except Exception:
+                pass
             return None
+        os.replace(tmp_dst, local_dst)
+        try:
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump({
+                    "source": os.path.abspath(src_path),
+                    "source_size": os.path.getsize(src_path),
+                    "source_mtime": os.path.getmtime(src_path),
+                    "duration": _probe_duration(local_dst),
+                }, f, ensure_ascii=False)
+        except Exception:
+            pass
     
     log(f"  壓縮完成: {stem}.mp3")
     return local_dst
@@ -651,6 +749,134 @@ def _create_summary_task(orig_tid, kb_md):
     return _create_product_task(orig_tid, kb_md, "summary")
 
 
+def process_youtube_task(task):
+    """處理 YouTube 單支影片任務（type=youtube）：
+    有官方字幕→下載字幕→KB；無字幕→下載影片＋Pipeline→KB。
+    task_info 需含：video_id, title, kb_subdir(可選), harvest_to_kb, auto_note, auto_summary, burn_subs"""
+    tid = task["task_id"]
+    info = task["task_info"]
+
+    from tracker import TaskTimer
+    timer = TaskTimer(tid)
+    timer.start()
+
+    log(f"\n{'─'*50}")
+    log(f"開始處理 YouTube #{tid}: {info.get('title') or info.get('name')}")
+
+    heartbeat.update(status="processing", current_task=tid)
+    task_queue.update_task_status(tid, "processing")
+    try:
+        from scheduler import sync_shared_to_local
+        sync_shared_to_local()
+    except Exception:
+        pass
+
+    started = info.get("started_at") or datetime.now().isoformat()
+    vid = (info.get("video_id") or "").strip()
+    title = info.get("title") or info.get("name") or vid
+    harvest_to_kb = info.get("harvest_to_kb", True)
+    burn = bool(info.get("burn_subs", info.get("auto_subtitle", False)))
+    kb_subdir = (info.get("kb_subdir") or "youtube-clips").strip("/\\")
+
+    if not vid:
+        err = "缺少 video_id（YouTube 任務建立不完整）"
+        log(f"  [錯誤] {err}")
+        task_queue.update_task_status(tid, "failed", error=err)
+        _write_task_progress(tid, status="failed", type="youtube", message=err)
+        _sync_youtube_local()
+        timer.finish(success=False, error=err)
+        heartbeat.update(status="online", current_task=None)
+        return False
+
+    _write_task_progress(tid, status="processing", type="youtube",
+                         stage="下載字幕／影片", started_at=started)
+    try:
+        import channel_watcher as cw
+        kb_dir = os.path.join(str(cw.KB_ROOT), kb_subdir)
+        r = cw.process_youtube_video(
+            vid, title, kb_dir=kb_dir, burn_subs=burn, save_to_kb=harvest_to_kb,
+        )
+    except Exception as e:
+        err = f"處理異常: {e}"
+        log(f"  [錯誤] {err}")
+        task_queue.update_task_status(tid, "failed", error=err)
+        _write_task_progress(tid, status="failed", type="youtube", message=err)
+        _sync_youtube_local()
+        timer.finish(success=False, error=err)
+        heartbeat.update(status="online", current_task=None)
+        return False
+
+    if not r.get("success"):
+        err = r.get("error") or "處理失敗"
+        log(f"  [失敗] {err}")
+        task_queue.update_task_status(tid, "failed", error=err)
+        _write_task_progress(tid, status="failed", type="youtube", message=err)
+        _sync_youtube_local()
+        timer.finish(success=False, error=err)
+        heartbeat.update(status="online", current_task=None)
+        return False
+
+    kb_md = r.get("kb_md")
+
+    # 自動產生課程筆記（同影片任務：建立獨立筆記任務並內嵌執行）
+    if info.get("auto_note") and kb_md:
+        _write_task_progress(tid, status="processing", type="youtube",
+                             stage="產生課程筆記", started_at=started)
+        note_tid = _create_note_task(tid, kb_md)
+        if note_tid:
+            try:
+                from scheduler import load_task_status
+                st = load_task_status()
+                if note_tid in st.get("tasks", {}):
+                    process_note_task({
+                        "task_id": note_tid,
+                        "task_info": st["tasks"][note_tid],
+                        "status": "pending",
+                        "assigned_to": MACHINE,
+                    })
+                    log(f"  [筆記] #{note_tid} 已在同一次處理中完成")
+            except Exception as e:
+                log(f"  [筆記] 內嵌執行失敗: {e}（任務保留，可再重試）")
+
+    # 自動產生摘要報告
+    if info.get("auto_summary") and kb_md:
+        _write_task_progress(tid, status="processing", type="youtube",
+                             stage="產生摘要", started_at=started)
+        sum_tid = _create_summary_task(tid, kb_md)
+        if sum_tid:
+            try:
+                from scheduler import load_task_status
+                st = load_task_status()
+                if sum_tid in st.get("tasks", {}):
+                    process_summary_task({
+                        "task_id": sum_tid,
+                        "task_info": st["tasks"][sum_tid],
+                        "status": "pending",
+                        "assigned_to": MACHINE,
+                    })
+                    log(f"  [摘要] #{sum_tid} 已在同一次處理中完成")
+            except Exception as e:
+                log(f"  [摘要] 內嵌執行失敗: {e}（任務保留，可再重試）")
+
+    task_queue.update_task_status(tid, "completed")
+    _write_task_progress(tid, status="completed", type="youtube", stage="完成",
+                         message=f"KB: {kb_md}" if kb_md else "")
+    _sync_youtube_local()
+    timer.finish(success=True)
+    heartbeat.update(status="online", current_task=None)
+    log(f"  ✅ 完成 #{tid}")
+    return True
+
+
+def _sync_youtube_local():
+    """把 shared/tasks 的最新狀態同步回本機 task_status.json（GUI 顯示用）"""
+    try:
+        from scheduler import sync_shared_to_local
+        sync_shared_to_local()
+    except Exception:
+        pass
+
+
 def process_task(task):
     """處理單一任務"""
     tid = task["task_id"]
@@ -659,6 +885,10 @@ def process_task(task):
     # 燒字幕任務獨立處理
     if info.get("type") == "subtitle":
         return process_subtitle_task(task)
+
+    # YouTube（單支影片）任務獨立處理
+    if info.get("type") == "youtube":
+        return process_youtube_task(task)
 
     # 課程筆記任務獨立處理
     if info.get("type") == "note":
@@ -803,6 +1033,17 @@ def process_task(task):
         # 驗證輸出
         timer.step("validate_output")
         output_dir = os.path.join(get_machine_paths()["output"], task_slug)
+        # worker 一律以 --skip-cut 執行，pipeline 只會產生音訊；
+        # 若輸出目錄留有舊版誤命名的小檔「剪輯後.mp4」（其實是 mp3），清除避免誤用。
+        placeholder = os.path.join(output_dir, "剪輯後.mp4")
+        try:
+            if os.path.isfile(placeholder) and (
+                    not os.path.isfile(video_path)
+                    or os.path.getsize(placeholder) != os.path.getsize(video_path)):
+                os.remove(placeholder)
+                log(f"  已移除誤命名的剪輯後.mp4（實為音訊）: {placeholder}")
+        except Exception as e:
+            log(f"  [警告] 清除剪輯後.mp4 失敗: {e}")
         validator = OutputValidator(output_dir)
         output_valid, issues = validator.validate()
         timer.step_done("validate_output")

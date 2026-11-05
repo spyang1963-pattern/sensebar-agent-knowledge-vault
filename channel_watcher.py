@@ -55,7 +55,9 @@ _VIDEO_DATE_CACHE = {}
 
 def get_video_date(video_id):
     """取得影片日期（Asia/Taipei）→ 'YYYY-MM-DD' 或 None。
-    優先順序：timestamp（直播/發布時點，換算台北時區）→ release_date → upload_date。
+    優先順序：release_date（首播/實際發布日）→ timestamp（直播/發布時點，換算台北時區）→ upload_date。
+    2026-11-02 事故：首播影片的 timestamp 仍停在原本排定的 2026-10-26，但實際首播／發布日是
+    release_date=2026-11-02，導致產出檔名前綴錯誤。因此 release_date 必須優先。
     """
     if video_id in _VIDEO_DATE_CACHE:
         return _VIDEO_DATE_CACHE[video_id]
@@ -71,14 +73,13 @@ def get_video_date(video_id):
         if line:
             parts = (line[0].split("|") + ["", "", ""])[:3]
             ts, rel, up = parts
-            if ts and ts not in ("NA", "None"):
+            if rel and re.match(r"^\d{8}$", rel):
+                date = f"{rel[:4]}-{rel[4:6]}-{rel[6:8]}"
+            elif ts and ts not in ("NA", "None"):
                 tw = datetime.fromtimestamp(int(ts), timezone(timedelta(hours=8)))
                 date = tw.strftime("%Y-%m-%d")
-            else:
-                for v in (rel, up):
-                    if v and re.match(r"^\d{8}$", v):
-                        date = f"{v[:4]}-{v[4:6]}-{v[6:8]}"
-                        break
+            elif up and re.match(r"^\d{8}$", up):
+                date = f"{up[:4]}-{up[4:6]}-{up[6:8]}"
         log(f"  [日期] {video_id} → {date}")
     except Exception as e:
         log(f"  [日期] 取得失敗 {video_id}: {e}")
@@ -127,6 +128,68 @@ def get_playlist_entries(source):
     except Exception as e:
         log(f"  [清單] 失敗: {e}")
         return []
+
+def expand_youtube_entries(url, limit=None):
+    """把 YouTube 網址展開成影片清單（單一影片／播放清單／頻道皆可）。
+
+    供 GUI「新增任務」與佇列建立逐支任務使用；只回傳 {id, title}，
+    不做任何下載。抓不到或非影片項目（例如頻道首頁的播放清單分類）一律略過。
+
+    limit: 最多回傳幾支（None=全部）
+    """
+    u = (url or "").strip()
+    if not u:
+        return []
+    try:
+        import yt_dlp
+    except ImportError:
+        log("[ERR] 需要 yt-dlp 套件：pip install yt-dlp")
+        return []
+
+    opts = {
+        "extract_flat": True,
+        "skip_download": True,
+        "quiet": True,
+        "no_warnings": True,
+        "ignoreerrors": True,
+    }
+    if limit and limit > 0:
+        opts["playlistend"] = limit
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(u, download=False)
+    except Exception as e:
+        log(f"  [展開] 失敗: {e}")
+        return []
+
+    if not info:
+        return []
+
+    out, seen = [], set()
+
+    def _collect(item, depth=0):
+        if not item or depth > 2:
+            return
+        # 頻道首頁可能回傳「播放清單」項目，往下一層取影片
+        if item.get("_type") == "playlist" and item.get("entries"):
+            for sub in item["entries"]:
+                _collect(sub, depth + 1)
+            return
+        vid = item.get("id") or ""
+        if not re.match(r"^[A-Za-z0-9_-]{11}$", vid) or vid in seen:
+            return
+        seen.add(vid)
+        out.append({"id": vid, "title": item.get("title") or vid})
+
+    entries = info.get("entries") or [info]
+    for e in entries:
+        _collect(e)
+
+    if limit and limit > 0:
+        out = out[:limit]
+    log(f"  [展開] {u[:60]}: {len(out)} 支")
+    return out
+
 
 def download_yt_sub(video_id, langs, temp_dir):
     """下載 YouTube 自動字幕"""
@@ -488,10 +551,11 @@ def make_summary_for_md(title, md_path, out_dir=None):
 
 # ── 核心邏輯 ──
 
-def process_has_subs(video_id, title, langs, kb_dir, burn_subs=False, format_spec=None):
+def process_has_subs(video_id, title, langs, kb_dir, burn_subs=False, format_spec=None, save_to_kb=True):
     """有字幕路徑：下載字幕 → KB 條目。成功回傳 md_path，失敗回傳 None。
     burn_subs=True：即使有官方字幕，也下載影片並把字幕燒進去（依頻道規則）。
-    format_spec：燒字幕時的下載格式（None=預設 1080p）。"""
+    format_spec：燒字幕時的下載格式（None=預設 1080p）。
+    save_to_kb=False：只處理（必要時燒字幕）不寫入 KB，成功回傳 True。"""
     temp_dir = WORKING / "channel-watcher-temp"
     temp_dir.mkdir(parents=True, exist_ok=True)
 
@@ -513,6 +577,13 @@ def process_has_subs(video_id, title, langs, kb_dir, burn_subs=False, format_spe
             if burn_subtitles(video_path, srt_path, bp):
                 burned_path = bp
 
+    if not save_to_kb:
+        try:
+            srt_path.unlink()
+        except Exception:
+            pass
+        return True
+
     md_path = create_kb_entry(video_id, title, transcript, srt_path, None, kb_dir, burned_path=burned_path, date_prefix=date_prefix)
 
     # 清理
@@ -520,8 +591,9 @@ def process_has_subs(video_id, title, langs, kb_dir, burn_subs=False, format_spe
     return md_path
 
 
-def process_no_subs(video_id, title, langs, kb_dir, format_spec=None):
-    """無字幕路徑：下載影片 → Pipeline → 燒字幕 → KB 條目。成功回傳 md_path，失敗回傳 None"""
+def process_no_subs(video_id, title, langs, kb_dir, format_spec=None, save_to_kb=True):
+    """無字幕路徑：下載影片 → Pipeline → 燒字幕 → KB 條目。成功回傳 md_path，失敗回傳 None
+    save_to_kb=False：只處理（下載＋轉錄＋燒字幕）不寫入 KB，成功回傳影片路徑。"""
     log("  [轉錄] 無 YouTube 字幕，啟動離線 Pipeline...")
 
     date_prefix = get_video_date(video_id)
@@ -547,6 +619,9 @@ def process_no_subs(video_id, title, langs, kb_dir, format_spec=None):
     burned_path = Path(video_path).with_name(Path(video_path).stem + "_字幕.mp4")
     if not burn_subtitles(video_path, srt_src, burned_path):
         burned_path = None
+
+    if not save_to_kb:
+        return video_path
 
     md_path = create_kb_entry(video_id, title, transcript, srt_src, video_path, kb_dir, burned_path=burned_path, date_prefix=date_prefix)
 
@@ -826,122 +901,93 @@ def show_status():
     print()
 
 
+def process_youtube_video(video_id, title, langs=None, kb_dir=None, burn_subs=False,
+                          save_to_kb=True, format_spec=None):
+    """處理單一 YouTube 影片（供佇列 worker／GUI 使用）。
+
+    優先使用 YouTube 字幕；無字幕則下載影片跑離線 Pipeline（皆會依需求燒字幕）。
+    save_to_kb=True 時寫入 KB 條目（kb_dir 預設 knowledge-base/youtube-clips）。
+
+    Returns:
+        dict: {"success": bool, "kb_md": str|None, "kb_path": str, "error": str}
+    """
+    if langs is None:
+        langs = ["zh-Hant", "zh-TW", "zh", "en"]
+    kb_dir = Path(kb_dir) if kb_dir else (KB_ROOT / "youtube-clips")
+
+    result = {"success": False, "kb_md": None, "kb_path": "", "error": ""}
+    try:
+        md_path = process_has_subs(
+            video_id, title, langs, kb_dir,
+            burn_subs=burn_subs, format_spec=format_spec, save_to_kb=save_to_kb,
+        )
+        if md_path is None:
+            md_path = process_no_subs(
+                video_id, title, langs, kb_dir,
+                format_spec=format_spec, save_to_kb=save_to_kb,
+            )
+    except Exception as e:
+        result["error"] = f"處理異常: {e}"
+        log(f"[ERROR] process_youtube_video {video_id}: {e}")
+        return result
+
+    if not md_path:
+        result["error"] = "下載或轉錄失敗（無字幕且 Pipeline 未產出）"
+        return result
+
+    result["success"] = True
+    if save_to_kb and isinstance(md_path, Path):
+        result["kb_md"] = str(md_path)
+        result["kb_path"] = str(md_path)
+    return result
+
+
 def process_youtube_url(url, burn_sub=False, save_to_kb=True, langs=None, note=False, summary=False):
-    """處理單一 YouTube 網址（供 GUI 呼叫）
-    
+    """處理單一 YouTube 網址（舊介面；GUI 已改為建立逐支佇列任務）
+
     支援格式：
       - 單一影片: https://www.youtube.com/watch?v=xxx
       - 播放清單: https://www.youtube.com/playlist?list=xxx
       - 頻道: https://www.youtube.com/@channel
-    
+
     Returns:
         dict: { "status": "ok"/"error", "message": str, "videos": [{...}] }
     """
-    import yt_dlp
-    if langs is None:
-        langs = ["zh-Hant", "zh-TW", "zh", "en"]
-
     result = {"status": "ok", "message": "", "videos": []}
-    temp_dir = WORKING / "channel-watcher-temp"
-    temp_dir.mkdir(parents=True, exist_ok=True)
-
-    try:
-        ydl_opts = {
-            "extract_flat": True,
-            "skip_download": True,
-            "quiet": True,
-            "no_warnings": True,
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-
-        entries = info.get("entries", [])
-        if not entries:
-            entries = [info]  # 單一影片
-
-        processed_count = 0
-        for i, entry in enumerate(entries):
-            if i >= 5:  # 最多處理 5 支
-                result["message"] += f"\n(尚有 {len(entries)-5} 支未處理，上限 5 支)"
-                break
-
-            vid = entry.get("id", "")
-            title = entry.get("title", vid)
-            if not vid:
-                continue
-
-            log(f"  [{i+1}] {title}")
-            video_info = {"id": vid, "title": title, "success": False, "kb_path": ""}
-            date_prefix = get_video_date(vid)
-
-            # 嘗試下載字幕
-            langs_to_try = langs
-            srt_path = download_yt_sub(vid, langs_to_try, temp_dir)
-
-            if srt_path:
-                log(f"  有 YouTube 字幕")
-                transcript = srt_to_transcript(srt_path)
-                kb_dir = KB_ROOT / "youtube-clips"
-                create_kb_entry(vid, title, transcript, srt_path, None, kb_dir, date_prefix=date_prefix)
-                video_info["success"] = True
-                video_info["kb_path"] = str(kb_dir / f"{kb_basename(title, date_prefix)}.md")
-                srt_path.unlink()
-                processed_count += 1
-                if note:
-                    make_note_for_md(kb_basename(title, date_prefix), video_info["kb_path"], kb_dir)
-                if summary:
-                    make_summary_for_md(kb_basename(title, date_prefix), video_info["kb_path"], kb_dir)
-            else:
-                log(f"  無 YouTube 字幕，啟動 Pipeline...")
-                video_path = download_yt_video(vid, title, date_prefix=date_prefix)
-                if video_path:
-                    output_dir = run_pipeline(video_path, title, vid)
-                    if output_dir:
-                        srt_src = output_dir / "字幕.srt"
-                        if srt_src.exists():
-                            transcript = srt_to_transcript(srt_src)
-                            kb_dir = KB_ROOT / "youtube-clips"
-                            create_kb_entry(vid, title, transcript, srt_src, video_path, kb_dir, date_prefix=date_prefix)
-                            video_info["success"] = True
-                            video_info["kb_path"] = str(kb_dir / f"{kb_basename(title, date_prefix)}.md")
-
-                            if burn_sub:
-                                burned = Path(video_path).with_name(Path(video_path).stem + "_字幕.mp4")
-                                burn_subtitles(video_path, srt_src, burned)
-
-                            processed_count += 1
-                            if note:
-                                make_note_for_md(kb_basename(title, date_prefix), video_info["kb_path"], kb_dir)
-                            if summary:
-                                make_summary_for_md(kb_basename(title, date_prefix), video_info["kb_path"], kb_dir)
-                        else:
-                            log(f"  找不到 SRT 輸出")
-                    else:
-                        log(f"  Pipeline 失敗")
-                else:
-                    log(f"  下載失敗")
-
-            result["videos"].append(video_info)
-
-        if processed_count == 0:
-            result["status"] = "error"
-            result["message"] = "所有影片處理失敗"
-        else:
-            result["message"] = f"成功處理 {processed_count}/{len([e for e in entries if e.get('id','')][:5])} 支影片"
-            result["status"] = "ok"
-
-    except Exception as e:
+    entries = expand_youtube_entries(url, limit=5)
+    if not entries:
         result["status"] = "error"
-        result["message"] = f"YouTube 處理異常: {e}"
-        log(f"[ERROR] process_youtube_url: {e}")
+        result["message"] = "找不到任何影片（網址無效、未公開或清單為空）"
+        return result
 
-    # 清理暫存
-    try:
-        for f in temp_dir.glob("*"):
-            f.unlink()
-    except Exception:
-        pass
+    processed_count = 0
+    for i, entry in enumerate(entries):
+        vid = entry.get("id", "")
+        title = entry.get("title", vid)
+        log(f"  [{i+1}] {title}")
+        video_info = {"id": vid, "title": title, "success": False, "kb_path": ""}
+        r = process_youtube_video(vid, title, langs=langs, burn_subs=burn_sub,
+                                  save_to_kb=save_to_kb)
+        video_info["success"] = r["success"]
+        video_info["kb_path"] = r["kb_path"]
+        if r["success"]:
+            processed_count += 1
+            if save_to_kb and r["kb_md"]:
+                md_path = Path(r["kb_md"])
+                if note:
+                    make_note_for_md(md_path.stem, md_path)
+                if summary:
+                    make_summary_for_md(md_path.stem, md_path)
+        else:
+            log(f"  ❌ {r['error']}")
+        result["videos"].append(video_info)
 
+    if processed_count == 0:
+        result["status"] = "error"
+        result["message"] = "所有影片處理失敗"
+    else:
+        result["message"] = f"成功處理 {processed_count}/{len(entries)} 支影片"
+        result["status"] = "ok"
     return result
 
 
