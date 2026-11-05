@@ -10,7 +10,15 @@ from datetime import datetime
 from tkinter import ttk, messagebox, filedialog
 import tkinter as tk
 
-sys.stdout.reconfigure(encoding="utf-8")
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
+# 子行程編碼（dump 在 config.py）：本行必須在 import config 之前，
+# 讓 GUI 自己派出的 subprocess 一律說 UTF-8，避免 cp950 解碼炸 reader thread。
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from config import *
 from disk_checker import DiskCheck
@@ -129,7 +137,7 @@ class WorkerManager:
         # 驗證連線
         if name != socket.gethostname().lower():
             # 嘗試 ping
-            p = subprocess.run(["ping", "-n", "1", ip], capture_output=True, text=True, timeout=10)
+            p = subprocess.run(["ping", "-n", "1", ip], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
             if p.returncode != 0:
                 return (False, f"無法 ping 到 {ip}")
 
@@ -137,7 +145,7 @@ class WorkerManager:
             share_dst = f"\\\\{ip}\\Share"
             r = subprocess.run(
                 ["net", "use", share_dst, "/user:user", password or "abc123"],
-                capture_output=True, text=True, timeout=15)
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
             if r.returncode != 0:
                 return (False, f"net use 失敗: {r.stderr}")
 
@@ -150,10 +158,10 @@ class WorkerManager:
                           "task_manager_gui.py", "worker.bat", "setup_pc.bat"]:
                     sf = os.path.join(src, f)
                     if os.path.exists(sf):
-                        subprocess.run(["copy", sf, f"{dst}\\{f}"], capture_output=True, text=True)
+                        subprocess.run(["copy", sf, f"{dst}\\{f}"], capture_output=True, text=True, encoding="utf-8", errors="replace")
                 # .opencode skills
                 subprocess.run(["robocopy", os.path.join(src, ".opencode"),
-                                f"{dst}\\.opencode", "/E", "/NP"], capture_output=True, text=True)
+                                f"{dst}\\.opencode", "/E", "/NP"], capture_output=True, text=True, encoding="utf-8", errors="replace")
             except Exception as e:
                 return (False, f"檔案複製失敗: {e}")
 
@@ -172,7 +180,7 @@ class WorkerManager:
             r = subprocess.run(
                 ['powershell', '-Command',
                  'Get-Process -Name python* | Where-Object { $_.CommandLine -match "worker" } | Select-Object -ExpandProperty Id'],
-                capture_output=True, text=True, timeout=5)
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5)
             pids = r.stdout.strip().split()
             return [int(p) for p in pids if p.isdigit()]
         except Exception:
@@ -2202,7 +2210,7 @@ class TaskManagerGUI:
         if not messagebox.askyesno("確認重新分配", "所有 pending/processing 任務將釋放，\n由各 worker 自動搶單。\n\n確定？"):
             return
         r = subprocess.run([sys.executable, str(PROJECT_ROOT / "scheduler.py"), "--redistribute"],
-                           capture_output=True, text=True, cwd=str(PROJECT_ROOT))
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(PROJECT_ROOT))
         self._refresh()
         self.lbl_status.config(text=r.stdout.splitlines()[-1] if r.stdout else "重新分配完成")
 
@@ -2211,7 +2219,7 @@ class TaskManagerGUI:
             if not messagebox.askyesno("確認停止", "本機所有等待/處理中的任務將釋放回中央佇列。\n確定停止運算？"):
                 return
             r = subprocess.run([sys.executable, str(PROJECT_ROOT / "worker.py"), "--release"],
-                               capture_output=True, text=True, cwd=str(PROJECT_ROOT))
+                               capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(PROJECT_ROOT))
             self._worker_active = False
             self.btn_worker_join.config(text="☐ 可加入任務", bg="#a6e3a1", fg="#1e1e2e")
             self.lbl_worker_status.config(text="⬜ 無任務", fg=COLOR_FG)
@@ -2231,7 +2239,7 @@ class TaskManagerGUI:
                 try:
                     r = subprocess.run(
                         [sys.executable, str(PROJECT_ROOT / "worker.py"), "--once"],
-                        capture_output=True, text=True, cwd=str(PROJECT_ROOT),
+                        capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(PROJECT_ROOT),
                         timeout=7200)
                     self.root.after(0, self._refresh)
                 except subprocess.TimeoutExpired:

@@ -206,7 +206,7 @@ def download_yt_sub(video_id, langs, temp_dir):
         url,
     ]
     try:
-        subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
         for f in temp_dir.glob(f"{video_id}_*.srt"):
             return f
     except Exception:
@@ -1007,7 +1007,7 @@ def _setup_schedule():
     try:
         log("建立 Windows 排程工作 (每週一 22:00)...")
         r = subprocess.run(
-            schtask_cmd, capture_output=True, text=True, timeout=30,
+            schtask_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
         )
         if r.returncode == 0:
             log(f"✅ 排程工作 '{task_name}' 建立成功")

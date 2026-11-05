@@ -26,7 +26,7 @@ def compress_audio(src: Path) -> Path:
         "-y", str(tmp),
     ]
     print("[INFO] 壓縮中（16kHz mono 32kbps）...")
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if result.returncode != 0:
         sys.exit(f"[ERR] ffmpeg 壓縮失敗：\n{result.stderr[-500:]}")
     new_mb = tmp.stat().st_size / 1024 / 1024
@@ -187,7 +187,7 @@ def transcribe_in_chunks(src: Path, model: str, prompt: str, api_key: str,
             "-t", str(min(chunk_sec, duration - start)),
             "-ac", "1", "-ar", "16000", "-b:a", "32k", str(seg),
         ]
-        r = subprocess.run(cmd, capture_output=True, text=True)
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if r.returncode != 0:
             sys.exit(f"[ERR] ffmpeg 切段失敗：\n{r.stderr[-500:]}")
         seg_mb = seg.stat().st_size / 1024 / 1024
@@ -204,7 +204,7 @@ def transcribe_in_chunks(src: Path, model: str, prompt: str, api_key: str,
 def probe_duration(path: Path) -> float:
     cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration",
            "-of", "default=noprint_wrappers=1:nokey=1", str(path)]
-    r = subprocess.run(cmd, capture_output=True, text=True)
+    r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if r.returncode != 0:
         return 0.0
     try:

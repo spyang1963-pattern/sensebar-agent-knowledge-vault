@@ -38,7 +38,7 @@ def _call_script(script_path, *args, timeout=600):
     """執行子程序腳本並回傳 stdout"""
     cmd = [sys.executable, "-X", "utf8", str(script_path)] + list(args)
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
         if r.returncode != 0:
             return None, r.stderr[-800:] if r.stderr else "unknown error"
         return r.stdout, None

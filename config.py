@@ -10,6 +10,15 @@
 import os, sys, socket, json
 from pathlib import Path
 
+# === 子行程編碼（2026-11-06 事故）===
+# Windows 的 subprocess 若只寫 text=True，會用 locale（cp950）解碼管線；
+# 但本專案的子行程（run_pipeline／channel_watcher 會 reconfigure、yt-dlp
+# 自己強制 UTF-8）輸出的是 UTF-8 中文，於是 reader thread 直接
+# UnicodeDecodeError（GUI 看到 Exception in thread Thread-N (_readerthread)），
+# 子行程輸出全失。這裡只影響 stdio，不動檔案 I/O，讓所有子行程一律 UTF-8，
+# 搭配呼叫點的 encoding="utf-8", errors="replace"。
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
 # === 機器辨識 ===
 HOSTNAME = socket.gethostname().lower()
 

@@ -59,7 +59,7 @@ def download_subtitle(video_id: str, title: str, out_dir: Path) -> bool:
         url
     ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
     return result.returncode == 0
 
 def find_downloaded_srt(video_id: str, out_dir: Path) -> Path | None:

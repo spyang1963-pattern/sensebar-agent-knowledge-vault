@@ -238,7 +238,7 @@ class Watchdog:
             try:
                 subprocess.run(
                     ["net", "use", r"\\100.113.234.81\Share", "/user:user", "abc123"],
-                    capture_output=True, text=True, timeout=10
+                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10
                 )
                 # 驗證
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -371,7 +371,7 @@ def _ping_notebook():
     """Ping notebook (via Tailscale IP), return True if reachable"""
     try:
         r = subprocess.run(["ping", "-n", "1", "-w", "3000", NOTEBOOK_IP],
-                           capture_output=True, text=True, timeout=5)
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5)
         return r.returncode == 0
     except Exception:
         return False

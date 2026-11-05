@@ -125,7 +125,7 @@ def try_download_youtube_sub(video_id):
     ]
     
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
         
         # 找到下載的 SRT
         for srt in temp_dir.glob(f"{video_id}_*.srt"):
@@ -155,7 +155,7 @@ def download_audio(video_id):
     
     try:
         log("  下載音訊...")
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
         
         # 找到下載的音訊
         for f in temp_dir.glob("audio.*"):
@@ -180,7 +180,7 @@ def transcribe_with_whisper(audio_path, video_id):
             str(audio_path),
             "--out", str(trimmed)
         ]
-        subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
     except Exception as e:
         log(f"  去靜音失敗: {e}")
         trimmed = audio_path
@@ -195,7 +195,7 @@ def transcribe_with_whisper(audio_path, video_id):
             str(trimmed),
             "--out", str(raw_json)
         ]
-        subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
     except Exception as e:
         log(f"  Whisper 辨識失敗: {e}")
         return None
@@ -211,7 +211,7 @@ def transcribe_with_whisper(audio_path, video_id):
             "--out", str(reseg_srt),
             "--audio", str(trimmed)
         ]
-        subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
     except Exception as e:
         log(f"  重新分段失敗: {e}")
         return None
@@ -226,7 +226,7 @@ def transcribe_with_whisper(audio_path, video_id):
             str(reseg_srt),
             "--out", str(corrected_srt)
         ]
-        subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
     except Exception as e:
         log(f"  術語校正失敗: {e}")
         corrected_srt = reseg_srt

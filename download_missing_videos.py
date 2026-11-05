@@ -48,7 +48,7 @@ def download_video(vid: str, name: str) -> bool:
         f"https://www.youtube.com/watch?v={vid}",
     ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+    result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180)
     return result.returncode == 0
 
 

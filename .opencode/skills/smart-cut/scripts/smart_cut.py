@@ -35,7 +35,7 @@ def detect_vfr(path: Path) -> bool:
             "-show_entries", "stream=avg_frame_rate,r_frame_rate",
             "-of", "default=noprint_wrappers=1",
             str(path),
-        ], text=True)
+        ], text=True, encoding="utf-8", errors="replace")
     except Exception as e:
         print(f"[WARN] ffprobe 檢查幀率失敗，跳過 VFR 偵測：{e}")
         return False
@@ -88,7 +88,7 @@ def get_duration(path: Path) -> float:
         "-show_entries", "format=duration",
         "-of", "default=noprint_wrappers=1:nokey=1",
         str(path),
-    ], text=True).strip()
+    ], text=True, encoding="utf-8", errors="replace").strip()
     return float(out)
 
 

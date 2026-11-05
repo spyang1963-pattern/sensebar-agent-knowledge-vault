@@ -14,6 +14,10 @@ from pathlib import Path
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
+# 子行程（smart_cut／transcribe_groq／ffmpeg）也要說 UTF-8，否則父行程
+# 用 encoding="utf-8" 讀管線會得到亂碼（詳見 config.py 的說明）。
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
 ROOT = Path(__file__).parent
 SKILLS = ROOT / ".opencode" / "skills"
 GROQ_KEY_FILE = Path.home() / ".groq_api_key"

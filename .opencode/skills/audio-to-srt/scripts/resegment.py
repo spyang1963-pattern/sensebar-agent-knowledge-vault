@@ -196,7 +196,7 @@ def detect_silence(audio_path: Path, noise_db: int = -35, min_dur: float = 0.25)
         "-af", f"silencedetect=noise={noise_db}dB:d={min_dur}",
         "-f", "null", "-",
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
+    result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     output = result.stderr
     starts = [float(x) for x in re.findall(r"silence_start: ([\d.]+)", output)]
     ends = [float(x) for x in re.findall(r"silence_end: ([\d.]+)", output)]
