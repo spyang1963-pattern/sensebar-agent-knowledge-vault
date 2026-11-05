@@ -282,7 +282,9 @@ schtasks /Query /FO CSV | findstr /I "Autonomy"
 - 切換順序：同步 state → 停舊機排程 → 建新機排程 → 觀察一天。
 - 開放問題：notebook 的 `videos` 是 `D:\!!!!!理周學院老師`，PC1/PC2 是 `D:\AI-Agent-Workspace\videos`。建議各機保留既有教材庫（只同步任務所需），不強制搬移。
 
-### Step 7 — 單向收割架構（PC 產出 → notebook 收）｜待決策、未實作（2026-11-04 提出）
+### Step 7 — 單向收割架構（PC 產出 → notebook 收）｜設計完成、未實作（2026-11-05）
+
+> 完整設計稿：**`workspace-bundle/STEP7-HARVEST-DESIGN.md`**（outbox／manifest 格式、帳本、衝突處理、SMB 設定、驗收清單）。
 
 **方向改變**：三機不再「互相同步整份資料」，改成**單向收割**。
 
@@ -309,7 +311,7 @@ schtasks /Query /FO CSV | findstr /I "Autonomy"
 | PC 端儲存壓力 | 影片只進不出會長大，需保留策略（例如 30 天後搬 NAS 或刪） |
 | 現況（2026-11-04） | notebook 端已對 `financial_news\`、`shared\`、`knowledge-base\` 加 `Everyone:(OI)(CI)(RX)`；這是「notebook → PC」方向，與收割需要的「PC → notebook」方向相反，屆時要在 PC 端做一次 |
 
-**結論**：方向可行，且比雙向同步乾淨；但 `shared/` 派工通道與「PC 端分享權限」兩件事要先解，才會真的省事。此輪不動手。
+**結論**：方向可行，且比雙向同步乾淨；但 `shared/` 派工通道與「PC 端分享權限」兩件事要先解，才會真的省事。設計已於 2026-11-05 定稿（見 `STEP7-HARVEST-DESIGN.md`），**程式未寫**，等 PC3 遷移完成後一起上線。
 
 ### Step 8 — 舊工作區清理（PC1/PC2）｜腳本已備，待執行
 

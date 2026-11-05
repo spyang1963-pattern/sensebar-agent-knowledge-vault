@@ -37,10 +37,14 @@ FREE_WINDOW_H = 5
 #   ① 5h 滾動窗 ~200 次（改制後沒有任何一次成功的 5h 窗 > 233；三次撞牆都在 205~232）
 #   ② 日/帳號層級（11-04 撞牆時 5h 只有 153、日累計 337；11-02 撞牆時 5h 只有 1、24h 234）
 FREE_5H_LIMIT = 200
-FREE_WARN_AT = 150        # 日累計提醒（無分母）
-FREE_BAD_AT = 300
-WIN_WARN_AT = 170         # 5h 視窗提醒（200 是觀測到的上限）
-WIN_BAD_AT = 195
+WIN_WARN_AT = int(FREE_5H_LIMIT * 0.60)   # 5h 60% = 120 → 黃
+WIN_BAD_AT = int(FREE_5H_LIMIT * 0.75)    # 5h 75% = 150 → 紅（2026-11-05 使用者指定）
+# 日累計沒有真分母；320 是「實務紅色警戒線」，不是伺服器硬上限（未必撞得到就停）。
+DAY_WARN_AT = 150
+DAY_BAD_AT = 320
+DAY_REF_LIMIT = DAY_BAD_AT                # 只用來顯示百分比，不代表上限
+FREE_WARN_AT = DAY_WARN_AT                # 舊名保留
+FREE_BAD_AT = DAY_BAD_AT
 
 
 def collect():
@@ -140,9 +144,13 @@ class Widget:
                          else self.WARN if used >= FREE_WARN_AT else self.OK)
             color = self.BAD if self.BAD in (win_color, day_color) else \
                     self.WARN if self.WARN in (win_color, day_color) else self.OK
+            win_pct = used5 / f["limit_5h"] * 100
+            day_pct = used / DAY_REF_LIMIT * 100
             self.free_lbl.config(
-                text=f"免費 日 {used} · 5h {used5}/{f['limit_5h']}", fg=color)
-            note = f"{f['day_reset_at']} 換日 · 下次 {f['next_reset']} · 兩個額度並存"
+                text=(f"免費 日 {used}/{DAY_REF_LIMIT}（{day_pct:.0f}%）· "
+                      f"5h {used5}/{f['limit_5h']}（{win_pct:.0f}%）"), fg=color)
+            note = (f"{f['day_reset_at']} 換日 · 下次 {f['next_reset']}\n"
+                    f"紅線：5h {WIN_BAD_AT}（75%）／日 {DAY_BAD_AT}（日為警戒線非硬上限）")
             hit = f.get("hit")
             if hit:
                 note += f"\n上次撞牆 {hit['at'][5:16]}（當時日 {hit['day_used']} 次）"

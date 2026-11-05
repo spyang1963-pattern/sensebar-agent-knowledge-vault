@@ -281,8 +281,10 @@ def main():
     f = out["free"]
     if f and "error" not in f:
         hhmm = f["day_reset_hhmm"]
+        win_pct = f["window_used"] / f["window_limit"] * 100
         line = (f"免費 日 {f['day_used']} 次（{hhmm} 換日）"
-                f"｜{f['window_hours']:g}h {f['window_used']}/{f['window_limit']}")
+                f"｜{f['window_hours']:g}h {f['window_used']}/{f['window_limit']}"
+                f"（{win_pct:.0f}%）")
         hit = f.get("last_hit") or {}
         if hit.get("same_day"):
             line += f"｜本池日已被拒 {hit['at'][11:19]}（當時累計 {hit['day_used']} 次）"
