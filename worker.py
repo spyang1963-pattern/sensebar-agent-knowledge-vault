@@ -1254,6 +1254,31 @@ def recover_stuck_tasks(timeout_minutes=30):
     return recovered
 
 
+def reset_failed_tasks(only_id=None):
+    """把 failed 任務重置回 pending，回傳重置的 task id 清單。
+
+    --retry-failed 原本只有宣告、main() 完全沒用到（跑了看起來像在重試，
+    其實只是進一般迴圈挑 pending＝什麼都沒重排）。2026-11-06 補上實際行為。
+    """
+    data = load_task_status()
+    tasks = data.get("tasks", {}) or {}
+    reset_ids = []
+    for tid, info in tasks.items():
+        if info.get("status") != "failed":
+            continue
+        if only_id and str(tid) != str(only_id):
+            continue
+        info["status"] = "pending"
+        info["retry_count"] = 0
+        info.pop("last_error", None)
+        info.pop("error", None)
+        info["updated_at"] = datetime.now().isoformat()
+        reset_ids.append(str(tid))
+    if reset_ids:
+        save_task_status(data)
+    return reset_ids
+
+
 def main():
     parser = argparse.ArgumentParser(description="Worker")
     parser.add_argument("--once", action="store_true", help="只處理一個任務")
@@ -1263,6 +1288,15 @@ def main():
     
     log(f"Worker 啟動 (機器: {MACHINE}, 角色: {get_machine_role()})")
     log(f"D 槽空間: {get_free_space_gb('D:\\'):.1f} GB")
+
+    # --retry-failed：把 failed 任務重置回 pending（真的改狀態，不是只喊口號）
+    if args.retry_failed:
+        reset_ids = reset_failed_tasks(args.id)
+        if reset_ids:
+            log(f"  [重試] 已把 {len(reset_ids)} 筆 failed 任務重置為 pending：{', '.join(reset_ids[:20])}"
+                + (" …" if len(reset_ids) > 20 else ""))
+        else:
+            log("  [重試] 沒有 failed 任務可重排")
     
     # 啟動時修復卡住的 processing 任務
     recovered = recover_stuck_tasks(timeout_minutes=30)
