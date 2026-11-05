@@ -154,10 +154,12 @@ PC1 缺的都是**資料類**，不是程式缺漏：
 - `ipc.py` 的 `TaskQueue.get_assigned_tasks()` 在 `shared\tasks` 不存在時**靜默回傳空清單** → worker 不會報錯，只會永遠領不到任務（最惡劣的失敗模式：看起來正常但什麼都不做）。
 - PC1 沒踩到，只因為它的 `shared\` 是舊工作區時代就存在的。
 
-**修法**：`deploy.ps1` 的 `Ensure-RuntimeDirs` 改為同時建立 `shared\tasks`、`shared\errors`、`shared\<machine>\status`、`shared\<machine>\results`；`smoke_test.py` 新增一項 `shared\tasks 目錄` 檢查（22 → 23 項）。新機若沒跑最新版 `deploy.ps1`，手動補：
+**修法**：`deploy.ps1` 的 `Ensure-RuntimeDirs` 改為同時建立 `shared\tasks`、`shared\errors`、`shared\<machine>\status`、`shared\<machine>\results`；`smoke_test.py` 新增一項 `shared\tasks 目錄` 檢查（22 → 23 項）。新機若沒跑最新版 `deploy.ps1`，手動補（`<machine>` 用 `config.MACHINE`，**不是** hostname）：
 
 ```powershell
-New-Item -ItemType Directory -Force -Path shared\tasks, shared\errors, "shared\$env:COMPUTERNAME\status" | Out-Null
+powershell -ExecutionPolicy Bypass -File workspace-bundle\infra\setup\deploy.ps1 -SkipSetup
+# 或手動（pc2 為例）
+New-Item -ItemType Directory -Force -Path shared\tasks, shared\errors, shared\pc2\status, shared\pc2\results | Out-Null
 ```
 
 #### Git 衛生：執行期狀態不該進 git（2026-11-04）
