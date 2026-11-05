@@ -7,7 +7,10 @@
 用法：
     python diag_youtube_fail.py            # 最近 200 筆任務
     python diag_youtube_fail.py --all      # 全部任務
-    python diag_youtube_fail.py --probe 3  # 額外實測 3 支失敗影片（預設 0，不連網）
+    python diag_youtube_fail.py --probe 3  # 額外實測 3 支失敗影片（只抓 metadata）
+    python diag_youtube_fail.py --download-probe 2 --with-pipeline
+                                           # 真實下載 2 支失敗影片（抓真正的錯誤訊息），
+                                           # 下載成功再跑一次 run_pipeline.py 定位問題點
 
 輸出同時印在畫面並寫入 working/diag_youtube_YYYYMMDD_HHMMSS.txt
 """
@@ -126,6 +129,23 @@ def env_facts() -> None:
     else:
         put("")
         put("Groq 轉錄實測: 略過（沒有 key）")
+
+    # Pipeline 能不能啟動（不連網、不下載；run_pipeline 一啟動就會 import 全部相依）
+    put("")
+    put("Pipeline 自我檢查（不連網）:")
+    put(f"  解譯器: {sys.executable}")
+    out, err, rc = run([sys.executable, "-X", "utf8", str(ROOT / "run_pipeline.py"), "--help"],
+                       timeout=120, cwd=str(ROOT))
+    put(f"  run_pipeline.py --help -> rc={rc}")
+    if rc != 0:
+        for line in (err or out).splitlines()[-12:]:
+            put("    " + line[:200])
+    for mod in ("groq", "yt_dlp", "docx", "PIL"):
+        o, e, r = run([sys.executable, "-c", f"import {mod}"], timeout=60)
+        put(f"  import {mod:<7} rc={r}" + ("" if r == 0 else "  " + (e.splitlines() or [""])[-1][:120]))
+    # pythonw 啟動時 sys.stdout 可能是 None；只記錄有沒有 pythonw（run_pipeline 已加防護）
+    pw = Path(sys.executable).with_name("pythonw.exe")
+    put(f"  pythonw.exe 存在 = {pw.exists()}")
 
     # YouTube 字幕下載實測（只用 metadata，不下載檔案）
     put("")
@@ -252,10 +272,127 @@ def probe(items: list, n: int) -> None:
                 put("    " + line[:180])
 
 
+def _yt_format() -> str:
+    """跟 channel_watcher 用同一個格式字串（優先讀模組，讀不到才退回內建值）。"""
+    try:
+        sys.path.insert(0, str(ROOT))
+        import channel_watcher as cw  # noqa: PLC0415
+        return cw.YT_DL_FORMAT
+    except Exception:  # noqa: BLE001
+        return ("bestvideo[height<=1080][ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/"
+                "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/"
+                "best[ext=mp4]/best")
+
+
+def download_probe(items: list, n: int, with_pipeline: bool = False,
+                   ids: str = "") -> None:
+    """真實下載 N 支失敗影片（simulate 只驗 metadata，抓不抓得到檔案是另一回事）。
+
+    下載成功且 --with-pipeline 時，順便跑一次 run_pipeline.py --skip-cut，
+    把 Pipeline 的 rc／stderr 尾巴印出來，一次定位是「下載」還是「Pipeline」掛掉。
+    """
+    import tempfile
+
+    section(f"6. 實測下載 {n} 支失敗影片（真實下載）")
+    cand = [i for i in items if i["status"] == "failed" and i["video_id"]]
+    if ids:
+        cand = [{"tid": "-", "video_id": v.strip(), "title": ""}
+                for v in ids.split(",") if v.strip()]
+    if not cand:
+        put("沒有可實測的 video_id")
+        return
+    cand = cand[:n]
+    if not shutil.which("yt-dlp"):
+        put("找不到 yt-dlp")
+        return
+
+    fmt = _yt_format()
+    put(f"格式字串: {fmt}")
+
+    ok = 0
+    for i in cand:
+        vid = i["video_id"]
+        url = f"https://www.youtube.com/watch?v={vid}"
+        tdir = Path(tempfile.mkdtemp(prefix="dlprobe_"))
+        dest = tdir / "v.mp4"
+        put("")
+        put(f"--- #{i['tid']} {vid} {i['title'][:40]}")
+        cmd = ["yt-dlp", "--no-update", "-f", fmt, "--merge-output-format", "mp4",
+               "--no-playlist", "--ignore-errors", "-o", str(dest), url]
+        t0 = time.time()
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True,
+                               encoding="utf-8", errors="replace", timeout=900)
+            rc, stderr = r.returncode, (r.stderr or "")
+        except Exception as e:  # noqa: BLE001
+            rc, stderr = -1, f"{type(e).__name__}: {e}"
+        elapsed = time.time() - t0
+        files = [p for p in tdir.glob("v.*") if p.is_file()]
+        size = sum(p.stat().st_size for p in files)
+        put(f"    rc={rc}  {elapsed:.1f}s  檔案 {len(files)} 個  {size/2**20:.1f} MB")
+        if files:
+            for p in files:
+                put(f"      {p.name}  {p.stat().st_size/2**20:.2f} MB")
+
+        if size > 0 and rc == 0:
+            ok += 1
+            put("    → 下載成功")
+            if with_pipeline:
+                put("    Pipeline 實測（run_pipeline.py --skip-cut）…")
+                slug = f"diag_{vid}"
+                t1 = time.time()
+                try:
+                    pr = subprocess.run(
+                        [sys.executable, "-X", "utf8", str(ROOT / "run_pipeline.py"),
+                         str(files[0]), "--slug", slug, "--skip-cut"],
+                        capture_output=True, text=True, encoding="utf-8",
+                        errors="replace", timeout=2400)
+                    prc, pout, perr = pr.returncode, (pr.stdout or ""), (pr.stderr or "")
+                except Exception as e:  # noqa: BLE001
+                    prc, pout, perr = -1, "", f"{type(e).__name__}: {e}"
+                put(f"    Pipeline rc={prc}  {time.time()-t1:.0f}s")
+                if perr.strip():
+                    put("    Pipeline stderr 末 12 行:")
+                    for line in perr.strip().splitlines()[-12:]:
+                        put("      " + line[:200])
+                if prc != 0:
+                    put("    Pipeline stdout 末 12 行:")
+                    for line in pout.strip().splitlines()[-12:]:
+                        put("      " + line[:200])
+                else:
+                    srt = ROOT / "output" / slug / "字幕.srt"
+                    put(f"    output/字幕.srt 存在={srt.exists()}")
+        else:
+            put("    stderr 末 15 行:")
+            for line in stderr.strip().splitlines()[-15:]:
+                put("      " + line[:200])
+            # 格式問題的話列出可用格式
+            if "format" in stderr.lower():
+                fo, fe, frc = run(["yt-dlp", "--no-update", "-F", url], timeout=120)
+                lines = [ln for ln in (fo or fe).splitlines() if ln.strip()]
+                put(f"    可用格式（-F rc={frc}，前 20 行）:")
+                for line in lines[:20]:
+                    put("      " + line[:160])
+        shutil.rmtree(tdir, ignore_errors=True)
+
+    put("")
+    put(f"下載成功 {ok}/{len(cand)} 支")
+    if ok:
+        put("→ 下載沒問題：失敗點在 Pipeline（跑 --with-pipeline 看 stderr）或後續步驟")
+    else:
+        put("→ 下載全部失敗：看上面 stderr，多半是 bot check／403／格式選擇")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--all", action="store_true", help="不限制筆數")
-    ap.add_argument("--probe", type=int, default=0, help="實測 N 支失敗影片（會連 YouTube）")
+    ap.add_argument("--probe", type=int, default=0, help="實測 N 支失敗影片（只抓 metadata）")
+    ap.add_argument("--download-probe", type=int, default=0, metavar="N",
+                    help="真實下載 N 支失敗影片，抓真的錯誤訊息")
+    ap.add_argument("--with-pipeline", action="store_true",
+                    help="搭配 --download-probe：下載成功後順便跑 run_pipeline.py")
+    ap.add_argument("--ids", default="", metavar="ID,ID",
+                    help="搭配 --download-probe：直接指定 video_id（不看失敗清單）")
     args = ap.parse_args()
 
     try:
@@ -267,6 +404,9 @@ def main() -> int:
     items = survey(0 if args.all else 200)
     if args.probe:
         probe(items, args.probe)
+    if args.download_probe:
+        download_probe(items, args.download_probe, with_pipeline=args.with_pipeline,
+                       ids=args.ids)
 
     WORKING.mkdir(parents=True, exist_ok=True)
     out = WORKING / f"diag_youtube_{datetime.now():%Y%m%d_%H%M%S}.txt"

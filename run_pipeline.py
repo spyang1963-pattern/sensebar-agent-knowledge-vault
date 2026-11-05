@@ -12,7 +12,7 @@ import sys
 import io
 from pathlib import Path
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8") if getattr(sys.stdout, "buffer", None) is not None else sys.stdout
 
 # 子行程（smart_cut／transcribe_groq／ffmpeg）也要說 UTF-8，否則父行程
 # 用 encoding="utf-8" 讀管線會得到亂碼（詳見 config.py 的說明）。
