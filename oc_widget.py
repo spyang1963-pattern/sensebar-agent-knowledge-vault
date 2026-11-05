@@ -38,13 +38,13 @@ FREE_WINDOW_H = 5
 #   ② 日/帳號層級（11-04 撞牆時 5h 只有 153、日累計 337；11-02 撞牆時 5h 只有 1、24h 234）
 FREE_5H_LIMIT = 200
 WIN_WARN_AT = int(FREE_5H_LIMIT * 0.60)   # 5h 60% = 120 → 黃
-WIN_BAD_AT = int(FREE_5H_LIMIT * 0.75)    # 5h 75% = 150 → 紅（2026-11-05 使用者指定）
-# 日累計沒有真分母；320 是「實務紅色警戒線」，不是伺服器硬上限（未必撞得到就停）。
-DAY_WARN_AT = 150
-DAY_BAD_AT = 320
-DAY_REF_LIMIT = DAY_BAD_AT                # 只用來顯示百分比，不代表上限
-FREE_WARN_AT = DAY_WARN_AT                # 舊名保留
-FREE_BAD_AT = DAY_BAD_AT
+WIN_BAD_AT = int(FREE_5H_LIMIT * 0.80)    # 5h 80% = 160 → 紅
+# 日累計沒有真分母，也不顯示百分比。警戒線是動態的：
+#   上次撞牆當下的日累計 × 0.9（例：上次撞在 337 → 303 起轉紅）
+# 沒有撞牆紀錄就維持綠色（不知道上限，不亂嚇人）。
+DAY_ALERT_RATIO = 0.9
+FREE_WARN_AT = 150                        # 舊名保留（CLI 說明用）
+FREE_BAD_AT = 320                         # 舊名保留（無撞牆紀錄時的參考值）
 
 
 def collect():
@@ -72,6 +72,10 @@ def collect():
             except Exception:
                 pass
 
+        alert_at = None
+        if hit and hit.get("day_used"):
+            alert_at = int(round(hit["day_used"] * DAY_ALERT_RATIO))
+
         data["free"] = {
             "used": used,
             "used_5h": used5,
@@ -79,6 +83,7 @@ def collect():
             "day_reset_at": day_start.strftime("%H:%M"),
             "next_reset": (day_start + dt.timedelta(days=1)).strftime("%m/%d %H:%M"),
             "hit": hit,
+            "day_alert_at": alert_at,
         }
     data["go"] = fetch_go_usage(read_go_key(db))
     return data
@@ -106,6 +111,8 @@ class Widget:
 
         self.free_lbl = tk.Label(root, font=f_big, bg=self.BG, fg=self.FG, anchor="w", padx=10, pady=2)
         self.free_lbl.pack(fill="x")
+        self.win_lbl = tk.Label(root, font=f_big, bg=self.BG, fg=self.FG, anchor="w", padx=10)
+        self.win_lbl.pack(fill="x")
         self.free_note = tk.Label(root, font=f_small, bg=self.BG, fg=self.DIM, anchor="w",
                                   padx=10, justify="left")
         self.free_note.pack(fill="x")
@@ -138,25 +145,29 @@ class Widget:
         f = d.get("free")
         if f:
             used, used5 = f["used"], f["used_5h"]
+            alert_at = f.get("day_alert_at")
             win_color = (self.BAD if used5 >= WIN_BAD_AT
                          else self.WARN if used5 >= WIN_WARN_AT else self.OK)
-            day_color = (self.BAD if used >= FREE_BAD_AT
-                         else self.WARN if used >= FREE_WARN_AT else self.OK)
-            color = self.BAD if self.BAD in (win_color, day_color) else \
-                    self.WARN if self.WARN in (win_color, day_color) else self.OK
+            # 日累計只看次數；警戒線 = 上次撞牆日累計 × 0.9（動態）。沒有紀錄就維持綠。
+            day_color = self.BAD if (alert_at and used >= alert_at) else self.OK
             win_pct = used5 / f["limit_5h"] * 100
-            day_pct = used / DAY_REF_LIMIT * 100
-            self.free_lbl.config(
-                text=(f"免費 日 {used}/{DAY_REF_LIMIT}（{day_pct:.0f}%）· "
-                      f"5h {used5}/{f['limit_5h']}（{win_pct:.0f}%）"), fg=color)
-            note = (f"{f['day_reset_at']} 換日 · 下次 {f['next_reset']}\n"
-                    f"紅線：5h {WIN_BAD_AT}（75%）／日 {DAY_BAD_AT}（日為警戒線非硬上限）")
+            self.free_lbl.config(text=f"免費 日 {used} 次", fg=day_color)
+            self.win_lbl.config(
+                text=f"5h {used5}/{f['limit_5h']}（{win_pct:.0f}%）", fg=win_color)
+
+            note = f"{f['day_reset_at']} 換日 · 下次 {f['next_reset']}"
+            note += f"\n5h 色階：黃 {WIN_WARN_AT}（60%）／紅 {WIN_BAD_AT}（80%）"
+            if alert_at:
+                note += f"\n日警戒線 {alert_at} 次（上次撞牆日累計 × 0.9）"
+            else:
+                note += "\n日警戒線：尚無撞牆紀錄（維持綠色）"
             hit = f.get("hit")
             if hit:
                 note += f"\n上次撞牆 {hit['at'][5:16]}（當時日 {hit['day_used']} 次）"
             self.free_note.config(text=note)
         else:
             self.free_lbl.config(text="免費 —（找不到 DB）", fg=self.DIM)
+            self.win_lbl.config(text="")
             self.free_note.config(text="")
 
         g = d.get("go")
