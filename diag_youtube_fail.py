@@ -46,13 +46,42 @@ def section(title: str) -> None:
     put("=" * 70)
 
 
-def run(cmd, timeout=60):
+def run(cmd, timeout=60, cwd=None):
     try:
         r = subprocess.run(cmd, capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=timeout)
+                           encoding="utf-8", errors="replace", timeout=timeout,
+                           cwd=cwd)
         return (r.stdout or "").strip(), (r.stderr or "").strip(), r.returncode
     except Exception as e:  # noqa: BLE001
         return "", f"{type(e).__name__}: {e}", -1
+
+
+def groq_transcribe_probe(key: str) -> None:
+    """真的送 1 秒靜音去 /audio/transcriptions（/models 會被 403，不能拿來判斷）。"""
+    put("")
+    put("Groq 轉錄實測（1 秒靜音 → whisper-large-v3-turbo）:")
+    if not shutil.which("ffmpeg"):
+        put("  找不到 ffmpeg，無法產生測試音檔")
+        return
+    import tempfile
+    tdir = Path(tempfile.mkdtemp(prefix="groqprobe_"))
+    run(["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=16000:cl=mono",
+         "-t", "1", "-q:a", "9", "t.wav"], timeout=60, cwd=str(tdir))
+    if not (tdir / "t.wav").exists():
+        put("  產生音檔失敗")
+        return
+    out, err, rc = run(["curl.exe", "-sS", "-m", "60", "-o", "r.json", "-w", "%{http_code}",
+                        "-X", "POST", "https://api.groq.com/openai/v1/audio/transcriptions",
+                        "-H", f"Authorization: Bearer {key}",
+                        "-F", "file=@t.wav",
+                        "-F", "model=whisper-large-v3-turbo",
+                        "-F", "response_format=json"], timeout=90, cwd=str(tdir))
+    body = ""
+    if (tdir / "r.json").exists():
+        body = (tdir / "r.json").read_text(encoding="utf-8", errors="replace")[:200]
+    put(f"  HTTP {out or rc}  {body or err[:150]}")
+    shutil.rmtree(tdir, ignore_errors=True)
+
 
 
 # ---------------------------------------------------------------- environment
@@ -90,23 +119,13 @@ def env_facts() -> None:
         p = Path.home() / f
         put(f"~/{f:<14}: {'存在' if p.exists() else '不存在'}")
 
-    # Groq 可用性（只打 models，不消耗轉錄額度）
+    # Groq 可用性：直接打轉錄端點（/models 在此網路環境固定 403，不能當判斷依據）
     key = key_file.read_text(encoding="utf-8", errors="replace").strip() if key_file.exists() else env_key
     if key:
-        try:
-            import urllib.request
-            req = urllib.request.Request(
-                "https://api.groq.com/openai/v1/models",
-                headers={"Authorization": f"Bearer {key}"})
-            with urllib.request.urlopen(req, timeout=20) as r:
-                body = json.loads(r.read().decode("utf-8", "replace"))
-            names = [m.get("id") for m in body.get("data", [])]
-            whisper = [n for n in names if "whisper" in (n or "")]
-            put(f"Groq /models -> 200，{len(names)} 個模型，whisper: {whisper[:3]}")
-        except Exception as e:  # noqa: BLE001
-            put(f"Groq /models -> 失敗: {type(e).__name__}: {e}")
+        groq_transcribe_probe(key)
     else:
-        put("Groq /models -> 略過（沒有 key）")
+        put("")
+        put("Groq 轉錄實測: 略過（沒有 key）")
 
     # YouTube 字幕下載實測（只用 metadata，不下載檔案）
     put("")
