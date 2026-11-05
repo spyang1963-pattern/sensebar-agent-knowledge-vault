@@ -32,9 +32,11 @@
   - 撞牆訊息有兩種：`You've used today's free messages. They reset at HH:MM`（真額度）與
     `AI_APICallError: Free usage limit reached`（本機 log 只記得到後者，含暫時性；
     11-03 09:23 被拒、09:25 重試即成功）。
-  - TUI（`oc_widget.py`）顯示 **`免費 日 N · 5h M/200`**：5h 有分母（實測有效）、
-    日累計沒有分母（只知道「上次撞牆當時是幾次」）。色階：5h ≥170 黃／≥195 紅、
-    日 ≥150 黃／≥300 紅。`oc_usage.py --reset-at 08:55` 可調換日時間。
+  - TUI（`oc_widget.py`）分兩行：**`免費 日 N 次`**（不顯示百分比）與 **`5h M/200（P%）`**。
+    色階（2026-11-05 使用者指定）：5h 安全綠／**≥120（60%）黃**／**≥160（80%）紅**；
+    日累計平時一律**綠色**，達「**上次撞牆當日累計 × 0.9**」才轉紅（動態，現為 337×0.9＝**303**），
+    無撞牆紀錄則維持綠色。下方小字列出換日時間、5h 色階、日警戒線、上次撞牆時間與當時次數。
+    `oc_usage.py --reset-at 08:55` 可調換日時間。
   - 實務規則：**兩個數字任一個偏高就切 `opencode-go/*`**（5h 逼近 200、或日累計破 300）；
     長任務（轉錄、整批修檔、多工具 agent）一開始就用 Go，不要拿免費池賭。
 - 免費數字是本機估算（DB assistant steps ≈ 請求數）；**Go 是官方精確值**：
@@ -428,4 +430,63 @@ worker 判定 pipeline 失敗 → 自動重試 3 次（每次重跑轉錄）→ 
 3. GUI「新增任務 → 影片」遇到同路徑 **failed** 任務時，改問「直接把該任務重排（沿用既有字幕）嗎？」，
    不再默默建立重複任務（本次 1921/1923 就是失敗後重建產生的；1918/1919 也是同樣的重複對）。
    **GUI 是長駐程序，改完要關閉重開。**
+
+## YouTube 下載全部 403：缺少 JS runtime（2026-11-06）
+
+> 完整處理記錄：`workspace-bundle/HANDOFF-3MACHINE-DEPLOY.md` 的「YouTube 下載全滅」小節
+
+### 事故
+PC1 上 66 支 YouTube 任務連續失敗，每支只花 **14 秒**，`last_error` 全部是同一句
+`下載或轉錄失敗（無字幕且 Pipeline 未產出）`。但同一批影片在 notebook 上完全正常。
+
+### 原因
+PC1 **沒有任何 JS runtime**（deno／node／bun），而 `yt-dlp` 從 2026 年起需要用 JS runtime 解
+YouTube 的簽章挑戰。症狀很有欺騙性：
+
+| 動作 | 缺 deno 時 |
+|---|---|
+| 抓 metadata／`--simulate`／`-F` 列格式 | **正常**（不用解 JS） |
+| 真正下載影片資料 | **`HTTP Error 403: Forbidden`**，1~2 秒就死 |
+
+所以「metadata 抓得到」**不能**證明「抓得到影片」。notebook 正常是因為有 `deno 2.9.7`
+（`yt-dlp -v` 會印 `[debug] JS runtimes: deno-2.9.7`）。
+
+### 已修（勿改回）
+1. 新機／重裝必裝 deno：`winget install --id DenoLand.Deno -e --accept-source-agreements --accept-package-agreements`
+   （裝完 PATH 要生效；GUI 需關閉重開）。
+2. `smoke_test.py` 新增 `yt-dlp`、`JS runtime` 兩項檢查（23 → **25 項**），缺 deno 直接紅字。
+3. `channel_watcher.ensure_js_runtime()`：找不到就只警告一次，並把 `~/.deno/bin`、WinGet Links
+   自動補進 PATH（GUI 在裝 deno 前就開著也能自救）。
+4. 錯誤訊息不再收斂：`process_youtube_video` 會寫
+   `…：下載影片 失敗（缺少 JS runtime（deno／node），yt-dlp 被 YouTube 403 擋下）｜ERROR: …`，
+   `yt_fail_hint()` 另可辨識 bot check／格式不存在／影片不可用／429／逾時。
+5. **直式 Shorts 只抓到 360p（同批修掉）**：格式字串原本是 `height<=1080`，但直式 1080x1920
+   的 height 是 1920 → 1080p 被自己的條件排除，落到 `best[ext=mp4]`＝360p（9.7 MB 而非 39 MB），
+   燒出來的字幕會看不清楚。已改 `width<=1920 AND height<=1920`（橫豎都取長邊 ≤1080p），
+   720 preset 同理改 `1280`。`[res<=1080]` 這種篩選器**不存在**，會直接 `Requested format is not available`。
+6. `run_pipeline.py` 的 `sys.stdout = io.TextIOWrapper(sys.stdout.buffer, …)` 加了防護：
+   `sys.stdout` 為 `None`（pythonw 無主控台）時不再一啟動就 AttributeError。
+
+### 診斷工具
+`diag_youtube_fail.py`（唯讀，可任意機器跑）：
+
+```powershell
+python -X utf8 diag_youtube_fail.py                        # 環境＋任務統計＋失敗分類
+python -X utf8 diag_youtube_fail.py --download-probe 2 --with-pipeline
+                                                          # 真的下載 2 支（--with-pipeline 順便跑 Pipeline）
+python -X utf8 diag_youtube_fail.py --download-probe 2 --ids <vid1>,<vid2>
+```
+
+報告寫在 `working\diag_youtube_*.txt`。判讀：下載失敗就看 stderr；下載成功而 Pipeline rc≠0 就是管線問題。
+
+### 切記
+- **PC2／PC3 都還沒裝 deno**，開始跑 YouTube 任務前先補，否則會重演一次「66 支全滅」。
+- 重排失敗任務：`python worker.py --retry-failed`；先跑 5~10 筆確認 console 無 traceback 再整批放著跑。
+- **任務狀態是「雙寫」，而且 shared 才是唯一來源**（2026-11-06 實踩，修於 `58921bc`）：
+  - `shared\tasks\task_{tid}.json` = worker 真正讀的佇列；`task_status.json` 只是給 GUI 看的 mirror
+  - `scheduler.sync_shared_to_local()` 會用 shared 的狀態**覆寫** mirror，所以只改 mirror 會被蓋回去
+  - 症狀：GUI 顯示一堆 pending，worker 卻一直印「沒有任務需要處理」
+  - `worker.py --retry-failed` 現在兩邊都改（`task_info.status`＋top-level `status`、清 `last_error`）；
+    若某筆只存在 mirror、shared 沒有檔案，會印 ⚠ 警告（那種任務 worker 永遠撿不到，要重建）
+  - 同理，任何「手動改任務狀態」的動作都不能只改 `task_status.json`
 
