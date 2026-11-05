@@ -18,6 +18,14 @@ param(
 $ErrorActionPreference = "Continue"
 $NewRoot = "D:\AI-Agent-Workspace"
 
+# 注意：`powershell -File` 傳參時逗號不會被當成陣列分隔（整個 "a,b,c" 會是一個字串），
+# 所以這裡自己拆。支援逗號與分號。
+if ($Path) {
+    $Path = @($Path | ForEach-Object { $_ -split '[;,]' } |
+              ForEach-Object { $_.Trim().Trim('"').Trim("'") } |
+              Where-Object { $_ })
+}
+
 if (-not $Path -or $Path.Count -eq 0) {
     $Path = @(
         "D:\!!AI agent 專案夾\三師爸的 AI agent 學習 AI agent",
@@ -170,3 +178,7 @@ if ($Report) {
     $lines -join [Environment]::NewLine | Set-Content -LiteralPath $Report -Encoding UTF8
     Write-Host "  報告已寫入：$Report"
 }
+
+# 盤點完成即成功。git 的 stderr（例如「無 .git」的重導）會被 PowerShell 當成錯誤，
+# 不強制 exit 0 的話 `-File` 會回傳 1，看起來像失敗。
+exit 0
