@@ -338,6 +338,20 @@ powershell -ExecutionPolicy Bypass -File workspace-bundle\infra\setup\audit_old_
 - 兩份的 `shared` 監控狀態都是舊的（7 月／9 月），現行正本在 notebook（`2026-11-03`），不需保留。
 - `working/` 306 MB 是舊處理暫存（影片／中間檔），沒有保留價值。
 
+#### PC2 盤點結果（2026-11-05 11:22）✅ 已清理
+
+| 路徑 | 大小／檔案 | Git | 未推送 | 排程指向 | 處理 |
+|---|---|---|---|---|---|
+| `D:\AI Agent` | 0 MB／**0 檔** | 無 | — | 無 | 空殼，直接刪 |
+| `C:\AI agent 工作區` | 0 MB／**2 檔**（`free-quota.py`／`.cmd`，2026-11-02） | 無 | — | 無 | 2 檔先備份到 `D:\_archive\quota-probe-2026-11-02\`，再刪 |
+| `D:\sensebar-agent-knowledge-vault` | 76 MB／446 檔 | master @ `97890ee` | **0**（`origin/master..HEAD`=0、`HEAD..origin`=131） | 無 | **不壓縮**，直接刪 |
+
+**為何這次不用壓縮**（與 PC1 不同）：`git status --porcelain --ignored` 完全空白——連未追蹤、被忽略的檔案都沒有，工作區與 `97890ee` 完全一致，GitHub 可完整重建。PC1 那次要壓縮是因為 `!!AI agent 專案夾\...` 有 3 個未提交變更＋306 MB `working\`。
+
+**踩坑（已修，`52a61ec`）**：`powershell -File ... -Path "a","b","c"` **不會**拆成陣列，整個 token 會是一個字串，腳本因此把所有路徑都判成「不存在」。已改為綁定後自行以逗號／分號分割，並強制 `exit 0`（git 的 stderr 會讓 `-File` 回傳 1，看起來像失敗）。
+
+驗證：`Test-Path` 三條全部 `False`；D 槽 226 GB 已用／1.77 TB 可用。
+
 ### Step 9 — OC 額度小窗（`oc_widget`）推廣到三機｜已可攜
 
 `oc_widget.py` + `oc_usage.py` + `oc_widget.bat` 已納入 git（原本只在 notebook、且 `sys.path` 寫死 `D:\AI-Agent-Workspace`）。
@@ -359,7 +373,7 @@ python oc_widget.py --check    # 只印一次數字
 - 有 key → 顯示 Go（5h／週／月，**官方精確值、帳號級**）
 - 沒 key → 顯示「Go —」，免費數字仍可算（讀本機 `opencode.db`）
 
-**重要語意**：「免費 200/5h」的計數是**讀本機 DB 估算**，所以每台只看到自己那台的用量；三台加起來才是帳號真實用量。Go 是官方 API，三台看到同一個數字。
+**重要語意**：「免費」的計數是**讀本機 DB 估算**（本機免費池日累計，08:55 換日），所以每台只看到自己那台的用量；三台加起來才是帳號真實用量。**它不是「200/5h」配額，也沒有分母**——伺服器端是動態上限、帳號／IP 共用（實測撞牆點 1／206／337 次，未撞牆日可達 443／725 次）。Go 是官方 API，三台看到同一個數字。
 
 
 ## 3. 人工不可自動化（每台都一樣）
