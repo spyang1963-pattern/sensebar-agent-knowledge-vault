@@ -140,6 +140,8 @@ PC1 缺的都是**資料類**，不是程式缺漏：
 
 #### PC1 驗收（2026-11-04）✅ 22/22
 
+**2026-11-05 複驗 ✅ 23/23**：拉到 `a83ff7d` 後跑 `deploy.ps1 -Machine pc1 -SkipSetup`，補建 `shared\tasks`、`shared\errors`、`shared\pc1\{status,results}`；smoke test 23 項全綠（新增的 `shared\tasks` 那項 ✅）。
+
 `deploy.ps1 -Machine pc1 -SkipSetup` → `smoke_test.py` 全綠：身份 `pc1/worker`、六個路徑、五個核心模組、`ffmpeg`/`ffprobe`/VLC、Groq+Gemini key、`finance.db` 51580 筆。
 
 `working/`、`output/` 一開始報 ❌ 是**空目錄不進 git** 的正常現象，已由 `deploy.ps1` 第 3 步冪等建立（`working`/`output`/`videos`）。
