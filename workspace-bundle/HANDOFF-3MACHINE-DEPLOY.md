@@ -164,6 +164,20 @@ powershell -ExecutionPolicy Bypass -File workspace-bundle\infra\setup\deploy.ps1
 New-Item -ItemType Directory -Force -Path shared\tasks, shared\errors, shared\pc2\status, shared\pc2\results | Out-Null
 ```
 
+#### 影片產線端到端自測（`e2e_pipeline_test.py`，2026-11-05）
+
+smoke test 只驗證「環境齊不齊」，驗不到「管線跑起來會不會炸」。任務 1921/1923 就是環境全綠卻在最後一行崩掉，所以補一支會**真的跑一次 `run_pipeline.py`** 的自測：
+
+```powershell
+python -X utf8 workspace-bundle\infra\setup\e2e_pipeline_test.py
+```
+
+- 用 `ffmpeg` 內建 `flite` TTS 現生成一段英文語音（免 API、免網路）→ 走 `--skip-cut` 音訊分支（就是崩潰的那條路）
+- 10 項檢查：結束碼、`字幕.srt`／`音訊.mp3`／`metadata.md`、**不得出現 `剪輯後.mp4`**、字幕有文字、再加 `--resume` 重跑一次確認 `[SKIP] 沿用既有字幕` 且 `raw.json` 未變（= 沒有重送 Whisper）
+- 成本：一次 Groq Whisper（約 6 秒音訊），不呼叫 Gemini；預設跑完自動清理，`--keep` 可保留
+
+notebook 實測 **10/10**（第一次 2 秒、重試 1 秒，字幕正確轉出）。三機都應跑一次。
+
 #### Git 衛生：執行期狀態不該進 git（2026-11-04）
 
 PC1 驗收後出現「24 個未提交變更」，實際成分：
