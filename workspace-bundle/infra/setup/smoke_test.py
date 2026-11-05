@@ -15,6 +15,7 @@ import argparse
 import importlib.util
 import json
 import os
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -124,6 +125,13 @@ def main():
     check("ffmpeg（PATH）", which("ffmpeg"), "")
     check("ffprobe（PATH）", which("ffprobe"), "")
     check("VLC（燒字幕用固定路徑）", vlc.exists(), vlc)
+    check("yt-dlp（YouTube 下載）", which("yt-dlp"), "")
+    # 2026-11-06 事故：沒有 JS runtime 時 yt-dlp 抓 metadata 正常、真正下載影片一律 403，
+    # 66 支任務因此全滅。這一項一定要在驗收時就擋下來。
+    js_rt = which("deno") or which("node") or which("bun")
+    js_path = shutil.which("deno") or shutil.which("node") or shutil.which("bun")
+    check("JS runtime（yt-dlp 下載必備）", js_rt,
+          js_path or "缺 deno：winget install --id DenoLand.Deno -e（缺它下載 YouTube 影片會 403）")
 
     # ── 6. 金鑰 ──
     home = Path.home()

@@ -186,6 +186,38 @@ python -X utf8 workspace-bundle\infra\setup\e2e_pipeline_test.py
 
 → 任務 1921/1923 的崩潰路徑（`--skip-cut` 音訊分支）與「重試重送 Whisper」在這三台都確認修好。
 
+#### YouTube 下載全滅：缺少 JS runtime（2026-11-06，`984937b`＋`6799263`）
+
+PC1 上 66 支 YouTube 任務連續失敗、每支只花 14 秒，錯誤全是
+`下載或轉錄失敗（無字幕且 Pipeline 未產出）`。真因是 **PC1 沒有 deno／node**：
+
+- yt-dlp 抓 metadata、`--simulate`、`-F` 列格式**全部正常**（那條路不用解 JS），
+  但真正下載影片資料時回 `HTTP Error 403: Forbidden`，stderr 另有一行
+  `WARNING: No supported JavaScript runtime could be found. Only deno is enabled by default`
+- notebook 之所以正常，是因為它有 `deno 2.9.7`（`[debug] JS runtimes: deno-2.9.7`）
+
+**新機／重裝必做**：
+
+```powershell
+winget install --id DenoLand.Deno -e --accept-source-agreements --accept-package-agreements
+# 驗證
+deno --version
+python -X utf8 diag_youtube_fail.py --download-probe 2 --ids 7gUcJMFYCH4,gnTbGsfEhto
+# 期望：下載成功 2/2 支
+```
+
+- `smoke_test.py` 已新增 `yt-dlp`、`JS runtime` 兩項檢查（23 → **25 項**），缺 deno 會直接紅字並印出安裝指令。
+- `channel_watcher.ensure_js_runtime()` 會在需要時自動把 `~/.deno/bin`、WinGet Links 補進 PATH，
+  **GUI 在裝 deno 之前就開著也會自救**；找不到時只警告一次。
+- 失敗訊息不再收斂成一句話：`process_youtube_video` 現在回
+  `…：下載影片 失敗（缺少 JS runtime（deno／node），yt-dlp 被 YouTube 403 擋下）｜ERROR: …`。
+- 同一輪還修掉直式 Shorts 只抓到 360p 的問題：格式字串原本用 `height<=1080`，
+  直式 1080x1920 的 height 是 1920 → 1080p 被自己的條件排除，落到 `best[ext=mp4]`=360p。
+  已改為 `width<=1920 AND height<=1920`（橫豎都取長邊 ≤1080p），實測 42.5 MB / 1080x1920 / h264。
+  `[res<=1080]` 這種篩選器不存在，會直接 `Requested format is not available`。
+
+**PC2／PC3 待辦**：兩台都還沒裝 deno，開始跑 YouTube 任務前先補上面第一行。
+
 #### Git 衛生：執行期狀態不該進 git（2026-11-04）
 
 PC1 驗收後出現「24 個未提交變更」，實際成分：
