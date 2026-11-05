@@ -1257,12 +1257,46 @@ def recover_stuck_tasks(timeout_minutes=30):
 def reset_failed_tasks(only_id=None):
     """把 failed 任務重置回 pending，回傳重置的 task id 清單。
 
-    --retry-failed 原本只有宣告、main() 完全沒用到（跑了看起來像在重試，
-    其實只是進一般迴圈挑 pending＝什麼都沒重排）。2026-11-06 補上實際行為。
+    狀態的唯一來源是 `shared/tasks/task_{tid}.json`（`scheduler.sync_shared_to_local()`
+    會用它覆寫 `task_status.json`），所以兩邊都要改——只改本機 mirror 等於沒改，
+    worker 還是看不到、而且下一次 sync 會把 pending 蓋回 failed。
+    2026-11-06 實踩：只重置本機 → 50 筆全是 pending，worker 卻一直「沒有任務需要處理」。
     """
+    shared_dir = os.path.join(SHARED_ROOT, "tasks")
+    shared_reset = []
+    if os.path.isdir(shared_dir):
+        for fname in sorted(os.listdir(shared_dir)):
+            if not (fname.startswith("task_") and fname.endswith(".json")):
+                continue
+            tid = fname[5:-5]
+            if only_id and str(tid) != str(only_id):
+                continue
+            path = os.path.join(shared_dir, fname)
+            try:
+                with open(path, "r", encoding="utf-8-sig") as f:
+                    task = json.load(f)
+            except Exception:
+                continue
+            ti = task.get("task_info") or {}
+            if (ti.get("status") or task.get("status")) != "failed":
+                continue
+            ti["status"] = "pending"
+            ti["retry_count"] = 0
+            ti.pop("last_error", None)
+            ti.pop("error", None)
+            ti["updated_at"] = datetime.now().isoformat()
+            task["task_info"] = ti
+            task["status"] = "pending"
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(task, f, ensure_ascii=False, indent=2)
+            os.replace(tmp, path)
+            shared_reset.append(str(tid))
+
+    # 本機 mirror（GUI 顯示用）
     data = load_task_status()
     tasks = data.get("tasks", {}) or {}
-    reset_ids = []
+    local_reset = []
     for tid, info in tasks.items():
         if info.get("status") != "failed":
             continue
@@ -1273,10 +1307,16 @@ def reset_failed_tasks(only_id=None):
         info.pop("last_error", None)
         info.pop("error", None)
         info["updated_at"] = datetime.now().isoformat()
-        reset_ids.append(str(tid))
-    if reset_ids:
+        local_reset.append(str(tid))
+    if local_reset:
         save_task_status(data)
-    return reset_ids
+
+    # 只在本機 mirror 有、shared 沒有 → 這種任務 worker 永遠看不到（要先寫進 shared）
+    missing = [t for t in local_reset if t not in shared_reset]
+    if missing:
+        log(f"  [重試] ⚠ {len(missing)} 筆只存在本機 task_status.json、shared\\tasks 沒有對應檔，"
+            f"worker 不會執行：{', '.join(missing[:15])}")
+    return shared_reset or local_reset
 
 
 def main():
