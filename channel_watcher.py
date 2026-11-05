@@ -214,13 +214,15 @@ def download_yt_sub(video_id, langs, temp_dir):
     return None
 
 # 下載格式：優先 1080p H.264 mp4（字幕燒錄與播放相容最佳），不超過 1080p
-YT_DL_FORMAT = ("bestvideo[height<=1080][ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/"
-                "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/"
+# 2026-11-06：篩選條件改用「寬與高都 <=長邊上限」，而不是只看 height。
+# 直式 Shorts 是 1080x1920，用 height<=1080 會把 1080p 自己排除掉 → 只抓到 360p。
+YT_DL_FORMAT = ("bestvideo[width<=1920][height<=1920][ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/"
+                "bestvideo[width<=1920][height<=1920][ext=mp4]+bestaudio[ext=m4a]/"
                 "best[ext=mp4]/best")
 # 直播等長片用 720p（檔案較小、燒字幕快）：config 該來源設 format: "720"
-YT_DL_FORMAT_720 = ("bestvideo[height<=720][ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/"
-                    "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/"
-                    "best[height<=720][ext=mp4]/best")
+YT_DL_FORMAT_720 = ("bestvideo[width<=1280][height<=1280][ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/"
+                    "bestvideo[width<=1280][height<=1280][ext=mp4]+bestaudio[ext=m4a]/"
+                    "best[ext=mp4]/best")
 FORMAT_PRESETS = {"720": YT_DL_FORMAT_720, "1080": YT_DL_FORMAT}
 
 # ── JS runtime（2026-11-06 事故）──
