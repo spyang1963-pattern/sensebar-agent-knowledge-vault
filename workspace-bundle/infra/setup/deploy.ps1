@@ -235,10 +235,18 @@ function Show-HealthSummary {
 }
 
 function Ensure-RuntimeDirs {
-    # git 不追蹤空目錄，新機 clone 後不會有這些執行期目錄
-    param([string]$Root)
+    # git 不追蹤空目錄，新機 clone 後不會有這些執行期目錄。
+    # shared\ 尤其重要：ipc.py 的 get_assigned_tasks() 在 shared\tasks 不存在時
+    # 「靜默回傳空清單」，worker 會永遠領不到任務（2026-11-05 PC2 實踩）。
+    param([string]$Root, [string]$MachineName)
+    $dirs = @("working", "output", "videos",
+              "shared\tasks", "shared\errors")
+    if ($MachineName) {
+        $dirs += "shared\$MachineName\status"
+        $dirs += "shared\$MachineName\results"
+    }
     $made = @()
-    foreach ($d in @("working", "output", "videos")) {
+    foreach ($d in $dirs) {
         $p = Join-Path $Root $d
         if (-not (Test-Path -LiteralPath $p)) {
             New-Item -ItemType Directory -Force -Path $p | Out-Null
@@ -407,11 +415,11 @@ if ($SkipSetup) {
     Invoke-Setup -Root $root -Preview $DryRun.IsPresent
 }
 
-# git 不追蹤空目錄，新機 clone 後不會有 working/output/videos，這裡補上
+# git 不追蹤空目錄，新機 clone 後不會有 working/output/videos/shared，這裡補上
 if ($DryRun) {
-    Write-Host "  [dry] 建立執行期目錄：working、output、videos"
+    Write-Host "  [dry] 建立執行期目錄：working、output、videos、shared\tasks、shared\errors、shared\$detected\{status,results}"
 } else {
-    $made = Ensure-RuntimeDirs -Root $root
+    $made = Ensure-RuntimeDirs -Root $root -MachineName $detected
     if ($made.Count -gt 0) {
         Write-Host "  已建立目錄：$($made -join '、')"
     } else {

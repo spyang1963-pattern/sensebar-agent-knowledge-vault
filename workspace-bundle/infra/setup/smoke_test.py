@@ -73,6 +73,9 @@ def main():
     shared = Path(getattr(config, "SHARED_ROOT", project / "shared"))
     check("專案根目錄", project.is_dir(), project)
     check("shared 目錄", shared.is_dir(), shared)
+    # ipc.py 在 shared\tasks 不存在時會靜默回傳空清單 → worker 永遠領不到任務
+    check("shared\\tasks 目錄", (shared / "tasks").is_dir(),
+          shared / "tasks" if (shared / "tasks").is_dir() else "缺少（worker 會領不到任務）")
 
     for sub, hint in (("working", "執行期目錄，deploy.ps1 會建立"),
                       ("output", "執行期目錄，deploy.ps1 會建立"),

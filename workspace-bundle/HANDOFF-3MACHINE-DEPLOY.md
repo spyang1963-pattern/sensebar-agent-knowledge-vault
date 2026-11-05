@@ -144,6 +144,22 @@ PC1 缺的都是**資料類**，不是程式缺漏：
 
 `working/`、`output/` 一開始報 ❌ 是**空目錄不進 git** 的正常現象，已由 `deploy.ps1` 第 3 步冪等建立（`working`/`output`/`videos`）。
 
+#### PC2 驗收（2026-11-05）⚠️ 21/22 → 已修
+
+`deploy.ps1 -Machine pc2` 一次成功：身份 `pc2/worker`（`DESKTOP-NL6VA8T`、`100.113.234.81`）、ffmpeg 9.0.2／VLC 3.0.24／Obsidian 1.15.0／gh 2.103.3 全裝好、`machine.yaml` 自動產生、`❌ 0 ⚠️ 1`（排程未註冊）。
+
+**唯一紅燈：`shared\` 目錄不存在**。原因與影響：
+
+- `shared/*` 在 `.gitignore`（執行期狀態不進 git），新機 clone 後自然沒有這個目錄。
+- `ipc.py` 的 `TaskQueue.get_assigned_tasks()` 在 `shared\tasks` 不存在時**靜默回傳空清單** → worker 不會報錯，只會永遠領不到任務（最惡劣的失敗模式：看起來正常但什麼都不做）。
+- PC1 沒踩到，只因為它的 `shared\` 是舊工作區時代就存在的。
+
+**修法**：`deploy.ps1` 的 `Ensure-RuntimeDirs` 改為同時建立 `shared\tasks`、`shared\errors`、`shared\<machine>\status`、`shared\<machine>\results`；`smoke_test.py` 新增一項 `shared\tasks 目錄` 檢查（22 → 23 項）。新機若沒跑最新版 `deploy.ps1`，手動補：
+
+```powershell
+New-Item -ItemType Directory -Force -Path shared\tasks, shared\errors, "shared\$env:COMPUTERNAME\status" | Out-Null
+```
+
 #### Git 衛生：執行期狀態不該進 git（2026-11-04）
 
 PC1 驗收後出現「24 個未提交變更」，實際成分：
