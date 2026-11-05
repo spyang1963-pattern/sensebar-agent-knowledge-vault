@@ -14,15 +14,16 @@ oc_usage.py — 查 OpenCode 額度（免費模型 + Go 付費）
    伺服器端沒有公開「剩餘量」API；本工具用本機 session 資料庫數 assistant 訊息數
    （≈ 請求數）估算用量。
 
-   **重要（2026-11-04 更正）**：免費池不是「200 次／5 小時」。
-   自 2026-10-23 起 Zen 免費額度是**每個 IP、每個「免費池日」**的**動態** bucket，
-   上限不公告（本機實測撞牆點 1~337 次，沒有固定值），且帳號／網路共用，
-   沒有 UI 或 API 可查剩餘量。撞牆訊息：
-   `You've used today's free messages. They reset at HH:MM` / `Free usage limit reached`。
-   因此本工具主數字改為「本機免費池日累計次數」，5 小時只是參考，不代表額度。
-
-   換日時間：使用者實測為**本機 08:55**（2026-11-04 21:43 被拒 → 隔日 09:47 恢復）。
+   **重要（2026-11-05 更正）**：免費額度是**兩道閘門並存**，不是單一配額。
+   ① **5h 滾動窗 ~200 次**：2026-10-23 改制後，沒有任何一次「成功的」5h 窗超過 233 次，
+      而三次撞牆都落在 5h 205~232（11-01 23:41/23:45、11-03 02:00）→ 200 附近是真的。
+   ② **日／帳號層級**：11-04 21:31 撞牆時 5h 只有 153 次、日累計 337；
+      11-02 17:09 撞牆時 5h 只有 1 次、24h 已 234 → 5h 解釋不了，另有一道較高的閘門。
+      日累計可以超過 200 沒撞牆（11-03 當日 264 次、5h 最高僅 133）。
+   換日時間：使用者實測為**本機 08:55**（2026-11-04 21:43 被拒 → 隔日 09:47 恢復），
    可用 `FREE_DAY_RESET_H/M` 或 `--reset-at 08:55` 調整。
+   兩種撞牆訊息：`You've used today's free messages. They reset at HH:MM`（真額度）與
+   `Free usage limit reached`（本機 log 只看得到後者，含暫時性）。
 
 用法:
   python oc_usage.py                # 精簡兩行（適合貼進對話）
@@ -61,6 +62,10 @@ FREE_HINTS = ("-free", "big-pickle", "pulse-alpha", "beam-free", "flint-40b",
 # 隔日 09:47 恢復。可用 CLI --reset-at 覆寫。
 FREE_DAY_RESET_H = 8
 FREE_DAY_RESET_M = 55
+
+# 5h 滾動窗的觀測上限。2026-10-23 改制後：沒有任何一次「成功的」5h 窗超過 233，
+# 三次撞牆都落在 205~232 → 5h/200 是真的，與日額度並存。
+FREE_WINDOW_LIMIT = 200
 
 
 # ---------------------------------------------------------------- 資料來源定位
@@ -253,6 +258,7 @@ def main():
                 "day_reset_at": day_start.isoformat(),
                 "day_reset_hhmm": f"{reset_h:02d}:{reset_m:02d}",
                 "window_hours": args.window,
+                "window_limit": FREE_WINDOW_LIMIT,
                 "window_used": free_win,
                 "today_local": free_today,
                 "last24h": free_24,
@@ -276,14 +282,14 @@ def main():
     if f and "error" not in f:
         hhmm = f["day_reset_hhmm"]
         line = (f"免費 日 {f['day_used']} 次（{hhmm} 換日）"
-                f"｜5h 參考 {f['window_used']}")
+                f"｜{f['window_hours']:g}h {f['window_used']}/{f['window_limit']}")
         hit = f.get("last_hit") or {}
         if hit.get("same_day"):
             line += f"｜本池日已被拒 {hit['at'][11:19]}（當時累計 {hit['day_used']} 次）"
         elif f.get("hits"):
             line += f"｜上次被拒 {f['hits'][-1][5:16]}（當時累計 {hit.get('day_used', 0)} 次）"
         print(line)
-        print("      上限為伺服器動態值（無 API 可查剩餘）；本機觀測撞牆點 206~337 次，非固定")
+        print("      兩道閘門並存：5h 滾動窗 ~200 次；日/帳號層級更高（11-04 5h 153 仍被拒時日 337）")
 
     g = out["go"]
     if g:
@@ -305,7 +311,7 @@ def main():
         if f and "error" not in f:
             print("── 免費模型（本機估算；伺服器無公開用量 API）──")
             print(f"  免費池日累計（{f['day_reset_hhmm']} 換日，本機時間）：{f['day_used']} 次")
-            print(f"  最近 {f['window_hours']:g} 小時：{f['window_used']} 次（僅參考，不是額度）")
+            print(f"  最近 {f['window_hours']:g} 小時：{f['window_used']} / {f['window_limit']} 次（5h 滾動窗上限，實測有效）")
             print(f"  本機日曆日：{f['today_local']} 次｜最近 24h：{f['last24h']} 次")
             if f.get("last_hit"):
                 h = f["last_hit"]
