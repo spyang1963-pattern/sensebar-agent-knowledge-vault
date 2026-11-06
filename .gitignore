@@ -37,3 +37,7 @@ shared/*
 # knowledge-base 是「資料」不是程式碼（新方向：PC 產出後由收割機制單向回 notebook）
 # 已追蹤的 4 個檔案不受 gitignore 影響，仍可正常 commit。
 knowledge-base/*
+
+# YouTube 登入 cookies（視同帳號密碼，絕對不可進版控）
+cookies.txt
+*.cookies.txt

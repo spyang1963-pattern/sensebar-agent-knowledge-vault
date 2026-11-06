@@ -66,6 +66,7 @@ def get_video_date(video_id):
     try:
         r = subprocess.run(
             ["yt-dlp", "--no-update", "--skip-download", "--no-warnings",
+             *yt_cookies_args(),
              "--print", "%(timestamp)s|%(release_date)s|%(upload_date)s", url],
             capture_output=True, text=False, timeout=120,
         )
@@ -98,6 +99,7 @@ def get_video_title(video_id):
     try:
         r = subprocess.run(
             ["yt-dlp", "--no-update", "--skip-download", "--no-warnings",
+             *yt_cookies_args(),
              "--print", "%(title)s", url],
             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
         )
@@ -143,6 +145,7 @@ def get_playlist_entries(source):
         "quiet": True,
         "no_warnings": True,
     }
+    ydl_opts.update(_ytdlp_cookiefile())
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -179,6 +182,7 @@ def expand_youtube_entries(url, limit=None):
     }
     if limit and limit > 0:
         opts["playlistend"] = limit
+    opts.update(_ytdlp_cookiefile())
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(u, download=False)
@@ -211,7 +215,7 @@ def expand_youtube_entries(url, limit=None):
 
     if limit and limit > 0:
         out = out[:limit]
-    log(f"  [展開] {u[:60]}: {len(out)} 支")
+    log(f"  [展開] {u}: {len(out)} 支（cookies: {'有' if yt_cookies_args() else '無'}）")
     return out
 
 
@@ -227,6 +231,7 @@ def download_yt_sub(video_id, langs, temp_dir):
         "--skip-download",
         "-o", out_tpl,
         "--no-overwrites", "--ignore-errors",
+        *yt_cookies_args(),
         url,
     ]
     try:
@@ -248,6 +253,28 @@ YT_DL_FORMAT_720 = ("bestvideo[width<=1280][height<=1280][ext=mp4][vcodec^=avc1]
                     "bestvideo[width<=1280][height<=1280][ext=mp4]+bestaudio[ext=m4a]/"
                     "best[ext=mp4]/best")
 FORMAT_PRESETS = {"720": YT_DL_FORMAT_720, "1080": YT_DL_FORMAT}
+
+# ── cookies（2026-11-06 事故：17 支「私人影片」全部 404 級失敗）──
+# 私人／會員專屬／年齡限制的影片必須帶登入 cookies 才抓得到。做法刻意「有檔案才生效」：
+#   D:\AI-Agent-Workspace\cookies.txt（Netscape 格式，用瀏覽器擴充匯出）
+# 檔案不存在時完全不影響其他影片（指令一個字都不變）。
+COOKIES_FILE = PROJECT_ROOT / "cookies.txt"
+
+
+def yt_cookies_args():
+    """有 cookies.txt 就回 ["--cookies", 路徑]，否則回空 list（可直接 * 展開進 cmd）。"""
+    try:
+        if COOKIES_FILE.is_file() and COOKIES_FILE.stat().st_size > 0:
+            return ["--cookies", str(COOKIES_FILE)]
+    except OSError:
+        pass
+    return []
+
+
+def _ytdlp_cookiefile():
+    """給 yt_dlp Python API 用的 cookiefile 選項（沒有檔案就回空 dict）。"""
+    args = yt_cookies_args()
+    return {"cookiefile": args[1]} if args else {}
 
 # ── JS runtime（2026-11-06 事故）──
 # yt-dlp 需要 deno／node／bun 才能解 YouTube 的 JS 挑戰；沒有 runtime 時
@@ -310,12 +337,19 @@ def yt_fail_hint(text):
     m = (text or "").lower()
     if "no supported javascript runtime" in m or ("403" in m and "forbidden" in m):
         return "缺少 JS runtime（deno／node），yt-dlp 被 YouTube 403 擋下"
+    if "confirm your age" in m or "age-restricted" in m:
+        return "年齡限制影片：需要 cookies.txt"
     if "sign in to confirm" in m or "not a bot" in m:
         return "YouTube 要求驗證（bot check）"
     if "requested format is not available" in m:
         return "指定的下載格式不存在"
-    if "video unavailable" in m or "private video" in m:
-        return "影片不可用（私人／已刪除／地區限制）"
+    # 2026-11-06：私人／會員專屬要分開講，否則只會看到「影片不可用」而誤判成下載壞了
+    if "members-only" in m or "members only" in m or "join this channel" in m:
+        return "會員專屬影片：需要 cookies.txt，且該帳號要有訂閱"
+    if "private video" in m or "this video is private" in m:
+        return "私人影片：需要 cookies.txt（若原影片本來就不公開，cookies 也無解）"
+    if "video unavailable" in m or "has been removed" in m:
+        return "影片不可用（已刪除／地區限制）"
     if "429" in m or "too many requests" in m:
         return "YouTube 回 429（請求過多／被限流）"
     if "timed out" in m or "timeout" in m:
@@ -340,6 +374,7 @@ def download_yt_video(video_id, title, format_spec=YT_DL_FORMAT, date_prefix=Non
         "-f", format_spec,
         "--merge-output-format", "mp4",
         "--no-playlist", "--ignore-errors",
+        *yt_cookies_args(),
         "-o", str(out_path),
         url,
     ]
@@ -1059,7 +1094,10 @@ def process_youtube_video(video_id, title, langs=None, kb_dir=None, burn_subs=Fa
             hint = yt_fail_hint(detail)
             if hint:
                 err += f"（{hint}）"
-            tail = " ".join(detail.split())[-240:]
+            tail = " ".join(detail.split())
+            # 去掉 yt-dlp 的說明連結（會把 240 字吃光、還從中間被切斷成「ttps://…」）
+            tail = re.sub(r"https?://\S+", "", tail).strip()
+            tail = tail[-240:]
             if tail:
                 err += f"｜{tail}"
         result["error"] = err

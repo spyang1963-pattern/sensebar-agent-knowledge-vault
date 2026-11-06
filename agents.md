@@ -537,6 +537,44 @@ python -X utf8 diag_youtube_fail.py --download-probe 2 --ids <vid1>,<vid2>
     若某筆只存在 mirror、shared 沒有檔案，會印 ⚠ 警告（那種任務 worker 永遠撿不到，要重建）
   - 同理，任何「手動改任務狀態」的動作都不能只改 `task_status.json`
 
+## YouTube 私人／會員專屬影片：cookies.txt（2026-11-06）
+
+### 症狀
+一次播放清單展開建了 17 筆任務（task_192–208），**每支 14 秒就失敗**，
+`last_error` 全部是 `下載影片 失敗（影片不可用（私人／已刪除／地區限制））`。
+
+### 判別（30 秒，別猜）
+```powershell
+yt-dlp --simulate --no-warnings "https://www.youtube.com/watch?v=<VIDEO_ID>"
+```
+- 回 `ERROR: [youtube] <id>: Private video` ⇒ **影片本身不公開**，與 deno／403／格式全無關。
+- **換另一台機器（notebook）再測一次**：兩台都 Private 就是伺服器端，不是 PC 的問題。
+  2026-11-06 實測 17/17 兩台都 Private。
+- 若一台 Private、另一台正常 ⇒ 才是本機 cookies／地區設定問題。
+
+### 已加的支援（勿改回「有檔案才生效」的寫法）
+- `channel_watcher.COOKIES_FILE = <專案根>\cookies.txt`；`yt_cookies_args()` 有檔案才回
+  `["--cookies", 路徑]`，沒有就回 `[]`（指令完全不變）。
+- 已套用到：`get_video_date`／`get_video_title`／`expand_youtube_entries`／`fetch_playlist_entries`
+  （`cookiefile`）／`download_yt_sub`／`download_yt_video`。
+- `yt_fail_hint()` 現在把 **私人／會員專屬／年齡限制** 分成三種說法（以前全部叫「影片不可用」）。
+- 錯誤尾巴會**去掉 URL** 再截 240 字（舊版會出現「｜ttps://github.com/yt-dlp/...」這種被切壞的訊息）。
+- `expand` 的 log 改成**印完整網址**（以前 `u[:60]` 會把 list id 切到一半，害人以為是別的清單）。
+
+### 取得 cookies
+- 瀏覽器（已登入 YouTube）安裝擴充 **Get cookies.txt LOCALLY** → 匯出 `youtube.com` →
+  存成 `D:\AI-Agent-Workspace\cookies.txt`（Netscape 格式）。
+- **不要**用 `--cookies-from-browser`：Edge 的 cookie DB 會被執行中的程序鎖住
+  （`Could not copy Chrome cookie database`）；Chrome 有 App-Bound Encryption（`Failed to decrypt with DPAPI`）。
+- 安全：**cookies.txt 等同帳號密碼**（`.gitignore` 已排除 `cookies.txt`、`*.cookies.txt`），不要貼進對話、
+  不要放進 KB／outbox、處理完可刪。
+- 限制：對方設成私人或已刪除 → **cookies 也救不回來**；會員專屬 → 該帳號必須真的有訂閱。
+
+### 不要做
+- ❌ 明知 Private 還一直 `--retry-failed`（每支燒 14 秒＋把失敗統計弄髒）；先確認能否存取，不行就把任務標成
+  `cancelled`（或留著別重排）。
+- ❌ 把 `cookies.txt` commit／放進 `shared\`（等於把自己的 YouTube 帳號送給每台機器）。
+
 
 ## 跨機收割（Step 7）落地與陷阱（2026-11-06）
 
@@ -572,6 +610,14 @@ PC 永不寫 notebook 的 KB；notebook 只讀 PC。設計稿：`workspace-bundl
   net use \\100.84.223.110\AI-Agent-Workspace /user:DESKTOP-NDLV9LI\harvest /persistent:yes
   ```
   `/persistent:yes` 是排程能用的前提；重開機後仍要能連。
+  **但實測（2026-11-06）`/persistent:yes` 對 UNC 不保證持久**：某次之後 `net use` 列表空白、
+  `cmdkey /list` 也查不到任何 100.84 項目 → 收割全部 `WinError 1326`（排程會記 offline，看起來「沒事」）。
+  可靠的存法是 Credential Manager：
+  ```powershell
+  cmdkey /add:100.84.223.110 /user:DESKTOP-NDLV9LI\harvest /pass:"<密碼>"
+  Test-Path \\100.84.223.110\AI-Agent-Workspace\shared\pc1\outbox   # 應 True
+  ```
+  `cmdkey` 存的認證重開機、重新登入都會留著；`net use` 可以不用下。
 - 只給 `ReadAccess`／`RX`，**不要** `Change` 或 `Full`。NOTES：少了 `icacls` 會出現「分享看起來對、複製卻錯誤 5」。
 
 ### 收割器行為（2026-11-06 改版，勿改回）
