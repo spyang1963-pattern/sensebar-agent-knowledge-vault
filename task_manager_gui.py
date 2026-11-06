@@ -1681,6 +1681,8 @@ class TaskManagerGUI:
                             "title": title,
                             "video_id": vid,
                             "url": f"https://www.youtube.com/watch?v={vid}",
+                            # 記下來源（播放清單／頻道網址）：日後查「這批任務哪來的」不必再猜
+                            "source_url": (url or "")[:300],
                             "kb_subdir": "youtube-clips",
                             "harvest_to_kb": do_kb,
                             "auto_note": do_note,
@@ -1713,6 +1715,16 @@ class TaskManagerGUI:
                         [int(k) for k in data["tasks"] if k.isdigit()] or [0])
                     data["generated_at"] = now_iso
                     save_task_status(data)
+
+                    # 留一筆匯入紀錄（來源網址＋去重統計），日後不必再猜「這批哪來的」
+                    try:
+                        os.makedirs("logs", exist_ok=True)
+                        with open(os.path.join("logs", "youtube_imports.log"), "a",
+                                  encoding="utf-8") as f:
+                            f.write(f"{now_iso}\t來源={url}\t展開={len(entries)}\t建立={len(created)}"
+                                    f"\t已在KB={skipped_kb}\t重複={skipped_dup}\n")
+                    except Exception:
+                        pass
 
                     # 寫入中央佇列 shared/tasks/（worker 由此領取）
                     for tid in created:
