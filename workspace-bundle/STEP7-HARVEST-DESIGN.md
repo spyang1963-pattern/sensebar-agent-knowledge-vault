@@ -68,6 +68,7 @@ shared\<machine>\outbox\<task_id>\
   "video_id": "hY5G0pT5xmE",
   "title": "2026-11-02_週一 呂佳霖盤後分析",
   "kb_subdir": "人工智慧/AI agent-三師爸/直播",
+  "stem": "2026-11-02_週一 呂佳霖盤後分析",
   "local_video": "D:\\YouTube_Videos\\<stem>.mp4",
   "net_video": "\\\\100.84.223.110\\YouTube_Videos\\<stem>.mp4",
   "created_at": "2026-11-05T14:02:11+08:00",
@@ -84,6 +85,10 @@ shared\<machine>\outbox\<task_id>\
 - **複製不搬**：outbox 是副本，本機 KB 條目照舊留在 `knowledge-base\`（PC 自己也要能查）。
 - `net_video` 由產出端算好（`config.TAILSCALE_IPS` 已有各機 IP），**收割器不改內文**。
 - 重跑同一個 task → 先清空該目錄再寫，避免新舊檔混在一起。
+- **`video_id` 由產出端負責填滿（2026-11-06 補）**：`note` / `summary` 任務常常沒有 `video_id` 欄位
+  （獨立派生），`publish_outbox.py` 會從 KB 條目回填（`<stem>.link.txt` → 逐字稿前 40 行），
+  成功才寫進 manifest。PC1 第一次打包有 39/58 包 video_id 為空，就是修這個。
+- `stem`：KB 條目的檔名主體（不含 ` 摘要` / ` 課程筆記` 後綴）。收割器用它判斷「同一支影片」。
 
 ---
 
@@ -101,9 +106,13 @@ python -X utf8 harvest_pc.py --dry-run       # 只列會做什麼，不寫檔、
 2. 連不到 → 記 `offline`，跳過（不算失敗，下次再試）
 3. 逐個 `<task_id>\manifest.json`：
    - schema 版本不認識 → 跳過並警告（不要猜）
-   - `video_id` 已在本機 KB（`channel_watcher.kb_video_index()`）→ 記 `skipped_exists`
-   - `video_id` 已在帳本且 sha256 全對 → 記 `skipped_same`
-   - 目標目錄已有同名檔但內容不同 → **不覆蓋**，移到 `knowledge-base/_harvest_conflicts/<machine>/<task_id>/` 並警告（寧可人工看，不要靜默蓋掉正本）
+   - `video_id` 已在本機 KB（`channel_watcher.kb_video_index()`）：
+     - **同一支影片、同一檔名家族**（`stem` 相同）→ 不整包跳過，**逐檔補齊**：
+       缺的檔補進來，已有的**不覆蓋**（內容不同時保留 notebook 正本並記錄）
+     - **檔名家族不同**（例如日期前綴不同）→ 記 `skipped_exists`，不產生重複條目
+   - `video_id` 在帳本且 sha256 全對 → 記 `skipped_same`
+   - 目標目錄已有同名檔但內容不同、且**不是同一支影片** → **不覆蓋**，整包移到
+     `knowledge-base/_harvest_conflicts/<machine>/<task_id>/` 並警告（寧可人工看，不要靜默蓋掉正本）
    - 乾淨的：逐檔複製 → 驗 sha256 → 全部通過才寫入 KB
 4. 更新帳本（local，notebook 端）
 

@@ -31,6 +31,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -121,6 +122,32 @@ def stem_from_progress(tid):
         if p.lower().endswith(".md"):
             return Path(p)
     return None
+
+
+VID_RE = re.compile(r"(?:v=|youtu\.be/|/shorts/|/live/|/embed/)([A-Za-z0-9_-]{11})")
+
+
+def derive_video_id(md_path):
+    """note / summary 任務常常沒有 video_id 欄位（獨立派生），從 KB 條目回填。
+
+    順序：`<stem>.link.txt`（channel_watcher 產生，內容就是 URL）→ 逐字稿前 40 行。
+    都找不到回空字串（收割器會退回「同名比對」，比較容易誤判衝突）。
+    """
+    link = md_path.with_name(md_path.stem + ".link.txt")
+    try:
+        if link.exists():
+            m = VID_RE.search(link.read_text(encoding="utf-8", errors="replace"))
+            if m:
+                return m.group(1)
+    except OSError:
+        pass
+    try:
+        with io.open(md_path, encoding="utf-8", errors="replace") as f:
+            head = "".join(f.readlines()[:40])
+    except OSError:
+        head = ""
+    m = VID_RE.search(head)
+    return m.group(1) if m else ""
 
 
 def stem_from_link(kb_dir, video_id):
@@ -260,13 +287,17 @@ def publish_one(tid, info, out_root, kb_root, ledger, dry_run=False, force=False
         manifest_files.append({"name": f.name, "bytes": target.stat().st_size,
                                "sha256": sha256(target)})
 
+    # note / summary 任務多半沒有 video_id，從 KB 條目回填（收割器靠它精確去重）
+    vid = (info.get("video_id") or "").strip() or derive_video_id(md_path)
+
     manifest = {
         "schema": 1,
         "task_id": str(tid),
         "machine": config.MACHINE,
-        "video_id": (info.get("video_id") or "").strip(),
+        "video_id": vid,
         "title": (info.get("title") or info.get("name") or md_path.stem),
         "kb_subdir": rel,
+        "stem": md_path.stem,
         "local_video": local_video_for(md_path),
         "net_video": net_video_for(md_path),
         "created_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),

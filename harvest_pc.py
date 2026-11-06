@@ -88,6 +88,14 @@ def machine_root(machine):
     return Path(f"\\\\{ip}\\AI-Agent-Workspace\\shared\\{machine}\\outbox")
 
 
+def base_stem(stem):
+    """`<stem> 摘要` / `<stem> 課程筆記` → `<stem>`，用來判斷是否同一支影片。"""
+    for suf in (" 摘要", " 課程筆記", " 重點整理"):
+        if stem.endswith(suf):
+            return stem[: -len(suf)]
+    return stem
+
+
 # ------------------------------------------------------------------ 收割單包
 def harvest_one(pkg_dir, machine, kb_root, ledger, index, dry_run=False):
     """回傳 (結果, 說明)。結果：harvested / skipped_same / skipped_exists / conflict / bad / error"""
@@ -112,28 +120,56 @@ def harvest_one(pkg_dir, machine, kb_root, ledger, index, dry_run=False):
     dest_dir = kb_root / rel
 
     # 1) 已在 KB（video_id 精確比對）
+    #    同一支影片的「逐字稿／摘要／筆記」是同一組檔名家族 → 繼續往下逐檔補齊（只缺摘要也能補）
+    #    不同檔名家族 → 代表 notebook 用不同日期前綴存在，跳過以免產生重複條目
+    names = [f.get("name") or "" for f in files]
+    same_family = False
     if video_id and video_id in index:
-        log(f"    ⏭ 已在 KB：{video_id} → {index[video_id]}")
-        return "skipped_exists", str(index[video_id])
+        existing = Path(str(index[video_id]))
+        pkg_stem = (manifest.get("stem") or "").strip()
+        if pkg_stem:
+            same_family = base_stem(existing.stem) == base_stem(pkg_stem)
+        else:
+            fam = base_stem(existing.stem)
+            same_family = any(
+                n == existing.name
+                or n.startswith(fam + " ")
+                or n.startswith(fam + ".")
+                for n in names
+            )
+        if not same_family:
+            log(f"    ⏭ 已在 KB（檔名不同）：{video_id} → {existing}")
+            return "skipped_exists", str(existing)
+        log(f"    ↪ 同支影片已在 KB（{existing.name}），逐檔補齊缺的產出")
 
     # 2) 帳本已收過且 sha256 全對
     rec = ledger.get(key) or {}
     if rec.get("sha256") and all(rec["sha256"].get(f.get("name")) == f.get("sha256") for f in files):
         return "skipped_same", "帳本相符"
 
-    # 3) 衝突：同名檔存在且內容不同 → 不覆蓋
-    conflicts = []
+    # 3) 逐檔比對
+    #    - 不存在 → 要補
+    #    - 存在但內容不同：同一支影片（同 stem）→ 保留 notebook 正本、不覆蓋（kept）；
+    #      不同支影片（僅同名）→ 視為衝突，整包隔離
+    #    - 存在且相同 → 略過
+    conflicts, already, kept, missing = [], [], [], []
     for f in files:
         name = f.get("name") or ""
         if not name or "/" in name or "\\" in name or name in (".", ".."):
             return "bad", f"檔名不合法：{name!r}"
         target = dest_dir / name
-        if target.exists():
-            try:
-                if sha256(target) != f.get("sha256"):
-                    conflicts.append(name)
-            except OSError:
+        if not target.exists():
+            missing.append(f)
+            continue
+        try:
+            if sha256(target) == f.get("sha256"):
+                already.append(name)
+            elif same_family:
+                kept.append(name)
+            else:
                 conflicts.append(name)
+        except OSError:
+            conflicts.append(name)
     if conflicts:
         if not dry_run:
             dst = kb_root / "_harvest_conflicts" / machine / task_id
@@ -141,16 +177,21 @@ def harvest_one(pkg_dir, machine, kb_root, ledger, index, dry_run=False):
                 shutil.rmtree(dst)
             shutil.copytree(pkg_dir, dst)
         return "conflict", f"同名不同內容：{', '.join(conflicts[:3])} → _harvest_conflicts/{machine}/{task_id}"
+    if not missing:
+        msg = "KB 已有相同檔案" if not kept else f"KB 已有（保留正本）：{', '.join(kept[:3])}"
+        return "skipped_same", msg
+    if kept:
+        log(f"    ⚠ 保留 notebook 既有版本（內容不同，未覆蓋）：{', '.join(kept[:3])}")
 
     if dry_run:
-        log(f"    [DRY] → {dest_dir}（{len(files)} 檔）")
+        log(f"    [DRY] → {dest_dir}（補 {len(missing)} 檔，略過 {len(already) + len(kept)} 檔）")
         return "harvested", f"(dry-run) {dest_dir}"
 
     # 4) 逐檔複製 → 驗 sha256 → 全過才寫帳本
     dest_dir.mkdir(parents=True, exist_ok=True)
     written = []
     try:
-        for f in files:
+        for f in missing:
             src = pkg_dir / f["name"]
             if not src.exists():
                 return "error", f"outbox 缺檔：{f['name']}"
@@ -173,7 +214,12 @@ def harvest_one(pkg_dir, machine, kb_root, ledger, index, dry_run=False):
         "sha256": {f["name"]: f.get("sha256") for f in files},
     }
     if video_id:
-        index[video_id] = str(dest_dir / written[0]) if written else str(dest_dir)
+        # 索引一律指向「逐字稿本體」`<stem>.md`；指向 ` 摘要.md` 會讓下一次判斷不同家族
+        base = dest_dir / f"{(manifest.get('stem') or '').strip()}.md"
+        if (manifest.get("stem") or "").strip() and base.exists():
+            index[video_id] = str(base)
+        elif video_id not in index:
+            index[video_id] = str(dest_dir / written[0]) if written else str(dest_dir)
     return "harvested", f"{len(written)} 檔 → {dest_dir}"
 
 
