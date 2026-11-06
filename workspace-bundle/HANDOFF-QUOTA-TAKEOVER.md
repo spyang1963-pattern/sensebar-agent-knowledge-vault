@@ -40,14 +40,61 @@ Go   5h 0% · 週 10% · 月 100% ⛔→11/10 22:32
 
 **已知事實（不要重新推論）**
 
-- 撞牆有兩種訊息：`You've used today's free messages. They reset at HH:MM`（真額度）與
-  `Free usage limit reached`（log 只記得到這種，**可能只是暫時性**）。
+- 撞牆有兩種訊息，**原文照抄**（不要改寫，靠它的 `reset at` 反推換日時間）：
+
+  **① 伺服器回的額度訊息（UI／TUI 看得到，含 `reset at`）**
+  ```
+  You've used today's free messages. They reset at 08:55
+  ```
+  ```
+  You've used today's free messages. They reset at 上午8:01
+  ```
+  - 第一句是 2026-11-04 21:43（本機）被拒時宣告的，當時據此把換日時間設成 08:55。
+  - 第二句是 2026-11-06 03:59（本機）被拒時宣告的，**最近一次的宣告值＝08:01**
+    （`oc_usage.py` 的 `FREE_DAY_RESET_H/M = 8/1` 就是照這個改的）。
+  - 宣告值會變，**以最近一次為準**；要改常數或 `--reset-at 08:01`／`OC_FREE_RESET`。
+
+  **② 本機 log 記到的錯誤（`D:\opencode-data\opencode\log\opencode.log`，UTC、`Z` 結尾）**
+  ```
+  timestamp=2026-11-06T06:11:01.918Z level=ERROR run=a4654eae message="Failed to drain Session" cause="AI.Error: Free usage limit reached. Free models work in OpenCode (https://opencode.ai); subscribe to OpenCode Go to keep going: https://opencode.ai/go
+      at Oae (B:/~BUN/root/chunk-0z87y99c.js:3:3633)
+      ...
+    [cause]: AI.Error.QuotaExceeded: Free usage limit reached. Free models work in OpenCode (https://opencode.ai); subscribe to OpenCode Go to keep going: https://opencode.ai/go
+  ```
+  - 這句**沒有** `reset at`（所以只看 log 推不出換日時間）；`reset at` 只在 UI 訊息裡。
+  - log 時間是 **UTC**：`06:11Z` ＝ 本機 **14:11**；`2026-11-05T19:59Z` ＝ 本機 11-06 03:59。
+  - 抓法：`Select-String -Path D:\opencode-data\opencode\log\opencode.log -Pattern "Free usage limit" -Encoding utf8`
+  - 同一句也可能只是**暫時性**（2026-11-03 09:23 被拒、09:25 重試即成功），所以被拒當下先存快照再看。
+
 - 2026-10-23 改制後，**沒有任何一次成功的 5h 窗超過 233 次**；三次撞牆落在 5h 205~232。
 - 但也出現過「5h 只有 139／153／1 次就撞牆」（日累計 330／337／234）→ **另有一道日／帳號層級閘門**。
 - 日累計可以超過 200 不撞牆（11-03 當日 264 次、5h 最高 133）。
 - **5h 的 200 不是硬線（2026-11-06 12:30 實測）**：5h 衝到 **213（106%）** 仍正常回話，
   之後自然回落到 157。⇒ 5h 只當「短期爆量」指標，**不能**用它預測撞牆；日累計才是瓶頸。
   判讀表裡的「5h ≥ 200 → 5h 閘門成立」要改成「5h ≥ 230 才值得懷疑是 5h 閘門」。
+
+### 撞牆實測表（本機 DB 回算，2026-11-06 補）
+
+| 撞牆（本機） | 日（08:01 起） | 5h | 24h | 主用模型 |
+|---|---|---|---|---|
+| 11-02 17:09 | 0 | 0 | 233 | opencode/big-pickle |
+| 11-03 02:00 | 204 | 203 | 204 | opencode/big-pickle |
+| 11-04 21:31 | 326 | 142 | 459 | opencode/big-pickle |
+| 11-06 03:59 | 328 | 137 | 328 | opencode/big-pickle |
+| 11-06 14:11 | 270 | 141 | 423 | opencode/big-pickle |
+
+回算指令（唯讀）：`python -X utf8 oc_usage.py --full`，或直接查
+`session_message` 的 `json_extract(data,'$.model.id')`；時間戳是 epoch ms。
+
+**從這張表只能得到三個結論（都別再往外推）：**
+
+1. **沒有一個固定門檻**：日 270 / 326 / 328、24h 204 / 423 / 459 都撞過 ⇒ 用「日累計到 330 才會爆」
+   去預測**會失準**（今天 14:11 就是 270 爆的）。
+2. **5h 本地值 137～142 連續三次一致**（11-04、11-06×2）很可疑，但**不能用來證明 5h 是硬線**：
+   同一天 13:15 本地 5h ＝ **213** 仍正常回話、14:11 本地 5h ＝ 141 卻被拒 ⇒ 本地次數
+   **不足以解釋**伺服器端的判定（合理猜測：伺服器把重試／中斷的步驟也算進去，或按 token 加權）。
+3. **實務做法只有一個**：被拒就切 `opencode-go/deepseek-v4.1-flash` 繼續做，
+   被拒當下先存快照，**不要**再花時間猜門檻。
 - **恢復時間不可推論**：`11-06 08:13`、`11-04 09:47` 都是使用者刻意延後才開對話，不是額度恢復時刻。
   唯一可信的是伺服器在錯誤訊息裡宣告的 `reset at HH:MM`。
 
@@ -110,11 +157,15 @@ python -X utf8 oc_usage.py --full
 
 ### 判讀表
 
-| 撞牆時 5h | 是否等到 08:01 才恢復 | 結論 |
+| 撞牆時 5h（本地） | 是否等到 08:01 才恢復 | 結論 |
 |---|---|---|
 | ≥ 230 | 任意 | **5h 閘門成立**（第一次拿到直接證據；200～213 已實測不會被拒） |
 | < 200 | 是（撐到 08:01 後） | 撞到**日／帳號閘門**，5h 不是瓶頸 |
 | < 200 | 否，半天內自行恢復 | 存在**滾動成分**（5h 或 24h）→ 用下面方法分辨 |
+
+**2026-11-06 14:11 實測已把這張表打殘**：日 270、5h 141、24h 423 就被拒，
+同一天 13:15（5h 213）卻正常。⇒ 本地次數**不足以**定位門檻，判讀表只能當「事後歸類」，
+**不要**拿它預測「還能用幾次」。要做的只有：被拒 → 存快照 → 切 Go → 繼續。
 
 ### 分辨 5h 還是 24h（事後用 DB 回算，0 成本）
 
