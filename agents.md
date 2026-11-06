@@ -53,8 +53,14 @@
     11-04 之後是 337×0.9＝303，11-06 撞在 330 之後變 330×0.9＝**297**），
     無撞牆紀錄則維持綠色。下方小字列出換日時間、5h 色階、日警戒線、上次撞牆時間與當時次數。
     `oc_usage.py --reset-at 08:01`（或環境變數 `OC_FREE_RESET`）可調換日時間。
-  - 實務規則：**兩個數字任一個偏高就切 `opencode-go/*`**（5h 逼近 200、或日累計破 300）；
+  - 實務規則：**日累計破 300 就切 `opencode-go/*`**（5h 高不代表會被拒）；
     長任務（轉錄、整批修檔、多工具 agent）一開始就用 Go，不要拿免費池賭。
+  - **5h 的 200 不是硬線（2026-11-06 實測）**：5h 衝到 **213（106%）** 全程正常回話，
+    同日又在數分鐘內自然回落（08:13 那批 111 筆滑出窗 → 157）。
+    ⇒ 5h 只能當「短期爆量」指標，**不能**拿它預測撞牆；日累計才是實務瓶頸。
+  - **`oc_widget.py` 是長駐程序**：改 `oc_usage.py` 的常數（例如換日時間）後**必須關掉重開**，
+    否則小窗還在用舊碼。11-06 實際看到 `日 123`、正確值是 `223`，差的就是「08:55 vs 08:01」。
+    辨識法：小窗下方小字會顯示目前程式用的換日時間。
   - **撞牆接手流程與記錄欄位：`workspace-bundle/HANDOFF-QUOTA-TAKEOVER.md`**
     （撞牆當下先存 `oc_usage.py --json` 快照再切 `opencode-go/deepseek-v4.1-flash`；
     恢復後的「首次成功」只算上界，5h 是否為獨立閘門用該檔第 3 節的判讀表回算）。
@@ -512,3 +518,66 @@ python -X utf8 diag_youtube_fail.py --download-probe 2 --ids <vid1>,<vid2>
     若某筆只存在 mirror、shared 沒有檔案，會印 ⚠ 警告（那種任務 worker 永遠撿不到，要重建）
   - 同理，任何「手動改任務狀態」的動作都不能只改 `task_status.json`
 
+
+## 跨機收割（Step 7）落地與陷阱（2026-11-06）
+
+### 架構（單向）
+```
+PC1/PC2/PC3  KB → publish_outbox.py → shared\<machine>\outbox\<tid>\manifest.json（最後寫）
+notebook     harvest_pc.py ← UNC 唯讀 pull ← 同上 → knowledge-base\<kb_subdir>\
+```
+PC 永不寫 notebook 的 KB；notebook 只讀 PC。設計稿：`workspace-bundle/STEP7-HARVEST-DESIGN.md`。
+
+### 每日排程（已上線）
+| 機器 | 時間 | 工作 | 腳本 | 日誌 |
+|---|---|---|---|---|
+| PC1 | 22:50 | `PublishOutboxDaily` | `publish_daily.bat` | `logs\publish_outbox.log` |
+| notebook | 23:10 | `HarvestPCDaily` | `harvest_daily.bat` | `logs\harvest_pc.log` |
+
+- 順序刻意錯開：PC1 先打包，notebook 再來收（收割器只認 `manifest.json`，沒寫完就跳過，早收也安全）。
+- `harvest_daily.bat` 收完會接著跑 `fix_youtube_links.py --apply`（冪等），所以連結格式不會退回去。
+- 兩支 .bat 都可手動執行（雙擊或在專案根目錄跑）。
+
+### SMB：`Everyone` 不等於「匿名可讀」（最容易誤判）
+- 症狀：`net view \\<ip>` → **系統發生 5 錯誤（存取被拒）**、`Test-Path` 一律 False，但 ping／445 都正常。
+- 原因：`Everyone` 只涵蓋「已在該機通過驗證」的帳號；notebook 帶自己的帳號過去，PC1 不認識 → 拒絕。
+- 正解（PC1 提權一次）：
+  ```powershell
+  New-SmbShare -Name "AI-Agent-Workspace" -Path "D:\AI-Agent-Workspace" -ReadAccess "Everyone"
+  icacls "D:\AI-Agent-Workspace" /grant "*S-1-1-0:(OI)(CI)(RX)" /T /C /Q
+  $pw = ConvertTo-SecureString "<密碼>" -AsPlainText -Force
+  New-LocalUser -Name "harvest" -Password $pw -PasswordNeverExpires -UserMayNotChangePassword
+  ```
+- notebook 端存認證（**用 hostname，不是代號**）：
+  ```powershell
+  net use \\100.84.223.110\AI-Agent-Workspace /user:DESKTOP-NDLV9LI\harvest /persistent:yes
+  ```
+  `/persistent:yes` 是排程能用的前提；重開機後仍要能連。
+- 只給 `ReadAccess`／`RX`，**不要** `Change` 或 `Full`。NOTES：少了 `icacls` 會出現「分享看起來對、複製卻錯誤 5」。
+
+### 收割器行為（2026-11-06 改版，勿改回）
+1. **`video_id` 由產出端回填**：`note`／`summary` 任務多半沒有 `video_id`，`publish_outbox.py`
+   會從 `<stem>.link.txt`（其次逐字稿前 40 行）抓 id 寫進 manifest；抓不到就留空。
+   PC1 第一次打包 39/58 包是空的，重打包後 58/58 有值。
+2. **同支影片 → 逐檔補齊，不整包跳過**：`video_id` 已在本機 KB 且 `stem` 相同時，
+   缺的檔補進來、已存在的**不覆蓋**（內容不同 = 保留 notebook 正本並記錄）；
+   `stem` 不同（日期前綴不同）才記 `skipped_exists`，避免產生重複條目。
+   舊行為（看到 video_id 就整包 skip）會讓「已有逐字稿、只缺摘要」永遠補不進來。
+3. **`WinError 1326` 要 try/except**：跨機 UNC 在「沒有認證」時 `Path.is_dir()` 會**拋例外**
+   （不是回 False），排程跑會讓整批中斷。已修：該台記 `offline`、繼續下一台。
+4. 帳本：`working\harvest_ledger.json`（notebook）、`working\_outbox_published.json`（產出機）。
+   重跑應全部 `skipped_same`，這是驗收冪等的標準動作。
+
+### 驗收（每次改動後跑）
+```powershell
+python -X utf8 harvest_pc.py --machine pc1 --dry-run   # 期望全 [DRY]、0 conflict
+python -X utf8 harvest_pc.py --machine pc1             # 首次 harvested N
+python -X utf8 harvest_pc.py --machine pc1             # 再跑 skipped_same N（冪等）
+```
+`knowledge-base\_harvest_conflicts\<machine>\<tid>\` 出現東西就代表人要看，**不要**直接刪。
+
+### 不要做的事
+- ❌ 為了省事把 PC1 的 KB 整份複製到 notebook（只會兩邊分歧）
+- ❌ 給分享寫入權限，或讓 PC1 寫 notebook 的 KB
+- ❌ 手動刪 outbox／帳本讓「看起來重收一次」（會失去冪等保證）
+- ❌ 用 `net use` 的 `pc1` 當使用者名稱（`pc1` 只是代號，實際是 `DESKTOP-NDLV9LI`）
