@@ -387,6 +387,11 @@ Clipping/
 - 補做缺報告：`python make_live_report.py --all`（已存在 .doc/.docx 會 SKIP）。
 - 日期來源：`.link.txt` 的 video_id → yt-dlp `extract_flat` 取 upload_date。
 - **Gemini 會偶發 503 UNAVAILABLE（高需求）**：`generate_content` 的 tenacity 重試仍可能耗盡而拋 `ServerError`，長批次請**包一層外層重試**（等待後重呼）。
+  **2026-11-06 已補（勿改回）**：`make_course_note._retry_llm()` 把每段 Gemini 呼叫包成
+  「內層 6 輪（等 30~150 秒）＋外層 3 輪（等 2~5 分鐘）」＝單段可容忍約 25 分鐘的 503；
+  筆記**逐段暫存**（`working\_note_parts\course\<title>\{來源:02d}_{段:02d}.md`），
+  中途失敗重跑不會重做已完成段落。`make_live_report.py` 原本**完全沒有重試**，已加 5 輪（30/60/120/180 秒）。
+  同日 PC1 有 7 筆 `note` 任務就是 503 撐爆內層而失敗（非下載問題），改完重排即可。
 
 ## 文件內嵌圖片 OCR 工作流（E，2026-10-12）
 

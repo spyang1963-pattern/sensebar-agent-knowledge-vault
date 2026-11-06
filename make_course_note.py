@@ -136,6 +136,37 @@ def _gemini_call(client, system: str, user: str, max_tokens: int):
     raise last if last else RuntimeError("gemini retry exhausted")
 
 
+# 外層重試：內層 _gemini_call 只容忍約 7.5 分鐘的 503（6 輪、等待 30~150 秒）。
+# 2026-11-06 PC1 有 7 筆 note 任務在尖峰時段 503 UNAVAILABLE 撐過內層後整個失敗，
+# 因此再加一層（3 輪、輪間等 2~5 分鐘）：單段最多容忍約 25 分鐘的模型過載。
+LLM_OUTER_ROUNDS = 3
+LLM_OUTER_WAIT = (120, 300)
+LLM_RETRYABLE = ("503", "429", "RESOURCE_EXHAUSTED", "UNAVAILABLE", "overloaded", "high demand")
+
+
+def _retry_llm(fn, label="", progress=None, rounds=LLM_OUTER_ROUNDS):
+    """把一次 Gemini 呼叫包成「內層 6 輪 + 外層 3 輪」；非暫時性錯誤立刻拋出。"""
+    import time as _t
+    last = None
+    for r in range(rounds):
+        try:
+            return fn()
+        except Exception as e:
+            last = e
+            msg = str(e)
+            if not any(t in msg for t in LLM_RETRYABLE) or r == rounds - 1:
+                raise
+            wait = LLM_OUTER_WAIT[min(r, len(LLM_OUTER_WAIT) - 1)]
+            if progress:
+                try:
+                    progress(f"            ⚠ {label} 暫時失敗（503/429），等 {wait} 秒後重試"
+                             f"（第 {r + 2}/{rounds} 輪）")
+                except Exception:
+                    pass
+            _t.sleep(wait)
+    raise last if last else RuntimeError("llm retry exhausted")
+
+
 FONT = "華康仿宋體W6"   # 使用者確認的字型（2026-10-04）
 BASE_SIZE = 12
 HEADING_PT = 12                  # 標題字號（維持與正文相同，靠粗體+編號區分）
@@ -392,7 +423,18 @@ def generate_note(title, md_sources, out_dir, template=None, chunk_chars=0,
         for k, seg in enumerate(segs):
             if len(segs) > 1:
                 _p(f"          - 第 {k+1}/{len(segs)} 段（{len(seg):,} 字）...")
-            notes.append(gemini_note(seg, api_key))
+            # 逐段暫存：長逐字稿跑到第 3 段才 503 時，重跑不會把前 2 段重做一次
+            seg_cache = parts_dir / f"{i:02d}_{k:02d}.md"
+            if seg_cache.exists():
+                got = seg_cache.read_text(encoding="utf-8", errors="replace").strip()
+                if got:
+                    _p(f"            · 第 {k+1} 段載入暫存（{len(got):,} 字元）")
+                    notes.append(got)
+                    continue
+            got = _retry_llm(lambda s=seg: gemini_note(s, api_key),
+                             label=f"{base} 第 {k+1}/{len(segs)} 段", progress=_p)
+            seg_cache.write_text(got, encoding="utf-8")
+            notes.append(got)
         note = "\n\n".join(x for x in notes if x.strip())
         part.write_text(base + "\n" + note, encoding="utf-8")
         chapters.append((base, note))
@@ -528,7 +570,9 @@ def generate_summary(title, md_sources, out_dir, template=None, chunk_chars=8000
             else:
                 if len(segs) > 1:
                     _p(f"          - 第 {k+1}/{len(segs)} 段（{len(seg):,} 字）...")
-                body_sum = gemini_summary(seg, api_key)
+                body_sum = _retry_llm(lambda s=seg: gemini_summary(s, api_key),
+                                      label=f"{Path(mdp).name} 第 {k+1}/{len(segs)} 段",
+                                      progress=_p)
                 part.write_text(Path(mdp).name + f" #{k+1}\n" + body_sum, encoding="utf-8")
             if body_sum.strip():
                 all_parts.append(body_sum.strip())
@@ -541,7 +585,8 @@ def generate_summary(title, md_sources, out_dir, template=None, chunk_chars=8000
     # 多段／多來源時，合併收斂成單一份（去重、整併個股、標題不重複）
     if len(all_parts) > 1:
         _p(f"        → 合併收斂 {len(all_parts)} 段摘要（去重、整併個股）...")
-        merged_body = gemini_summary_merge("\n\n".join(all_parts), api_key)
+        merged_body = _retry_llm(lambda: gemini_summary_merge("\n\n".join(all_parts), api_key),
+                                 label="摘要合併", progress=_p)
         body = merged_body.strip() if merged_body.strip() else "\n\n".join(all_parts)
         _p(f"        ✓ 合併完成（{len(body):,} 字元）")
     else:

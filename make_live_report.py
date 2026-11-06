@@ -142,13 +142,27 @@ def ai_summarize(md_path: Path, video_id: str, url: str, api_key: str) -> str:
 """
     from google import genai
     from google.genai import types
+    import time as _t
     client = genai.Client(api_key=api_key)
-    resp = client.models.generate_content(
-        model="gemini-3.5-flash-lite",
-        contents=f"{system}\n\n---\n\n{user}",
-        config=types.GenerateContentConfig(temperature=0.3),
-    )
-    return (resp.text or "").strip()
+    # Gemini 3.5 flash-lite 在尖峰時偶發 503 UNAVAILABLE（AGENTS.md 已記過），
+    # 原本只呼叫一次 → 整份直播報告失敗。改成 5 輪、等待遞增（30/60/120/180 秒）。
+    last = None
+    for attempt in range(5):
+        try:
+            resp = client.models.generate_content(
+                model="gemini-3.5-flash-lite",
+                contents=f"{system}\n\n---\n\n{user}",
+                config=types.GenerateContentConfig(temperature=0.3),
+            )
+            return (resp.text or "").strip()
+        except Exception as e:
+            msg = str(e)
+            if not any(t in msg for t in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "overloaded")):
+                raise
+            last = e
+            if attempt < 4:
+                _t.sleep((30, 60, 120, 180)[attempt])
+    raise last if last else RuntimeError("gemini retry exhausted")
 
 
 def build_docx(markdown: str, out_path: Path, title: str):
