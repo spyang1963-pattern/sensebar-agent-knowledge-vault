@@ -592,8 +592,9 @@ yt-dlp --simulate --no-warnings "https://www.youtube.com/watch?v=<VIDEO_ID>"
 - 限制：對方設成私人或已刪除 → **cookies 也救不回來**；會員專屬 → 該帳號必須真的有訂閱。
 
 ### 不要做
-- ❌ 明知 Private 還一直 `--retry-failed`（每支燒 14 秒＋把失敗統計弄髒）；先確認能否存取，不行就把任務標成
-  `cancelled`（或留著別重排）。
+- ❌ 明知 Private 還一直 `--retry-failed`（每支燒 14 秒＋把失敗統計弄髒）；先確認能否存取，不行就用
+  `python -X utf8 worker.py --cancel-failed` 標成 `cancelled`（GUI 顯示「已放棄」，保留 `last_error` 供查）。
+  之後若拿到 cookies 想復活：`python -X utf8 worker.py --retry-failed --retry-cancelled`。
 - ❌ 把 `cookies.txt` commit／放進 `shared\`（等於把自己的 YouTube 帳號送給每台機器）。
 
 
