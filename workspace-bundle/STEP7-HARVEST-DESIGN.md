@@ -1,7 +1,8 @@
 # Step 7 — 單向收割架構（設計稿）
 
-> 狀態：**設計完成、尚未實作**（2026-11-05）
-> 動手時機：PC3 遷移完成後（PC3 是第三個產出機，收割器要先能吃三台）
+> 狀態：**設計完成；核心程式已於 2026-11-06 落地**（`publish_outbox.py` 產出端、
+> `harvest_pc.py` 收割端），尚未接排程、尚未在實機三台跑過完整一輪
+> 動手時機：PC1/PC2 的 KB 與 Obsidian 連結完成後（交辦文件：`PC1-AGENT-BRIEF.md`）
 > 相關：`HANDOFF-3MACHINE-DEPLOY.md` Step 7
 
 ---

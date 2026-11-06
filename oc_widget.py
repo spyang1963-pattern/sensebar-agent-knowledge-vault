@@ -6,7 +6,8 @@ oc_widget.py — OpenCode 額度常駐小窗（零 token 成本）
 一個小小的置頂視窗，每 60 秒自己抓一次數字：
 
   Go   ：GET https://opencode.ai/inference/go/v1/usage（官方值，純 HTTP）
-  免費 ：本機 opencode.db 估算「免費池日」累計（08:55 換日）+ 5h 參考值
+  免費 ：本機 opencode.db 估算「免費池日」累計（08:01 換日，伺服器宣告值會變）
+         + 5h 滾動窗（now-5h，不隨換日重算）
 
 **完全不經過模型**，不送任何 prompt、不佔任何額度、不花錢。
 關掉視窗就停止。
@@ -156,7 +157,8 @@ class Widget:
             self.win_lbl.config(
                 text=f"5h {used5}/{f['limit_5h']}（{win_pct:.0f}%）", fg=win_color)
 
-            note = f"{f['day_reset_at']} 換日 · 下次 {f['next_reset']}"
+            note = f"{f['day_reset_at']} 換日（伺服器宣告，會變動）· 下次 {f['next_reset']}"
+            note += f"\n5h 為滾動窗（不隨換日重算）"
             note += f"\n5h 色階：黃 {WIN_WARN_AT}（60%）／紅 {WIN_BAD_AT}（80%）"
             if alert_at:
                 note += f"\n日警戒線 {alert_at} 次（上次撞牆日累計 × 0.9）"

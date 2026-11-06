@@ -22,9 +22,11 @@ oc_usage.py — 查 OpenCode 額度（免費模型 + Go 付費）
       11-06 03:59 撞牆時 5h 只有 139 次、日累計 330（連三次都是 5h 沒滿就爆）
       → 5h 解釋不了，另有一道較高的閘門。
       日累計可以超過 200 沒撞牆（11-03 當日 264 次、5h 最高僅 133）。
-   換日時間：使用者實測為**本機 08:55**（2026-11-04 21:43 被拒 → 隔日 09:47 恢復；
-   2026-11-06 03:59 被拒 → 當日 08:13 恢復，4.2h 就回來），
-   可用 `FREE_DAY_RESET_H/M` 或 `--reset-at 08:55` 調整。
+   換日時間：**由伺服器宣告、會變動**，本機只看得到「reset at HH:MM」。
+   實測宣告 08:55（11-04）→ 08:01（11-06），但實際恢復點 09:47／08:13 不一，
+   代表伺服器是滾動補回、宣告時間只是估算。預設取最近一次宣告值 **08:01**，
+   可用 `FREE_DAY_RESET_H/M`、`--reset-at` 或環境變數 `OC_FREE_RESET` 覆寫。
+   **5h 窗不隨換日重算**：它永遠是「現在往前 5 小時」的滾動窗，由 DB timestamp 計算。
    兩種撞牆訊息：`You've used today's free messages. They reset at HH:MM`（真額度）與
    `Free usage limit reached`（本機 log 只看得到後者，含暫時性）。
 
@@ -61,10 +63,13 @@ GO_USAGE_URL = "https://opencode.ai/inference/go/v1/usage"
 FREE_HINTS = ("-free", "big-pickle", "pulse-alpha", "beam-free", "flint-40b",
               "mimo-", "nemotron", "glm-5.3-flash-free", "deepseek-v4.1-flash-free")
 
-# 免費池換日時間（本機時間）。實測：2026-11-04 21:43 被拒，訊息「reset at 08:55」，
-# 隔日 09:47 恢復。可用 CLI --reset-at 覆寫。
+# 免費池換日時間（本機時間）。由伺服器宣告、**會變動**：
+#   2026-11-04 21:43 被拒 → 訊息「reset at 08:55」，隔日 09:47 才恢復
+#   2026-11-06 03:59 被拒 → 訊息「reset at 上午8:01」，當日 08:13 恢復
+# 宣告值只是估算（真正是滾動補回），故預設用最近一次看到的 08:01。
+# 覆寫順序：--reset-at > 環境變數 OC_FREE_RESET > 這裡。
 FREE_DAY_RESET_H = 8
-FREE_DAY_RESET_M = 55
+FREE_DAY_RESET_M = 1
 
 # 5h 滾動窗的觀測上限。2026-10-23 改制後：沒有任何一次「成功的」5h 窗超過 233，
 # 三次撞牆都落在 205~232 → 5h/200 是真的，與日額度並存。
@@ -159,7 +164,10 @@ def last_hits(log, n):
 
 
 def free_day_start(now=None, reset_h=FREE_DAY_RESET_H, reset_m=FREE_DAY_RESET_M):
-    """目前「免費池日」的起點（本機時間，預設 08:55 換日）。"""
+    """目前「免費池日」的起點（本機時間，預設 08:01 換日）。
+
+    注意：5h 窗**不**走這個函式，它是獨立的滾動窗（now - 5h）。
+    """
     now = now or dt.datetime.now().astimezone()
     if now.tzinfo is None:
         now = now.astimezone()
@@ -199,8 +207,10 @@ def main():
     ap = argparse.ArgumentParser(description="OpenCode 額度查詢（免費估算 + Go 官方）")
     ap.add_argument("--limit", type=int, default=200, help="（舊）免費視窗上限，僅供相容")
     ap.add_argument("--window", type=float, default=5, help="5 小時參考視窗（預設 5）")
-    ap.add_argument("--reset-at", default=f"{FREE_DAY_RESET_H:02d}:{FREE_DAY_RESET_M:02d}",
-                    help="免費池換日時間（本機，預設 08:55）")
+    ap.add_argument("--reset-at",
+                    default=os.environ.get("OC_FREE_RESET")
+                    or f"{FREE_DAY_RESET_H:02d}:{FREE_DAY_RESET_M:02d}",
+                    help="免費池換日時間（本機，預設 08:01；伺服器宣告值會變，可用 OC_FREE_RESET 覆寫）")
     ap.add_argument("--log", type=int, default=5, help="列出最近 N 筆撞牆紀錄")
     ap.add_argument("--full", action="store_true", help="顯示明細")
     ap.add_argument("--go-only", action="store_true", help="只看 Go（零成本）")
