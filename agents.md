@@ -370,9 +370,30 @@ Clipping/
 - 輸入單一影片／播放清單／頻道網址皆可（`channel_watcher.expand_youtube_entries()` 解析；「最多處理支數」空白＝全部）。
 - 解析後先做 **video_id 精確去重**（`channel_watcher.kb_video_index()` 掃 KB ＋ 本機 pending/processing 任務），已在知識庫或已有待處理任務的支會略過並回報數量。
 - 每支寫成 `type="youtube"` 任務（`task_status.json` ＋ `shared/tasks/task_{tid}.json`），由 `worker.py` 領取；`worker.process_youtube_task()` 依序處理：有官方字幕→下載字幕→KB；無字幕→下載影片＋`run_pipeline.py --skip-cut`→KB；再依旗標建立並內嵌執行 note／summary 任務。
-- 任務欄位：`video_id`、`title`、`kb_subdir`（預設 `youtube-clips`）、`harvest_to_kb`、`auto_note`、`auto_summary`、`burn_subs`、`assigned_to`（pc1/pc2/notebook，未填＝任一 worker 可領）。
+- 任務欄位：`video_id`、`title`、`kb_subdir`（預設 `youtube-clips`）、`harvest_to_kb`、`auto_note`、`auto_summary`、`burn_subs`、`assigned_to`（pc1/pc2/notebook，未填＝任一 worker 可領）、**`source_url`（2026-11-06 新增，記來源網址）**。
 - **陷阱**：`kb_video_index(refresh=True)` 首次約 1 分鐘（已放背景執行，對話框會顯示「正在比對知識庫」）；GUI 是長駐程序，**改完必須關閉重開**才會載入新碼，否則按「建立」仍是舊行為（看起來像沒作用、任務清單沒訊息）。
 - 舊的 `channel_watcher.process_youtube_url()` 仍保留（上限 5 支、供手動呼叫），但 GUI 已不使用。
+
+### 用命令列建立 YouTube 任務：`queue_youtube.py`（2026-11-06）
+
+GUI 只能在本機按，而且**以前不記來源網址**（17 筆任務失敗後查不出是哪份清單展開的）。改用這支可重複、可稽核：
+
+```powershell
+python -X utf8 queue_youtube.py --url "https://www.youtube.com/playlist?list=XXXX" --dry-run
+python -X utf8 queue_youtube.py --url "..."                       # 含筆記＋摘要（預設）
+python -X utf8 queue_youtube.py --url "..." --no-note --no-summary
+python -X utf8 queue_youtube.py --url "..." --limit 5 --assigned-to pc1
+python -X utf8 queue_youtube.py --url "..." --include-failed      # 連 failed 的一起重排
+```
+
+- 去重規則與 GUI 相同：**已在 KB（任一目錄）→ 略過**、pending/processing/assigned → 略過；
+  **failed 預設也略過**（避免把「私人影片」那種永遠失敗的重建一次），要重跑用 `--include-failed`
+  或 `worker.py --retry-failed`。
+- 每筆任務寫 `source_url`，並在 **`logs\youtube_imports.log`** 留一行
+  （時間／來源／展開數／建立數／已在KB／重複／failed略過／新任務 id），GUI 匯入也寫同一個檔。
+- 建立後跑 `python -X utf8 worker.py`；**GUI 是長駐程序，看不到命令列建的任務時先 F5／重開**。
+- 配額提醒：`auto_note`／`auto_summary` 共用 `.note_quota.json` 每日 **20 筆**，一次排 40+ 支
+  會自動跨日續補（不是壞掉，看 `knowledge-base\.note_quota_log.tsv`）；轉錄（Groq）與下載不受此限。
 
 ## channel_watcher 頻道自動監控（2026-09-23 更新）
 
