@@ -265,13 +265,21 @@ def main():
             counts["offline"] += 1
             continue
         log(f"\n[{machine}] {root}")
-        if not root.is_dir():
-            log("  offline（連不到，下次再試）")
+        try:
+            if not root.is_dir():
+                log("  offline（連不到，下次再試）")
+                counts["offline"] += 1
+                continue
+            pkgs = sorted(p for p in root.iterdir() if p.is_dir())
+        except OSError as e:
+            # 跨機 UNC 在「沒有認證」時會拋 WinError 1326 而不是回 False，
+            # 排程跑的時候不能因此中斷整批（pc1 收完、pc2 沒設帳號就會這樣）
+            log(f"  offline（{e.__class__.__name__}: {e}）")
             counts["offline"] += 1
             continue
 
-        for pkg in sorted(root.iterdir()):
-            if not pkg.is_dir() or not (pkg / "manifest.json").exists():
+        for pkg in pkgs:
+            if not (pkg / "manifest.json").exists():
                 continue  # 還沒寫好 manifest
             res, msg = harvest_one(pkg, machine, kb_root, ledger, index, args.dry_run)
             counts[res] = counts.get(res, 0) + 1
