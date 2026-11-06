@@ -1254,7 +1254,7 @@ def recover_stuck_tasks(timeout_minutes=30):
     return recovered
 
 
-def reset_failed_tasks(only_id=None):
+def reset_failed_tasks(only_id=None, include_cancelled=False):
     """把 failed 任務重置回 pending，回傳重置的 task id 清單。
 
     狀態的唯一來源是 `shared/tasks/task_{tid}.json`（`scheduler.sync_shared_to_local()`
@@ -1278,7 +1278,8 @@ def reset_failed_tasks(only_id=None):
             except Exception:
                 continue
             ti = task.get("task_info") or {}
-            if (ti.get("status") or task.get("status")) != "failed":
+            st = ti.get("status") or task.get("status")
+            if st != "failed" and not (include_cancelled and st == "cancelled"):
                 continue
             ti["status"] = "pending"
             ti["retry_count"] = 0
@@ -1298,7 +1299,7 @@ def reset_failed_tasks(only_id=None):
     tasks = data.get("tasks", {}) or {}
     local_reset = []
     for tid, info in tasks.items():
-        if info.get("status") != "failed":
+        if info.get("status") != "failed" and not (include_cancelled and info.get("status") == "cancelled"):
             continue
         if only_id and str(tid) != str(only_id):
             continue
@@ -1319,10 +1320,75 @@ def reset_failed_tasks(only_id=None):
     return shared_reset or local_reset
 
 
+def cancel_failed_tasks(ids=None, reason="人工放棄（私人影片／無存取權）"):
+    """把 failed 任務標成 cancelled（不再被 --retry-failed 撈出來）。
+
+    為什麼要有：YouTube 私人影片永遠抓不到，留在 failed 只會被重排、每次燒時間，
+    還會讓「失敗數」看起來像系統壞掉。cancelled 是「已判定不做」，不是「還沒成功」。
+    同樣要 shared ＋ 本機 mirror 兩邊都寫（shared 才是唯一來源）。
+    """
+    want = {str(x).strip() for x in (ids or []) if str(x).strip()}
+    shared_dir = os.path.join(SHARED_ROOT, "tasks")
+    done = []
+    if os.path.isdir(shared_dir):
+        for fname in sorted(os.listdir(shared_dir)):
+            if not (fname.startswith("task_") and fname.endswith(".json")):
+                continue
+            tid = fname[5:-5]
+            if want and tid not in want:
+                continue
+            path = os.path.join(shared_dir, fname)
+            try:
+                with open(path, "r", encoding="utf-8-sig") as f:
+                    task = json.load(f)
+            except Exception:
+                continue
+            ti = task.get("task_info") or {}
+            if (ti.get("status") or task.get("status")) != "failed":
+                continue
+            ti["status"] = "cancelled"
+            ti["cancelled_at"] = datetime.now().isoformat()
+            ti["cancel_reason"] = reason
+            ti["updated_at"] = ti["cancelled_at"]
+            task["task_info"] = ti
+            task["status"] = "cancelled"
+            task["last_updated"] = ti["cancelled_at"]
+            task["updated_by"] = MACHINE
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(task, f, ensure_ascii=False, indent=2)
+            os.replace(tmp, path)
+            done.append(tid)
+
+    data = load_task_status()
+    tasks = data.get("tasks", {}) or {}
+    for tid, info in tasks.items():
+        if info.get("status") != "failed":
+            continue
+        if want and str(tid) not in want:
+            continue
+        info["status"] = "cancelled"
+        info["cancelled_at"] = datetime.now().isoformat()
+        info["cancel_reason"] = reason
+        info["updated_at"] = info["cancelled_at"]
+        done.append(str(tid))
+    if done:
+        save_task_status(data)
+    return sorted(set(done), key=lambda x: int(x) if x.isdigit() else 0)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Worker")
     parser.add_argument("--once", action="store_true", help="只處理一個任務")
     parser.add_argument("--retry-failed", action="store_true", help="重試失敗的")
+    parser.add_argument("--retry-cancelled", action="store_true",
+                        help="搭配 --retry-failed：連 cancelled 的一起重排（拿到 cookies 之後用）")
+    parser.add_argument("--cancel-failed", action="store_true",
+                        help="把 failed 任務標為 cancelled（私人影片等永遠抓不到的，不再被重排）")
+    parser.add_argument("--ids", default="",
+                        help="搭配 --cancel-failed：只處理這些 id（逗號分隔，例：192,193,208）")
+    parser.add_argument("--cancel-reason", default="人工放棄（私人影片／無存取權）",
+                        help="搭配 --cancel-failed：寫進任務的放棄原因")
     parser.add_argument("--id", help="指定任務 ID")
     args = parser.parse_args()
     
@@ -1331,13 +1397,25 @@ def main():
 
     # --retry-failed：把 failed 任務重置回 pending（真的改狀態，不是只喊口號）
     if args.retry_failed:
-        reset_ids = reset_failed_tasks(args.id)
+        reset_ids = reset_failed_tasks(args.id, include_cancelled=args.retry_cancelled)
         if reset_ids:
             log(f"  [重試] 已把 {len(reset_ids)} 筆 failed 任務重置為 pending：{', '.join(reset_ids[:20])}"
                 + (" …" if len(reset_ids) > 20 else ""))
         else:
             log("  [重試] 沒有 failed 任務可重排")
     
+    # --cancel-failed：把 failed 任務標成 cancelled（私人影片那種永遠抓不到的）
+    if args.cancel_failed:
+        ids = [x for x in re.split(r"[,\s]+", args.ids or "") if x.strip()]
+        cancelled = cancel_failed_tasks(ids or None, reason=args.cancel_reason)
+        if cancelled:
+            log(f"  [放棄] 已把 {len(cancelled)} 筆 failed 任務標為 cancelled："
+                f"{', '.join(cancelled[:20])}" + (" …" if len(cancelled) > 20 else ""))
+        else:
+            log("  [放棄] 沒有符合條件的 failed 任務")
+        if not args.retry_failed:
+            return
+
     # 啟動時修復卡住的 processing 任務
     recovered = recover_stuck_tasks(timeout_minutes=30)
     if recovered > 0:

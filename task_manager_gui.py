@@ -676,6 +676,8 @@ class TaskManagerGUI:
                     "web": {"pending": "待處理", "processing": "處理中", "done": "已完成", "failed": "失敗", "paused": "等待額度"},
                 }.get(task_type, {}).get(
                     status, "已完成" if status == "completed" else status)
+                if status == "cancelled":
+                    status_display = "已放棄"
 
                 # 所有型別：讀取副程序進度（階段 / 已執行時間 / OCR 頁數）
                 progress_note = ""
