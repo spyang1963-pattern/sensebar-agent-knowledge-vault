@@ -55,6 +55,9 @@
     `oc_usage.py --reset-at 08:01`（或環境變數 `OC_FREE_RESET`）可調換日時間。
   - 實務規則：**兩個數字任一個偏高就切 `opencode-go/*`**（5h 逼近 200、或日累計破 300）；
     長任務（轉錄、整批修檔、多工具 agent）一開始就用 Go，不要拿免費池賭。
+  - **撞牆接手流程與記錄欄位：`workspace-bundle/HANDOFF-QUOTA-TAKEOVER.md`**
+    （撞牆當下先存 `oc_usage.py --json` 快照再切 `opencode-go/deepseek-v4.1-flash`；
+    恢復後的「首次成功」只算上界，5h 是否為獨立閘門用該檔第 3 節的判讀表回算）。
 - 免費數字是本機估算（DB assistant steps ≈ 請求數）；**Go 是官方精確值**：
   `GET https://opencode.ai/inference/go/v1/usage`（Bearer = auth.json 的 opencode-go key，
   純 HTTP、零 token），回 `rolling/weekly/monthly {percent,status,resetsAt}`。
@@ -289,6 +292,9 @@ watched_channels:
    - 格式：`[YouTube](https://www.youtube.com/watch?v=VIDEO_ID)`
    - 不是：`https://www.youtube.com/watch?v=VIDEO_ID`
    - 不是：`<https://https://www.youtube.com/watch?v=VIDEO_ID>`
+   - 批次修正：`python -X utf8 fix_youtube_links.py --apply`（預設只預覽；逐字稿把裸 URL 改成連結，
+     摘要／課程筆記在 H1 後補 `> 原始影片：[YouTube](...)`；可重跑，已改的會跳過）。
+     **收割後建議跑一次**（產出機的 KB 不會自動改，notebook 正本才要合規）。
 
 4. **新影片加字幕**
    - 自動化：跑 `python auto_update.py`（會自動處理）
