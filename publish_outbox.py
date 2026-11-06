@@ -34,6 +34,7 @@ import os
 import re
 import shutil
 import sys
+import time
 from pathlib import Path
 
 try:
@@ -54,6 +55,9 @@ EXTS = {".md", ".srt", ".txt", ".docx"}
 
 # 任務型別 → 是否有 KB 產出可收割
 HARVESTABLE = {"youtube", "note", "summary", "video", "subtitle", "audio", "document", "web"}
+
+# 檔案「靜止」幾秒才允許打包（避免把正在寫入的檔案做成半成品送進 outbox）
+SETTLE_SECONDS = int(os.environ.get("OC_PUBLISH_SETTLE", "120"))
 
 # 同一支影片的 youtube / note / summary 任務會指向同一個 stem，只打包一次
 SEEN_STEMS = set()
@@ -253,6 +257,13 @@ def publish_one(tid, info, out_root, kb_root, ledger, dry_run=False, force=False
     files = collect_files(md_path)
     if not files:
         return f"#{tid} 條目存在但沒有可收割的檔案"
+
+    # 2026-11-06：worker 正在跑長批次（44 支影片）時，22:50 的排程可能剛好撞上「檔案寫到一半」。
+    # 半成品一旦進 outbox，收割後本機會保留那份內容（同家族不覆蓋），錯的會留下來。
+    # 因此「最近 SETTLE_SECONDS 內還有變動」的條目先跳過，下一輪再打包（成本幾乎為零）。
+    newest = max(f.stat().st_mtime for f in files)
+    if not force and (time.time() - newest) < SETTLE_SECONDS:
+        return f"#{tid} 剛寫入（{int(time.time() - newest)} 秒前），本輪先不打包"
 
     if md_path.stem in SEEN_STEMS:
         return "skip"  # 同支影片的另一筆任務已打包
