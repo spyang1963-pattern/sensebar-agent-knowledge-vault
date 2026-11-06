@@ -584,7 +584,11 @@ PC 永不寫 notebook 的 KB；notebook 只讀 PC。設計稿：`workspace-bundl
    舊行為（看到 video_id 就整包 skip）會讓「已有逐字稿、只缺摘要」永遠補不進來。
 3. **`WinError 1326` 要 try/except**：跨機 UNC 在「沒有認證」時 `Path.is_dir()` 會**拋例外**
    （不是回 False），排程跑會讓整批中斷。已修：該台記 `offline`、繼續下一台。
-4. 帳本：`working\harvest_ledger.json`（notebook）、`working\_outbox_published.json`（產出機）。
+4. **「包數」≠「任務數」**：`publish_outbox.py` 以 **stem／video_id** 為 key、指紋變了就原地重包，
+   包目錄沿用**最早**那個任務的 `task_id`。實例（2026-11-06）：note #96 的成品併進
+   `outbox\54`（同一支影片的 youtube 任務），所以補 7 篇筆記後**只多 6 個目錄**、
+   完整包 58→**64**（不是 65）。manifest 的 `created_at` 換新**不算衝突**，收割端只看檔案。
+5. 帳本：`working\harvest_ledger.json`（notebook）、`working\_outbox_published.json`（產出機）。
    重跑應全部 `skipped_same`，這是驗收冪等的標準動作。
 
 ### 驗收（每次改動後跑）
