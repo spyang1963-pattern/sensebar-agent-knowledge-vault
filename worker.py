@@ -1377,6 +1377,67 @@ def cancel_failed_tasks(ids=None, reason="人工放棄（私人影片／無存�
     return sorted(set(done), key=lambda x: int(x) if x.isdigit() else 0)
 
 
+def _pid_alive(pid):
+    """Windows：PID 還活著嗎（不開新 console、不依賴 psutil）。"""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        h = ctypes.windll.kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+        if not h:
+            return False
+        code = wintypes.DWORD()
+        ok = ctypes.windll.kernel32.GetExitCodeProcess(h, ctypes.byref(code))
+        ctypes.windll.kernel32.CloseHandle(h)
+        return bool(ok) and code.value == STILL_ACTIVE
+    except Exception:
+        return False
+
+
+WORKER_LOCK = Path(PROJECT_ROOT) / "working" / f"_worker_{MACHINE}.lock"
+
+
+def acquire_worker_lock():
+    """同一台機器只允許一個 worker。
+
+    2026-11-06 實踩：GUI 的「可加入任務分配」會自己 spawn `worker.py --once`，
+    同時又從命令列開一個 worker → 兩個都讀到同一筆 pending（領任務不是原子操作），
+    結果同一支影片被兩個程序同時處理，其中一個被砍時產出全毀（#210）。
+    這裡用 PID 鎖擋掉：鎖存在且 PID 還活著就拒絕啟動；PID 已死視為殘留鎖，直接接手。
+    回傳 (ok, 說明)。
+    """
+    try:
+        WORKER_LOCK.parent.mkdir(parents=True, exist_ok=True)
+        if WORKER_LOCK.exists():
+            try:
+                info = json.loads(WORKER_LOCK.read_text(encoding="utf-8"))
+            except Exception:
+                info = {}
+            pid = info.get("pid")
+            if pid and int(pid) != os.getpid() and _pid_alive(pid):
+                return False, (f"已有 worker 在跑（PID {pid}，啟動於 {info.get('started_at', '?')}）"
+                               f"→ 同機不允許兩個，請先停掉它，或加 --allow-multi 覆寫")
+        WORKER_LOCK.write_text(json.dumps({
+            "pid": os.getpid(),
+            "machine": MACHINE,
+            "started_at": datetime.now().isoformat(),
+        }, ensure_ascii=False), encoding="utf-8")
+        return True, ""
+    except Exception as e:
+        return True, f"（鎖檔寫入失敗，照常啟動：{e}）"
+
+
+def release_worker_lock():
+    try:
+        info = json.loads(WORKER_LOCK.read_text(encoding="utf-8"))
+        if int(info.get("pid")) == os.getpid():
+            WORKER_LOCK.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
 def main():
     parser = argparse.ArgumentParser(description="Worker")
     parser.add_argument("--once", action="store_true", help="只處理一個任務")
@@ -1390,8 +1451,22 @@ def main():
     parser.add_argument("--cancel-reason", default="人工放棄（私人影片／無存取權）",
                         help="搭配 --cancel-failed：寫進任務的放棄原因")
     parser.add_argument("--id", help="指定任務 ID")
+    parser.add_argument("--allow-multi", action="store_true",
+                        help="允許同機同時跑多個 worker（預設會用 PID 鎖擋住，強烈不建議）")
     args = parser.parse_args()
-    
+
+    # 同機單一實例（GUI 的分配迴圈也會 spawn worker --once，不解鎖會互搶任務）
+    if not args.allow_multi:
+        ok, why = acquire_worker_lock()
+        if not ok:
+            log(f"[拒絕啟動] {why}")
+            return
+        try:
+            import atexit
+            atexit.register(release_worker_lock)
+        except Exception:
+            pass
+
     log(f"Worker 啟動 (機器: {MACHINE}, 角色: {get_machine_role()})")
     log(f"D 槽空間: {get_free_space_gb('D:\\'):.1f} GB")
 

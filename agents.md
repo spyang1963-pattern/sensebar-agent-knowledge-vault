@@ -392,6 +392,12 @@ python -X utf8 queue_youtube.py --url "..." --include-failed      # 連 failed �
 - 每筆任務寫 `source_url`，並在 **`logs\youtube_imports.log`** 留一行
   （時間／來源／展開數／建立數／已在KB／重複／failed略過／新任務 id），GUI 匯入也寫同一個檔。
 - 建立後跑 `python -X utf8 worker.py`；**GUI 是長駐程序，看不到命令列建的任務時先 F5／重開**。
+- **同機只能有一個 worker（2026-11-06 實踩）**：GUI 的「可加入任務分配」會自己 spawn
+  `worker.py --once`，若同時又從命令列開 worker，兩個會讀到同一筆 pending（**領任務不是原子操作**），
+  同一支影片被兩個程序處理，其中一個被砍就整支白跑（#210 實際發生）。
+  現在 `worker.py` 啟動會寫 `working\_worker_<machine>.lock`（含 PID），
+  偵測到「PID 還活著」直接拒絕啟動並提示；PID 已死的殘留鎖會自動接手。
+  真的要同時跑多個才加 `--allow-multi`（幾乎不該用）。
 - 配額提醒：`auto_note`／`auto_summary` 共用 `.note_quota.json` 每日 **20 筆**，一次排 40+ 支
   會自動跨日續補（不是壞掉，看 `knowledge-base\.note_quota_log.tsv`）；轉錄（Groq）與下載不受此限。
 
