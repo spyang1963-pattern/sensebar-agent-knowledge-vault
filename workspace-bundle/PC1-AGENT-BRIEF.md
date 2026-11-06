@@ -53,14 +53,20 @@ python -X utf8 -c "import pathlib; kb=pathlib.Path('knowledge-base'); print('md'
 - 數字是 0 或很小 → 先確認任務是真的有完成（`shared\tasks\task_*.json` 的 `status`），
   不要急著重跑（重跑會重送 Whisper／Gemini，浪費額度）。
 
-### A2. 用 KB 查詢工具驗證「讀得到」
+### A2. 驗證「讀得到」（用檔案工具，不要用 kb_query）
+
+`knowledge-base\kb_query.py` **只給 `knowledge-base\traditional-kline` 這個主題庫用**；
+PC1 沒有那個目錄，跑它會直接 `[ERR] 知識庫目錄不存在`。那不是故障，也**不要**去建那個目錄。
 
 ```powershell
-python -X utf8 knowledge-base\kb_query.py --list
-python -X utf8 knowledge-base\kb_query.py "關鍵字" --srt "output\<課程>\字幕.srt" --video "output\<課程>\剪輯後.mp4"
+# 最新的 10 個條目（確認有你最近產出的東西）
+python -X utf8 -c "import pathlib,datetime; d=pathlib.Path('knowledge-base/youtube-clips'); fs=sorted(d.glob('*.md'), key=lambda p:p.stat().st_mtime, reverse=True)[:10]; [print(datetime.datetime.fromtimestamp(p.stat().st_mtime).strftime('%Y-%m-%d %H:%M'), p.name) for p in fs]"
+
+# 隨機挑一個念前 12 行（確認不是亂碼、有 YouTube 連結）
+python -X utf8 -c "import pathlib; d=pathlib.Path('knowledge-base/youtube-clips'); p=max(d.glob('*.md'), key=lambda x:x.stat().st_mtime); print(p); print(''.join(p.open(encoding='utf-8').readlines()[:12]))"
 ```
 
-驗收：`--list` 列得出主題、關鍵字查詢有結果。
+驗收：看得到清單、內文是正常中文、有 `[YouTube](https://...)` 這種可點連結。
 
 ### A3. 不要做的事
 
@@ -213,7 +219,7 @@ schtasks /Create /TN "PublishOutboxDaily" /TR "cmd /c cd /d D:\AI-Agent-Workspac
 
 ```
 【PC1 回報】
-A. KB        ：md __ / srt __ / docx __；kb_query --list 主題數 __；關鍵字測試 __（成功/失敗）
+A. KB        ：md __ / srt __ / docx __；youtube-clips 最新條目 __（日期/檔名）；內文檢查 __（正常/亂碼）
 B. Obsidian  ：vault = ______________；看到的 .md 數 __；搜尋測試 __（成功/失敗）
 C.1 outbox   ：dry-run 預計 __ 包；實際 __ 包；失敗 __ 筆（錯誤訊息：______）
 C.2 分享     ：已開（是/否）；Get-SmbShare 顯示 ______；本機 Test-Path ______
