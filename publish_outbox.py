@@ -21,6 +21,7 @@ notebook 端再用 `harvest_pc.py` 主動 pull 回去。
     python -X utf8 publish_outbox.py --dry-run       # 只印會做什麼，不寫任何檔
     python -X utf8 publish_outbox.py --force         # 忽略帳本，全部重打包
     python -X utf8 publish_outbox.py --outbox D:\\tmp\\outbox   # 測試用
+    set OC_OUTBOX_ROOT=\\\\NAS\\exchange\\pc1\\outbox          # NAS 上線後（或直接寫在 config）
 
 結束碼 = 失敗的任務數（沿用 smoke_test.py 慣例）。
 """
@@ -335,7 +336,13 @@ def main():
     ap.add_argument("--ledger", help="覆寫帳本路徑（測試用）")
     args = ap.parse_args()
 
-    out_root = Path(args.outbox) if args.outbox else SHARED_ROOT / config.MACHINE / "outbox"
+    if args.outbox:
+        out_root = Path(args.outbox)
+    elif getattr(config, "OUTBOX_ROOT", ""):
+        # NAS 上線後：OC_OUTBOX_ROOT=\\NAS\exchange\<machine>\outbox
+        out_root = Path(config.OUTBOX_ROOT)
+    else:
+        out_root = SHARED_ROOT / config.MACHINE / "outbox"
     kb_root = Path(args.kb) if args.kb else KB_ROOT
     ledger = {} if args.dry_run else (load_json(args.ledger or LEDGER, {}) or {})
     SEEN_STEMS.clear()

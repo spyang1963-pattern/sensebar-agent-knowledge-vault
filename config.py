@@ -53,6 +53,36 @@ TASK_STATUS_FILE = os.path.join(str(PROJECT_ROOT), "task_status.json")
 # 共用目錄（本機路徑）
 SHARED_ROOT = os.path.join(str(PROJECT_ROOT), "shared")
 
+# === 跨機收割通道（outbox）===
+# 刻意把「控制面」與「資料面」分開：
+#   控制面 = shared/tasks、task_status.json（worker／GUI 都是本機路徑，不可搬）
+#   資料面 = <machine>/outbox（收割用的成品包，可以搬到 NAS）
+# 產出機：publish 的目的地。留空＝shared/<machine>/outbox（現況）
+# NAS 上線後：$env:OC_OUTBOX_ROOT = "\\NAS\exchange\pc1\outbox"
+OUTBOX_ROOT = os.environ.get("OC_OUTBOX_ROOT", "").strip()
+
+
+def _env_json(name):
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except Exception:
+        return {}
+
+
+# 收割端：機器 -> outbox 根目錄覆寫（優先於 TAILSCALE_IPS 推導）
+# 例：$env:OC_OUTBOX_ROOTS = '{"pc1":"\\\\NAS\\exchange\\pc1\\outbox"}'
+OUTBOX_ROOTS = _env_json("OC_OUTBOX_ROOTS")
+
+# === NAS（Synology DS718+）預備 ===
+# 未上線前留空；nas_sync.py 讀這兩個值做檢查／影子複製
+#   OC_NAS_HOST=192.168.1.50        （ping／SMB 檢查用）
+#   OC_NAS_ROOT=\\192.168.1.50\exchange（交換區根目錄，底下放 <machine>/outbox）
+NAS_HOST = os.environ.get("OC_NAS_HOST", "").strip()
+NAS_ROOT = os.environ.get("OC_NAS_ROOT", "").strip()
+
 # 各機器路徑配置
 MACHINE_PATHS = {
     "notebook": {

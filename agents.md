@@ -732,3 +732,15 @@ python -X utf8 harvest_pc.py --machine pc1             # 再跑 skipped_same N�
 - ❌ 給分享寫入權限，或讓 PC1 寫 notebook 的 KB
 - ❌ 手動刪 outbox／帳本讓「看起來重收一次」（會失去冪等保證）
 - ❌ 用 `net use` 的 `pc1` 當使用者名稱（`pc1` 只是代號，實際是 `DESKTOP-NDLV9LI`）
+
+### NAS 預備（2026-11-07，尚未上線）
+
+計畫與切換步驟：**`workspace-bundle/NAS-PREP.md`**（Synology DS718+；定位＝備援＋交換區，不當執行機，SQLite 不放 NAS）。
+
+- **只搬資料面**：`outbox` 可以搬 NAS；`shared/tasks`、`task_status.json`（控制面）**永遠留本機**，worker／GUI／scheduler 都是本機路徑，搬了會分裂。
+- 掛鉤（未設定時行為完全不變）：
+  - `OC_OUTBOX_ROOT`＝產出機 publish 目的地（預設 `shared/<machine>/outbox`）
+  - `OC_OUTBOX_ROOTS`＝收割端 JSON 覆寫（預設用 `TAILSCALE_IPS` 推導）
+  - `OC_NAS_HOST`／`OC_NAS_ROOT`＝`nas_sync.py` 檢查用
+- 工具：`python -X utf8 nas_sync.py --check`（未設定回「預備狀態」rc=0）、`--mirror --verify`（影子複製；只複製不刪、manifest 最後寫、比大小／sha256 不比 mtime）。
+- 切換順序：Phase 1 影子（收割仍讀舊路徑）→ Phase 2 改 `OC_*` → 驗收 `harvest_pc.py --dry-run` 全 `skipped_same` → 才關 PC 的 SMB 分享。**Phase 2 後別立刻刪本機 outbox**。

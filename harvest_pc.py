@@ -86,6 +86,14 @@ def safe_rel(subdir):
 
 
 def machine_root(machine):
+    """outbox 根目錄。優先序：config.OUTBOX_ROOTS 覆寫 → Tailscale IP 推導。
+
+    覆寫用於 NAS 上線後（例：OC_OUTBOX_ROOTS={"pc1":"\\\\NAS\\exchange\\pc1\\outbox"}），
+    沒有設定時行為與舊版完全相同。
+    """
+    override = (getattr(config, "OUTBOX_ROOTS", None) or {}).get(machine)
+    if override:
+        return Path(override)
     ip = (config.TAILSCALE_IPS or {}).get(machine)
     if not ip:
         return None
