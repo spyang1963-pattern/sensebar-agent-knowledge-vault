@@ -193,3 +193,53 @@ python -X utf8 nas_sync.py --mirror --verify
 python -X utf8 harvest_pc.py --machine pc1 --dry-run
 python -X utf8 publish_outbox.py --dry-run
 ```
+
+---
+
+## 11. PC2 / NAS 準備順序（2026-11-08 定案）
+
+> 問題：額度、時間有限時，**PC2 和 NAS 哪個先準備？**
+> 答案：**NAS 先（架構優先），但硬體未到，所以現在只做 PC2 的 deno**；
+> **PC2 的 SMB 分享／憑證先不要做**（NAS 上線後就白工）。
+
+### 11.1 當下實測（2026-11-08 02:37，notebook 端唯讀）
+
+| 檢查 | 結果 | 意義 |
+|---|---|---|
+| `python -X utf8 nas_sync.py --check` | `OC_NAS_HOST`／`OC_NAS_ROOT` 未設定 | NAS 還沒上線，Phase 1~3 全部動不了 |
+| `Test-NetConnection 100.113.234.81 -Port 445` | **True** | PC2 開機、SMB 埠可達 |
+| `tailscale status` | `100.113.234.81 desktop-nl6va8t … active; direct` | Tailscale 正常，不是網路問題 |
+| `shared\pc2\status.json` | `tasks_completed: 0`、`last_seen: 2026-07-23` | **PC2 從建置到今天沒跑過任何任務** |
+| `shared\pc2\status\heartbeat.json` | `status: offline`、`pid: null`（2026-07-23 起） | PC2 端 worker 沒在跑 |
+| harvest 失敗原因 | `WinError 1326`（登入失敗） | notebook 沒有 PC2 的 SMB 認證 |
+
+### 11.2 為什麼架構上 NAS 該先
+
+1. **pc2／pc3 現在 offline 的病根，是「每台 PC 各自開 SMB ＋ 各自存憑證」這套交換設計**
+   （`WinError 1326`、pc3 沒 IP 都是同一類）。NAS 把交換層集中成一個點，
+   **這類問題整類消失**，而不是一台一台補。
+2. NAS 是**備援**；目前 outbox 只存在各 PC 本機磁碟，磁碟壞了就沒了。
+3. 但 **NAS 尚未上線**（Phase 0 的程式已完成：`OC_OUTBOX_ROOT`／`OC_OUTBOX_ROOTS`／
+   `nas_sync.py`，commit `7f22a49`），所以硬體到之前**什麼都不能驗**。
+
+### 11.3 因此的執行順序
+
+| 階段 | 做什麼 | 為什麼 |
+|---|---|---|
+| **現在**（NAS 未到） | PC2：安裝 **deno** → 跑 `smoke_test.py`（25 項） | 與 NAS 無關；沒有 deno，PC2 一下載 YouTube 就 403，會重演「66 支 14 秒全滅」 |
+| **現在** | ❌ 先不要：PC2 的 SMB 分享、`cmdkey` 憑證 | 若 NAS 上線，PC2 的 outbox 直接指 NAS，這 10 分鐘是白工 |
+| **現在** | ❌ 先不要：PC2 的 publish 排程 | 同上；等交換層定案再設一次 |
+| NAS 到貨 | Phase 1 影子：`nas_sync.py --mirror --verify`（收割仍讀舊路徑） | 零風險，可先跑一週觀察 |
+| Phase 2 | 設 `OC_OUTBOX_ROOT`（PC1／PC2）＋`OC_OUTBOX_ROOTS`（notebook）→ `harvest_pc.py --dry-run` 全 `skipped_same` | 驗收過才切；**切完不要立刻刪本機 outbox** |
+| 之後 | PC2：`OC_OUTBOX_ROOT` 指 NAS、設 publish 排程 → **先跑 1 支測試任務** | PC2 從未跑過任務，別直接放整批 |
+
+### 11.4 決策規則（一句話）
+
+- NAS **2~4 週內**會到 → 照上表，PC2 只裝 deno，**不要**碰 SMB／憑證。
+- NAS **延期或還沒採購** → 才回頭做 PC2 的 SMB 憑證，因為那時它是 PC2 產出被收割的唯一途徑。
+
+### 11.5 不要做
+
+- ❌ 看到 PC2 445 通就急著開分享＋存憑證（NAS 一到就作廢）。
+- ❌ 在 PC2 上直接放幾十支任務當「測試」（它 `tasks_completed: 0`，先 smoke test ＋ 1 支）。
+- ❌ 把 `shared\tasks` 或 `finance.db` 放上 NAS（控制面與 SQLite 都留本機）。
