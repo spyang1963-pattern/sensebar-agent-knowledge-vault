@@ -164,6 +164,10 @@ def last_hits(log, n):
     with open(log, "r", encoding="utf-8", errors="replace") as f:
         for line in f:
             if "Free usage limit reached" in line and "level=ERROR" in line:
+                # opencode.log 也會記下「我們自己跑的指令」（spawning process / command="..."）；
+                # 指令字串裡若剛好含 Free usage limit，會被誤判成撞牆（2026-11-08 實踩）。
+                if "spawning process" in line or 'command="' in line:
+                    continue
                 if "timestamp=" in line:
                     hits.append(line.split("timestamp=", 1)[1].split(" ", 1)[0])
     return hits[-n:]
