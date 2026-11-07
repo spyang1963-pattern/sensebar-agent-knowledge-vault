@@ -472,8 +472,15 @@ python -X utf8 queue_youtube.py --url "..." --include-failed      # 連 failed �
   python -X utf8 regen_summaries.py --ledger-date 2026-11-07
   python -X utf8 regen_summaries.py --video-id d_zRI9C58TQ,lYaZYnsIF9k
   python -X utf8 regen_summaries.py --stem "2025-05-11_社会撕扯感" --max 1
-  python -X utf8 regen_summaries.py --all --dry-run      # 整庫（預設跳過「今天已重生」的，避免重複燒額度）
+  python -X utf8 regen_summaries.py --all --dry-run      # 整庫（預設跳過「已是目前版本」的，避免重複燒額度）
+  python -X utf8 regen_summaries.py --all --if-shorter-than 600   # 只補偏薄的（<600 字元；缺摘要也算）
+  python -X utf8 regen_summaries.py --all --force        # 全部重做（含已標版本者）
   ```
+  **選取規則（2026-11-07 改版，勿改回看日期）**：~~用 `整理日期` 判斷「今天做過就跳過」~~ 會誤擋「當天凌晨用舊 prompt 產出的短摘要」（PC1 實際踩到 32 篇）。現在依序判斷：
+  1. 摘要內有 `> 摘要版本：v4`（`generate_summary` 自 v4 起寫入）→ 已是目前 prompt，跳過。
+  2. 沒有版本標記但「同一天產生且 ≥700 字元」→ 視為已是新版（v4 實測最短 819；v3 短版都 <600）。
+  3. `--if-shorter-than N`：現有摘要 ≥ N 字元就跳過；缺摘要一定納入。
+  4. `--force`：全部重做。
   產物直接覆寫 `{stem} 摘要.md/.docx`（檔名、H1 沿用 stem，不會產生重複條目）。**重生後要再跑一次 `fix_youtube_links.py --apply`**：新寫的摘要沒有 `> 原始影片：[YouTube](...)` 那行，補連結的動作是那支腳本做的（收割排程本來就會跑，手動重生時要自己補）。
   **2026-11-07 實跑**：44 支（本批哲學清單）全部成功、5.3 分鐘、0 失敗；摘要中位數 **308 → 1214 字元（4.0x）**，44 篇都拿到 5 個 B 組小節、0 重複小節、docx 同步重生。全庫仍有 87 篇舊摘要偏薄（<600 字元），要一致就 `--all`（約 15～20 分鐘）。
 - 收成報告：`harvest_report.py` 產「任務總覽＋失敗清單＋KB 待補課程筆記清單」（排除 `知識庫\金融交易` 老師語料；`--kb-only` 只看待補；輸出 `working\harvest_report_YYYY-MM-DD.md`）。
@@ -685,6 +692,19 @@ PC 永不寫 notebook 的 KB；notebook 只讀 PC。設計稿：`workspace-bundl
    完整包 58→**64**（不是 65）。manifest 的 `created_at` 換新**不算衝突**，收割端只看檔案。
 5. 帳本：`working\harvest_ledger.json`（notebook）、`working\_outbox_published.json`（產出機）。
    重跑應全部 `skipped_same`，這是驗收冪等的標準動作。
+
+### `--replace`：讓產出機版本覆蓋本機同名檔（2026-11-07）
+預設「同家族同名不同內容 → 保留 notebook 正本」，所以 **prompt 改版後在 PC 重生的摘要送到 notebook 只會 `skipped_same`，整趟白跑**。要用時明確指定：
+
+```powershell
+python -X utf8 harvest_pc.py --machine pc1 --dry-run --replace " 摘要.md" --replace " 摘要.docx"
+python -X utf8 harvest_pc.py --machine pc1 --replace " 摘要.md" --replace " 摘要.docx"
+```
+
+- 命中 `--replace` 的檔才覆蓋；**覆蓋前舊檔備份到 `knowledge-base\_harvest_overwritten\<machine>\<tid>\<時間>\`**（不會無聲消失）。
+- **「不縮水」保護（預設開）**：新檔比本機小就**保留本機**並記進 `kept`（訊息 `⚠ 保留本機較完整版本`）。
+  `.docx` 等附屬檔只有對應 `.md` 真的被換才跟著換。要硬蓋（明知道新版較短）才加 `--replace-force`。
+- 覆蓋成功後 ledger 會更新成新檔 sha256，重跑即 `skipped_same`。
 
 ### 驗收（每次改動後跑）
 ```powershell

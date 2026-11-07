@@ -604,6 +604,9 @@ def generate_summary(title, md_sources, out_dir, template=None, chunk_chars=8000
     lines = [f"# {title}", ""]
     lines.append("> 摘要（整理自逐字稿，供快速掌握重點；需要細節時可另產「課程筆記」）。")
     lines.append(f"> 整理日期：{datetime.now().strftime('%Y-%m-%d')}")
+    # 版本標記：regen_summaries.py 用它判斷「這篇是否已是目前 prompt 產出」，
+    # 比看整理日期可靠（同日可能同時存在舊 prompt 的短摘要）。
+    lines.append(f"> 摘要版本：{SUMMARY_PROMPT_VER}")
     lines.append("")
     # 多段／多來源時，合併收斂成單一份（去重、整併個股、標題不重複）
     if len(all_parts) > 1:

@@ -37,6 +37,10 @@ SUFFIXES = (
     ".link.txt", ".srt", ".md", ".docx", ".txt",
 )
 
+# 「同一天產生、但沒有版本標記」時，用來判斷它是否已是新版（v4）產出的字元門檻。
+# v4 實測最短 819 字元；被誤擋的 v3 短版都 < 600。
+SAME_DAY_MIN = 700
+
 
 def log(msg: str) -> None:
     print(msg, flush=True)
@@ -101,7 +105,9 @@ def main() -> int:
     ap.add_argument("--all", action="store_true", help="整個 KB 子目錄全部重生（131 支約 15~20 分鐘）")
     ap.add_argument("--max", type=int, default=0, help="最多做幾支（0=全部，用來試跑）")
     ap.add_argument("--dry-run", action="store_true", help="只列出會處理的條目，不呼叫 Gemini、不寫檔")
-    ap.add_argument("--force", action="store_true", help="連「今天已重生過」的也重做（預設跳過，避免重複燒額度）")
+    ap.add_argument("--force", action="store_true", help="連「已是目前版本／今天已重生」的也重做（預設跳過，避免重複燒額度）")
+    ap.add_argument("--if-shorter-than", type=int, default=0, metavar="N",
+                    help="只重生現有摘要短於 N 字元的條目（缺摘要也算）。例：--if-shorter-than 600")
     args = ap.parse_args()
 
     kb_dir = Path(args.kb) if args.kb else (KB_ROOT / args.kb_subdir)
@@ -124,8 +130,15 @@ def main() -> int:
         raise SystemExit("沒有指定任何條目（用 --ledger-date／--video-id／--stem）")
 
     todo = []
-    skipped_today = 0
+    skipped_same_ver = skipped_today = 0
     today_mark = f"整理日期：{datetime.now().strftime('%Y-%m-%d')}"
+    try:
+        from make_course_note import SUMMARY_PROMPT_VER as cur_ver
+    except Exception:
+        cur_ver = ""
+    ver_mark = f"> 摘要版本：{cur_ver}" if cur_ver else ""
+    min_len = args.if_shorter_than
+
     for stem in stems:
         src = kb_dir / f"{stem}.md"
         if not src.is_file():
@@ -133,22 +146,42 @@ def main() -> int:
             continue
         old = kb_dir / f"{stem} 摘要.md"
         old_len = 0
+        old_txt = ""
         if old.is_file():
             try:
                 old_txt = old.read_text(encoding="utf-8-sig", errors="ignore")
                 old_len = len(old_txt)
-                if not args.force and today_mark in old_txt:
-                    skipped_today += 1
-                    continue
             except Exception:
-                old_len = 0
+                old_txt, old_len = "", 0
+
+        if not args.force and old_txt:
+            # 1) 已是目前 prompt 版本 → 跳過（最可靠；v4 起摘要會寫 `> 摘要版本：v4`）
+            if ver_mark and ver_mark in old_txt:
+                skipped_same_ver += 1
+                continue
+            # 2) 舊檔沒有版本標記（v4 上線前產生的）：
+            #    同一天產生且長度已達新版水準 → 視為已是新版，不再重做
+            #    （v4 實測最短 819 字元；被誤擋的 v3 短版都 <600）
+            if today_mark in old_txt and old_len >= SAME_DAY_MIN:
+                skipped_today += 1
+                continue
+            # 3) --if-shorter-than：只挑「明顯偏薄」的，已夠長的就跳過
+            if min_len and old_len >= min_len:
+                continue
+
         todo.append((stem, src, old_len))
 
     if args.max:
         todo = todo[: args.max]
 
-    log(f"目標 {len(todo)} 支｜KB：{kb_dir}"
-        + (f"｜今天已重生略過 {skipped_today}" if skipped_today else ""))
+    notes = []
+    if skipped_same_ver:
+        notes.append(f"已是 {cur_ver or '目前版本'} 略過 {skipped_same_ver}")
+    if skipped_today:
+        notes.append(f"今日已重生略過 {skipped_today}")
+    if args.force:
+        notes.append("--force 全部重做")
+    log(f"目標 {len(todo)} 支｜KB：{kb_dir}" + ("｜" + "｜".join(notes) if notes else ""))
     if args.dry_run:
         for stem, _src, old_len in todo:
             log(f"  [DRY] {stem}（現有摘要 {old_len} 字元）")

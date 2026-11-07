@@ -101,11 +101,22 @@ def base_stem(stem):
 
 
 # ------------------------------------------------------------------ 收割單包
-def harvest_one(pkg_dir, machine, kb_root, ledger, index, dry_run=False, replace=()):
+def base_stem_of(name):
+    """檔名 → 條目 stem（去掉 摘要／課程筆記／副檔名）。"""
+    for suf in (" 摘要.md", " 摘要.docx", " 課程筆記.md", " 課程筆記.docx",
+                ".link.txt", ".srt", ".md", ".docx", ".txt"):
+        if name.endswith(suf):
+            return name[: -len(suf)]
+    return Path(name).stem
+
+
+def harvest_one(pkg_dir, machine, kb_root, ledger, index, dry_run=False, replace=(),
+                replace_force=False):
     """回傳 (結果, 說明)。結果：harvested / skipped_same / skipped_exists / conflict / bad / error
 
     replace：檔名子字串清單。同名但內容不同時，命中者「允許被產出機版本覆蓋」（先備份舊檔），
     沒命中者照舊保留 notebook 正本。用於 prompt 改版後重生摘要那種「本機確實該換」的情境。
+    replace_force：關掉「新檔較小就不覆蓋」的保護（預設開著，避免舊版短摘要蓋掉新版長摘要）。
     """
     manifest = load_json(pkg_dir / "manifest.json")
     if not isinstance(manifest, dict):
@@ -192,6 +203,44 @@ def harvest_one(pkg_dir, machine, kb_root, ledger, index, dry_run=False, replace
                 shutil.rmtree(dst)
             shutil.copytree(pkg_dir, dst)
         return "conflict", f"同名不同內容：{', '.join(conflicts[:3])} → _harvest_conflicts/{machine}/{task_id}"
+
+    # 3.5) --replace 的「不縮水」保護：新檔比本機小 → 保留本機較完整的版本。
+    #      產出機若還沒重生（舊短版）卻先打包，這裡會擋掉，不會把 notebook 的長摘要蓋成短的。
+    #      附屬檔（.docx 等）只有對應的 .md 真的被換，才跟著換。
+    if replaced and not replace_force:
+        md_ok = set()
+        pending = []
+        kept_smaller = []
+        for f in replaced:
+            name = f["name"]
+            src = pkg_dir / name
+            target = dest_dir / name
+            try:
+                src_size = src.stat().st_size
+                tgt_size = target.stat().st_size
+            except OSError:
+                pending.append(f)
+                continue
+            if name.lower().endswith(".md"):
+                if src_size >= tgt_size:
+                    md_ok.add(base_stem_of(name))
+                    pending.append(f)
+                else:
+                    kept_smaller.append(name)
+            else:
+                pending.append(f)
+        final = []
+        for f in pending:
+            name = f["name"]
+            if name.lower().endswith(".md") or base_stem_of(name) in md_ok:
+                final.append(f)
+            else:
+                kept_smaller.append(name)
+        if kept_smaller:
+            log(f"    ⚠ 保留本機較完整版本（新檔較小，未覆蓋）：{', '.join(kept_smaller[:3])}")
+            kept.extend(kept_smaller)
+        replaced = final
+
     if not missing and not replaced:
         msg = "KB 已有相同檔案" if not kept else f"KB 已有（保留正本）：{', '.join(kept[:3])}"
         return "skipped_same", msg
@@ -262,6 +311,8 @@ def main():
                     help="同名但內容不同時，允許用產出機版本覆蓋的檔名（子字串比對，可重複）。"
                          "覆蓋前舊檔會備份到 knowledge-base\\_harvest_overwritten\\<machine>\\<tid>\\<時間>\\。"
                          "例：--replace \" 摘要.md\" --replace \" 摘要.docx\"")
+    ap.add_argument("--replace-force", action="store_true",
+                    help="關掉 --replace 的「不縮水」保護（預設新檔比本機小就不覆蓋）")
     args = ap.parse_args()
 
     kb_root = Path(args.kb) if args.kb else KB_ROOT
@@ -312,7 +363,8 @@ def main():
             if not (pkg / "manifest.json").exists():
                 continue  # 還沒寫好 manifest
             res, msg = harvest_one(pkg, machine, kb_root, ledger, index, args.dry_run,
-                                   replace=tuple(args.replace))
+                                   replace=tuple(args.replace),
+                                   replace_force=args.replace_force)
             counts[res] = counts.get(res, 0) + 1
             mark = {"harvested": "✅", "conflict": "⚠", "bad": "⚠",
                     "error": "❌", "skipped_same": "·", "skipped_exists": "⏭"}.get(res, "·")
