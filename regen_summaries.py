@@ -23,6 +23,7 @@ import json
 import re
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -97,8 +98,10 @@ def main() -> int:
     ap.add_argument("--ledger-date", help="用 harvest 帳本：重生該日收割的條目（YYYY-MM-DD）")
     ap.add_argument("--video-id", help="逗號分隔的 video_id（例：d_zRI9C58TQ,lYaZYnsIF9k）")
     ap.add_argument("--stem", action="append", default=[], help="直接指定條目 stem（可重複）")
+    ap.add_argument("--all", action="store_true", help="整個 KB 子目錄全部重生（131 支約 15~20 分鐘）")
     ap.add_argument("--max", type=int, default=0, help="最多做幾支（0=全部，用來試跑）")
     ap.add_argument("--dry-run", action="store_true", help="只列出會處理的條目，不呼叫 Gemini、不寫檔")
+    ap.add_argument("--force", action="store_true", help="連「今天已重生過」的也重做（預設跳過，避免重複燒額度）")
     args = ap.parse_args()
 
     kb_dir = Path(args.kb) if args.kb else (KB_ROOT / args.kb_subdir)
@@ -106,6 +109,9 @@ def main() -> int:
         raise SystemExit(f"KB 目錄不存在：{kb_dir}")
 
     stems: list[str] = list(args.stem)
+    if args.all:
+        stems += [p.stem for p in sorted(kb_dir.glob("*.md"))
+                  if not p.stem.endswith(("課程筆記", "摘要"))]
     if args.ledger_date:
         stems += stems_from_ledger(args.ledger_date)
     if args.video_id:
@@ -118,6 +124,8 @@ def main() -> int:
         raise SystemExit("沒有指定任何條目（用 --ledger-date／--video-id／--stem）")
 
     todo = []
+    skipped_today = 0
+    today_mark = f"整理日期：{datetime.now().strftime('%Y-%m-%d')}"
     for stem in stems:
         src = kb_dir / f"{stem}.md"
         if not src.is_file():
@@ -127,7 +135,11 @@ def main() -> int:
         old_len = 0
         if old.is_file():
             try:
-                old_len = len(old.read_text(encoding="utf-8-sig", errors="ignore"))
+                old_txt = old.read_text(encoding="utf-8-sig", errors="ignore")
+                old_len = len(old_txt)
+                if not args.force and today_mark in old_txt:
+                    skipped_today += 1
+                    continue
             except Exception:
                 old_len = 0
         todo.append((stem, src, old_len))
@@ -135,7 +147,8 @@ def main() -> int:
     if args.max:
         todo = todo[: args.max]
 
-    log(f"目標 {len(todo)} 支｜KB：{kb_dir}")
+    log(f"目標 {len(todo)} 支｜KB：{kb_dir}"
+        + (f"｜今天已重生略過 {skipped_today}" if skipped_today else ""))
     if args.dry_run:
         for stem, _src, old_len in todo:
             log(f"  [DRY] {stem}（現有摘要 {old_len} 字元）")
