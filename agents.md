@@ -398,8 +398,14 @@ python -X utf8 queue_youtube.py --url "..." --include-failed      # 連 failed �
   現在 `worker.py` 啟動會寫 `working\_worker_<machine>.lock`（含 PID），
   偵測到「PID 還活著」直接拒絕啟動並提示；PID 已死的殘留鎖會自動接手。
   真的要同時跑多個才加 `--allow-multi`（幾乎不該用）。
-- 配額提醒：`auto_note`／`auto_summary` 共用 `.note_quota.json` 每日 **20 筆**，一次排 40+ 支
-  會自動跨日續補（不是壞掉，看 `knowledge-base\.note_quota_log.tsv`）；轉錄（Groq）與下載不受此限。
+- 配額（**只有自動路徑才計**）：`channel_watcher` 自動產製與 `backfill_products.py` 共用
+  `.note_quota.json` 每日 **20 筆**（跨日續補，看 `knowledge-base\.note_quota_log.tsv`）。
+  **`worker.py` 的 `note`／`summary` 任務不吃這份配額**（2026-11-07 實測：一晚 43 支產出
+  86 筆產品，`.note_quota.json` 完全沒動、mtime 還停在 2026-11-02）。
+  理由：「明確排進佇列」＝使用者已經決定要做，不該被日配額拖成 4~5 天；自動掃描（channel_watcher）
+  與批量回補（backfill）才需要節流，免得沒人看著就燒光額度。
+  代價：`.note_quota_log.tsv` **只是「自動路徑」的帳**，別拿它推估 Gemini 真實用量。
+  轉錄（Groq）與下載不受任何配額限制。
 
 ## channel_watcher 頻道自動監控（2026-09-23 更新）
 

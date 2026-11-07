@@ -808,6 +808,23 @@ def process_youtube_task(task):
 
     if not r.get("success"):
         err = r.get("error") or "處理失敗"
+        # 2026-11-07 實測：一次排 40+ 支時，YouTube 偶發對「某一支」回 403（同批其他支全成功），
+        # 等一會兒重試就過。不做的話整批會留一筆假失敗，還得人工重排。
+        if ("403" in err or "Forbidden" in err) and not info.get("_yt403_retried"):
+            info["_yt403_retried"] = True  # 只在本次執行有效，不寫回任務
+            log("  [重試] 403（YouTube 暫時性封鎖），等 90 秒後重下一次…")
+            _write_task_progress(tid, status="processing", type="youtube",
+                                 stage="403 重試中（等 90 秒）", started_at=started)
+            time.sleep(90)
+            try:
+                r = cw.process_youtube_video(
+                    vid, title, kb_dir=kb_dir, burn_subs=burn, save_to_kb=harvest_to_kb,
+                )
+            except Exception as e:
+                r = {"success": False, "error": f"處理異常（403 重試）: {e}"}
+
+    if not r.get("success"):
+        err = r.get("error") or "處理失敗"
         log(f"  [失敗] {err}")
         task_queue.update_task_status(tid, "failed", error=err)
         _write_task_progress(tid, status="failed", type="youtube", message=err)

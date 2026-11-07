@@ -335,8 +335,12 @@ def ensure_js_runtime(warn_once=True):
 def yt_fail_hint(text):
     """把 yt-dlp 的 stderr 濃縮成一句人看得懂的原因（寫進任務 last_error）。"""
     m = (text or "").lower()
-    if "no supported javascript runtime" in m or ("403" in m and "forbidden" in m):
+    if "no supported javascript runtime" in m:
         return "缺少 JS runtime（deno／node），yt-dlp 被 YouTube 403 擋下"
+    if "403" in m and "forbidden" in m:
+        # 2026-11-07 實測：同批 42 支都成功、只有 #236 一支 403，稍後重試即正常。
+        # 403 有兩種來源，不要一律說成「缺 deno」害人查錯方向。
+        return "YouTube 回 403（批次下載常見的暫時性封鎖，重試即可；或本機缺 JS runtime）"
     if "confirm your age" in m or "age-restricted" in m:
         return "年齡限制影片：需要 cookies.txt"
     if "sign in to confirm" in m or "not a bot" in m:

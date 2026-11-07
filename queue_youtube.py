@@ -183,6 +183,9 @@ def main():
 
     log(f"\n[OK] 已建立 {len(created)} 筆任務（#{created[0][0]}–#{created[-1][0]}）")
     log("下一步：python -X utf8 worker.py")
+    if created and (not args.no_note or not args.no_summary):
+        log("註：worker 路徑的 note／summary 不計每日 20 筆配額（會一次跑完）；"
+            "只有 channel_watcher／backfill 才計配額。")
     return 0
 
 
