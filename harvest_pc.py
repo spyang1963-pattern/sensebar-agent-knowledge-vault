@@ -10,12 +10,16 @@ r"""harvest_pc.py — notebook 端「單向收割」：把產出機 outbox 的�
 - **PC 端只開唯讀 SMB**（見 STEP7 設計稿 §6）。
 - **manifest.json 最後寫**，看到它就代表整包完整；沒看到就當「還沒好」跳過。
 - 衝突（同名檔內容不同）**不覆蓋**，整包移到 `knowledge-base\_harvest_conflicts\`。
+- **例外：`--replace` 指定的檔名可以用產出機版本覆蓋**（例：prompt 改版後重生摘要）。
+  覆蓋前舊檔會備份到 `knowledge-base\_harvest_overwritten\<machine>\<tid>\<時間>\`，
+  不會無聲消失。同家族的「逐字稿／筆記」預設仍保留 notebook 正本。
 
 用法
 ----
     python -X utf8 harvest_pc.py                    # 收所有可連線的機器
     python -X utf8 harvest_pc.py --machine pc1      # 只收一台
     python -X utf8 harvest_pc.py --dry-run          # 只列計畫，不寫檔、不動帳本
+    python -X utf8 harvest_pc.py --machine pc1 --replace " 摘要.md" --replace " 摘要.docx"
     python -X utf8 harvest_pc.py --root D:\tmp\outbox --kb D:\tmp\kb   # 測試用
 
 結束碼 = 失敗數（offline 不算失敗）。
@@ -97,8 +101,12 @@ def base_stem(stem):
 
 
 # ------------------------------------------------------------------ 收割單包
-def harvest_one(pkg_dir, machine, kb_root, ledger, index, dry_run=False):
-    """回傳 (結果, 說明)。結果：harvested / skipped_same / skipped_exists / conflict / bad / error"""
+def harvest_one(pkg_dir, machine, kb_root, ledger, index, dry_run=False, replace=()):
+    """回傳 (結果, 說明)。結果：harvested / skipped_same / skipped_exists / conflict / bad / error
+
+    replace：檔名子字串清單。同名但內容不同時，命中者「允許被產出機版本覆蓋」（先備份舊檔），
+    沒命中者照舊保留 notebook 正本。用於 prompt 改版後重生摘要那種「本機確實該換」的情境。
+    """
     manifest = load_json(pkg_dir / "manifest.json")
     if not isinstance(manifest, dict):
         return "error", "manifest.json 讀不到"
@@ -150,9 +158,13 @@ def harvest_one(pkg_dir, machine, kb_root, ledger, index, dry_run=False):
     # 3) 逐檔比對
     #    - 不存在 → 要補
     #    - 存在但內容不同：同一支影片（同 stem）→ 保留 notebook 正本、不覆蓋（kept）；
+    #      **但檔名命中 --replace → 走「覆蓋」（先備份舊檔）**
     #      不同支影片（僅同名）→ 視為衝突，整包隔離
     #    - 存在且相同 → 略過
-    conflicts, already, kept, missing = [], [], [], []
+    def _want_replace(name):
+        return bool(replace) and any(p and p in name for p in replace)
+
+    conflicts, already, kept, missing, replaced = [], [], [], [], []
     for f in files:
         name = f.get("name") or ""
         if not name or "/" in name or "\\" in name or name in (".", ".."):
@@ -165,7 +177,10 @@ def harvest_one(pkg_dir, machine, kb_root, ledger, index, dry_run=False):
             if sha256(target) == f.get("sha256"):
                 already.append(name)
             elif same_family:
-                kept.append(name)
+                if _want_replace(name):
+                    replaced.append(f)
+                else:
+                    kept.append(name)
             else:
                 conflicts.append(name)
         except OSError:
@@ -177,32 +192,43 @@ def harvest_one(pkg_dir, machine, kb_root, ledger, index, dry_run=False):
                 shutil.rmtree(dst)
             shutil.copytree(pkg_dir, dst)
         return "conflict", f"同名不同內容：{', '.join(conflicts[:3])} → _harvest_conflicts/{machine}/{task_id}"
-    if not missing:
+    if not missing and not replaced:
         msg = "KB 已有相同檔案" if not kept else f"KB 已有（保留正本）：{', '.join(kept[:3])}"
         return "skipped_same", msg
     if kept:
         log(f"    ⚠ 保留 notebook 既有版本（內容不同，未覆蓋）：{', '.join(kept[:3])}")
+    if replaced:
+        log(f"    ↻ 覆蓋（--replace）：{', '.join(f['name'] for f in replaced[:3])}")
+        if dry_run:
+            log(f"    [DRY] 舊檔會先備份到 _harvest_overwritten/{machine}/{task_id}/")
 
     if dry_run:
-        log(f"    [DRY] → {dest_dir}（補 {len(missing)} 檔，略過 {len(already) + len(kept)} 檔）")
+        log(f"    [DRY] → {dest_dir}（補 {len(missing)} 檔、覆蓋 {len(replaced)} 檔、略過 {len(already) + len(kept)} 檔）")
         return "harvested", f"(dry-run) {dest_dir}"
 
-    # 4) 逐檔複製 → 驗 sha256 → 全過才寫帳本
+    # 4) 逐檔複製 → 驗 sha256 → 全過才寫帳本（覆蓋前先把舊檔備份）
     dest_dir.mkdir(parents=True, exist_ok=True)
     written = []
+    stamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_dir = kb_root / "_harvest_overwritten" / machine / task_id / stamp
     try:
-        for f in missing:
-            src = pkg_dir / f["name"]
+        for f in missing + replaced:
+            name = f["name"]
+            src = pkg_dir / name
             if not src.exists():
-                return "error", f"outbox 缺檔：{f['name']}"
-            tmp = dest_dir / (f["name"] + ".part")
+                return "error", f"outbox 缺檔：{name}"
+            target = dest_dir / name
+            if target.exists():
+                backup_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(target, backup_dir / name)
+            tmp = dest_dir / (name + ".part")
             shutil.copy2(src, tmp)
             got = sha256(tmp)
             if got != f.get("sha256"):
                 tmp.unlink(missing_ok=True)
-                return "error", f"sha256 不符：{f['name']}"
-            os.replace(tmp, dest_dir / f["name"])
-            written.append(f["name"])
+                return "error", f"sha256 不符：{name}"
+            os.replace(tmp, target)
+            written.append(name)
     except Exception as e:
         return "error", f"複製失敗：{e}"
 
@@ -232,6 +258,10 @@ def main():
     ap.add_argument("--kb", help="覆寫 KB 根（測試用）")
     ap.add_argument("--ledger", help="覆寫帳本路徑（預設 working\\harvest_ledger.json）")
     ap.add_argument("--no-dedupe", action="store_true", help="不做 video_id 去重（僅測試）")
+    ap.add_argument("--replace", action="append", default=[], metavar="PATTERN",
+                    help="同名但內容不同時，允許用產出機版本覆蓋的檔名（子字串比對，可重複）。"
+                         "覆蓋前舊檔會備份到 knowledge-base\\_harvest_overwritten\\<machine>\\<tid>\\<時間>\\。"
+                         "例：--replace \" 摘要.md\" --replace \" 摘要.docx\"")
     args = ap.parse_args()
 
     kb_root = Path(args.kb) if args.kb else KB_ROOT
@@ -281,7 +311,8 @@ def main():
         for pkg in pkgs:
             if not (pkg / "manifest.json").exists():
                 continue  # 還沒寫好 manifest
-            res, msg = harvest_one(pkg, machine, kb_root, ledger, index, args.dry_run)
+            res, msg = harvest_one(pkg, machine, kb_root, ledger, index, args.dry_run,
+                                   replace=tuple(args.replace))
             counts[res] = counts.get(res, 0) + 1
             mark = {"harvested": "✅", "conflict": "⚠", "bad": "⚠",
                     "error": "❌", "skipped_same": "·", "skipped_exists": "⏭"}.get(res, "·")
