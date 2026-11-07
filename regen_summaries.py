@@ -95,6 +95,36 @@ def stems_from_video_ids(ids: list[str], kb_dir: Path) -> list[str]:
     return [found[v] for v in want if v in found]
 
 
+def looks_like_current(txt: str) -> bool:
+    """沒有版本標記時，用內容特徵判斷它是否已是 v4 產出（避免白白重生）。
+
+    只認 B 組小節（核心觀點／概念與定義／案例與例證／方法與步驟）：v3 從未產出過這些標題，
+    出現 2 個以上就幾乎確定是 v4。**不看 A 組**——v3 的 A 組小節（大盤／個股…）在
+    「非投資內容」也可能被硬套出來，那正是要被重生的對象，不能因此誤判成新版。
+    """
+    b = sum(1 for h in ("### 核心觀點", "### 概念與定義", "### 案例與例證", "### 方法與步驟")
+            if h in txt)
+    return b >= 2
+
+
+def stamp_version(txt: str, ver: str) -> str:
+    """在摘要檔頭插入 `> 摘要版本：x`（只加一行，不動內容）。"""
+    line = f"> 摘要版本：{ver}"
+    lines = txt.splitlines()
+    if line in lines:
+        return txt
+    for i, ln in enumerate(lines):
+        if ln.startswith("> 整理日期："):
+            lines.insert(i + 1, line)
+            return "\n".join(lines) + ("\n" if txt.endswith("\n") else "")
+    # 找不到整理日期 → 插在第一個空行之後（H1 之後）
+    for i, ln in enumerate(lines):
+        if not ln.strip():
+            lines.insert(i + 1, line)
+            return "\n".join(lines) + ("\n" if txt.endswith("\n") else "")
+    return txt + "\n" + line + "\n"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="重生指定範圍的摘要（不吃每日配額）")
     ap.add_argument("--kb-subdir", default="youtube-clips", help="KB 子目錄（預設 youtube-clips）")
@@ -108,6 +138,11 @@ def main() -> int:
     ap.add_argument("--force", action="store_true", help="連「已是目前版本／今天已重生」的也重做（預設跳過，避免重複燒額度）")
     ap.add_argument("--if-shorter-than", type=int, default=0, metavar="N",
                     help="只重生現有摘要短於 N 字元的條目（缺摘要也算）。例：--if-shorter-than 600")
+    ap.add_argument("--stamp-only", action="store_true",
+                    help="只補 `> 摘要版本：x` 一行（不呼叫 Gemini、不改內容）。"
+                         "用於「內容已是新版、但檔案是在加版本標記之前產生的」")
+    ap.add_argument("--stamp-all", action="store_true",
+                    help="搭配 --stamp-only：不看內容特徵，全部缺少標記的都補（已知整批都是新版時用）")
     args = ap.parse_args()
 
     kb_dir = Path(args.kb) if args.kb else (KB_ROOT / args.kb_subdir)
@@ -138,6 +173,39 @@ def main() -> int:
         cur_ver = ""
     ver_mark = f"> 摘要版本：{cur_ver}" if cur_ver else ""
     min_len = args.if_shorter_than
+
+    if args.stamp_only:
+        if not cur_ver:
+            raise SystemExit("讀不到 make_course_note.SUMMARY_PROMPT_VER，無法補標記")
+        from make_course_note import build_docx
+
+        stamped = already = skipped_old = 0
+        for stem in stems:
+            md = kb_dir / f"{stem} 摘要.md"
+            if not md.is_file():
+                continue
+            txt = md.read_text(encoding="utf-8-sig", errors="ignore")
+            if ver_mark in txt:
+                already += 1
+                continue
+            if not (args.stamp_all or looks_like_current(txt)):
+                skipped_old += 1
+                log(f"  [略過] {stem}（看起來不是目前版本，留給實際重生）")
+                continue
+            if args.dry_run:
+                log(f"  [DRY] 補標記 {stem}（{len(txt)} 字元）")
+                stamped += 1
+                continue
+            new_txt = stamp_version(txt, cur_ver)
+            md.write_text(new_txt, encoding="utf-8")
+            try:
+                build_docx(new_txt, md.with_suffix(".docx"))
+            except Exception as e:
+                log(f"  [警告] {stem}：docx 重建失敗（{e}），md 已補標記")
+            stamped += 1
+        log(f"補標記完成：{stamped} 檔｜已有標記 {already}｜看起來是舊版略過 {skipped_old}"
+            + ("｜[DRY] 未寫檔" if args.dry_run else ""))
+        return 0
 
     for stem in stems:
         src = kb_dir / f"{stem}.md"

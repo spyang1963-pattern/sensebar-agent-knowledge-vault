@@ -475,7 +475,14 @@ python -X utf8 queue_youtube.py --url "..." --include-failed      # 連 failed �
   python -X utf8 regen_summaries.py --all --dry-run      # 整庫（預設跳過「已是目前版本」的，避免重複燒額度）
   python -X utf8 regen_summaries.py --all --if-shorter-than 600   # 只補偏薄的（<600 字元；缺摘要也算）
   python -X utf8 regen_summaries.py --all --force        # 全部重做（含已標版本者）
+  python -X utf8 regen_summaries.py --all --stamp-only --dry-run   # 只補版本標記（不呼叫 Gemini）
+  python -X utf8 regen_summaries.py --all --stamp-only
   ```
+  **`--stamp-only`（2026-11-07 新增）**：只補 `> 摘要版本：v4` 一行、**不動內容、不呼叫 Gemini**。
+  用於「內容已是新版、但檔案是在加版本標記之前產生的」（PC1 有 74 篇、notebook 有 44 篇這種）。
+  判斷是否為新版**只認 B 組小節**（核心觀點／概念與定義／案例與例證／方法與步驟 ≥2 個）——
+  **不看 A 組**：v3 對非投資內容也會硬套「大盤／個股」小節，那正是要被重生的對象。
+  真的整批都確定是新版才用 `--stamp-all`。它會同步重建 `.docx`（只多那一行）。
   **選取規則（2026-11-07 改版，勿改回看日期）**：~~用 `整理日期` 判斷「今天做過就跳過」~~ 會誤擋「當天凌晨用舊 prompt 產出的短摘要」（PC1 實際踩到 32 篇）。現在依序判斷：
   1. 摘要內有 `> 摘要版本：v4`（`generate_summary` 自 v4 起寫入）→ 已是目前 prompt，跳過。
   2. 沒有版本標記但「同一天產生且 ≥700 字元」→ 視為已是新版（v4 實測最短 819；v3 短版都 <600）。
