@@ -609,7 +609,9 @@ python -X utf8 diag_youtube_fail.py --download-probe 2 --ids <vid1>,<vid2>
 報告寫在 `working\diag_youtube_*.txt`。判讀：下載失敗就看 stderr；下載成功而 Pipeline rc≠0 就是管線問題。
 
 ### 切記
-- **PC2／PC3 都還沒裝 deno**，開始跑 YouTube 任務前先補，否則會重演一次「66 支全滅」。
+- **deno 狀態（2026-11-09 更新）**：PC1（2.9.8）、PC2（2.9.8，`smoke_test` JS runtime 已綠）、
+  notebook 都有；**只剩 PC3 未確認**（PC3 也還沒遷到 `D:\AI-Agent-Workspace`）。
+  新機一律由 `deploy.ps1`／`external_tools.ps1` 安裝，缺它會重演「66 支全滅」。
 - 重排失敗任務：`python worker.py --retry-failed`；先跑 5~10 筆確認 console 無 traceback 再整批放著跑。
 - **任務狀態是「雙寫」，而且 shared 才是唯一來源**（2026-11-06 實踩，修於 `58921bc`）：
   - `shared\tasks\task_{tid}.json` = worker 真正讀的佇列；`task_status.json` 只是給 GUI 看的 mirror
