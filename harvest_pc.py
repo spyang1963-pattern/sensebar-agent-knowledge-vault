@@ -100,6 +100,25 @@ def machine_root(machine):
     return Path(f"\\\\{ip}\\AI-Agent-Workspace\\shared\\{machine}\\outbox")
 
 
+NAS_HOSTS = ["192.168.1.121", "100.65.113.20"]
+
+
+def nas_outbox_root(machine):
+    """NAS 上的 `<machine>/outbox`（先 LAN 再 tailnet）。不存在或讀不到就回 None。
+
+    2026-11-08 S3：產出機改成「先寫 NAS」，收割端優先讀 NAS；但 NAS 上那一格
+    可能還沒有人發佈（空目錄），這時要退回直讀該機，否則會收不到東西。
+    """
+    for host in NAS_HOSTS:
+        p = Path(rf"\\{host}\exchange\{machine}\outbox")
+        try:
+            if p.is_dir() and any(d.is_dir() for d in p.iterdir()):
+                return p
+        except OSError:
+            continue
+    return None
+
+
 def base_stem(stem):
     """`<stem> 摘要` / `<stem> 課程筆記` → `<stem>`，用來判斷是否同一支影片。"""
     for suf in (" 摘要", " 課程筆記", " 重點整理"):
@@ -312,6 +331,8 @@ def main():
     ap.add_argument("--machine", action="append", help="只收指定機器（可重複）")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--root", help="覆寫 outbox 根（測試用，配 --machine 名稱）")
+    ap.add_argument("--prefer-nas", action="store_true",
+                    help="每台機器優先讀 NAS exchange/<machine>/outbox（空或不可達才退回直讀該機）")
     ap.add_argument("--kb", help="覆寫 KB 根（測試用）")
     ap.add_argument("--ledger", help="覆寫帳本路徑（預設 working\\harvest_ledger.json）")
     ap.add_argument("--no-dedupe", action="store_true", help="不做 video_id 去重（僅測試）")
@@ -348,7 +369,12 @@ def main():
     details = []
 
     for machine in machines:
-        root = Path(args.root) if (args.root and len(machines) == 1) else machine_root(machine)
+        if args.root and len(machines) == 1:
+            root = Path(args.root)
+        else:
+            root = nas_outbox_root(machine) if args.prefer_nas else None
+            if root is None:
+                root = machine_root(machine)
         if root is None:
             log(f"\n[{machine}] 未設定 Tailscale IP，略過")
             counts["offline"] += 1
