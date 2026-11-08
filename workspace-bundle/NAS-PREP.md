@@ -246,6 +246,10 @@ python -X utf8 publish_outbox.py --dry-run
 
 ---
 
+> **⚠ 2026-11-08 白天修正**：本節與 §11 撰寫時都假設「NAS 未到」。實際上 **NAS 已經就位**
+> （`192.168.1.121:5000`，ping／445／5000／22 全通，DSM API 回 `success`），
+> 卡點是「DSM 上還沒建 `exchange`／`backup` 分享與帳號」。**§11.4 的決策規則作廢，改看 §13。**
+
 ## 12. 2026-11-08 白天複核（撞牆後接手第一件事）
 
 > 背景：§11 是 02:37 撞牆當下寫的。結論正確，但它把「現在」縮到只剩「PC2 裝 deno」，
@@ -330,3 +334,54 @@ Copy-Item financial_news\finance.db H:\_backup\finance_latest.db
 
 > 不要做：把 `H:\_backup` 當唯一備份。USB 接在同一台機器上，勒索／竊盜／機器損壞都擋不住；
 > 它是 NAS 上線前的過渡，NAS 到貨後仍要 Hyper Backup ＋ Snapshot Replication。
+
+---
+
+## 13. NAS 已就位（2026-11-08 實測）→ 改走這條
+
+### 13.1 實測（notebook 端，唯讀）
+
+| 檢查 | 結果 | 意義 |
+|---|---|---|
+| `Test-Connection 192.168.1.121` | **通** | NAS 開機中 |
+| TCP `445` / `5000` / `22` | **True / True / True** | SMB、DSM Web、**SSH 都開著** |
+| `GET :5000/webapi/query.cgi?api=SYNO.API.Info` | `200 {"success":true}` | DSM 正常，不是半死機 |
+| `Test-Path \\192.168.1.121\exchange` | **False** | 分享不存在，或無認證 |
+| `Test-Path \\192.168.1.121\backup` | **False** | 同上 |
+| `net view \\192.168.1.121` | 系統發生 5 錯誤（存取被拒） | 典型「沒有該機認證」 |
+| notebook 網段 | Wi-Fi `192.168.0.127`（NAS 是 `192.168.1.121`） | **不同網段**，目前靠路由器轉送才通 |
+| `tailscale status` | 只有 laptop／desktop-ndlv9li／desktop-nl6va8t | **NAS 不在 Tailscale 上** |
+
+**結論**：真正缺的不是硬體，而是 **DSM 上的分享與帳號**（約 10~20 分鐘），
+外加一個必須先解決的架構風險：**NAS 只在 LAN 內可達**，notebook 一離開 `192.168.1.x` 就收不到包。
+
+### 13.2 新順序（今天就能走完 S0~S2）
+
+| 步 | 做什麼 | 誰／怎麼做 | 驗收 |
+|---|---|---|---|
+| **S0** | DSM 建分享 `exchange`／`backup`／`archive`；建帳號 `producer`（讀寫自己子目錄）、`harvest`（唯讀 `exchange`） | DSM → 控制台 → 共用資料夾／使用者；或 SSH（22 已開）用 `synoshare --add`、`synouser --add` | `\\192.168.1.121\exchange` 打得開 |
+| **S1** | notebook 存認證（`cmdkey`，重開機仍有效）→ `nas_sync.py --check --write-test` | notebook | `--check` 回 OK、寫入測試 OK |
+| **S2** | Phase 1 影子：PC1 本機 outbox 照舊，另跑 `nas_sync.py --mirror --verify`；收割**仍讀 PC1** | PC1 | 連跑兩次第二次「檔案複製 0」；包數與本機相同 |
+| **S3** | Phase 2：PC1 `OC_OUTBOX_ROOT` 指 NAS、notebook `OC_OUTBOX_ROOTS` 指 NAS → `harvest --dry-run` 全 `skipped_same` | 兩端 | 見 §5 驗收 |
+
+### 13.3 前提風險：NAS 不在 Tailscale 上
+
+- 現在 notebook 是 `192.168.0.127` → NAS `192.168.1.121` 還能通，是因為同一台路由器在轉。
+- **一出家門就斷**；而 Phase 2 之後「收割」就是讀 NAS。斷了 → 收割記 `offline`（不會壞資料，但當天收不到）。
+- 兩個選項（S3 之前做完任一個）：
+  1. **NAS 裝 Tailscale**（DSM 套件中心有 Tailscale）→ notebook 隨地可收，與 PC1 現況一致。
+  2. 維持 notebook **只在家收割**，外出當天就跳過（`offline` 會自動略過，隔天補）。
+- 建議選 1：NAS 本來就要當「三機唯一交換點」，它不在 Tailscale 上，等於把可用性綁在家裡。
+
+### 13.4 和 §12 的關係
+
+- §12 的 **P0 備份**仍然要做，但目的地改成 NAS `backup\`（有了 S0 之後），`H:` 只當第二份。
+- §12 的 **P1「PC2 到手 30 分鐘收拾」** 不變（關舊 Share、裝 deno），因為那和 NAS 無關。
+- §11.4「NAS 延期才回頭做 PC2 SMB」**作廢** —— NAS 沒延期，PC2 的 SMB 分享就不必做了。
+
+### 13.5 不要做
+
+- ❌ S3 之前把 notebook 的 `OC_OUTBOX_ROOTS` 指 NAS（影子還沒驗過就切，等於拿生產賭）。
+- ❌ Phase 2 後立刻刪 PC1 本機 outbox（NAS 還沒驗證完就是唯一副本）。
+- ❌ 把 `shared\tasks`／`finance.db` 放上 NAS（控制面與 SQLite 留本機）。
+- ❌ 在 NAS 上用 `Everyone`／弱密碼（PC2 舊 `Share` 的 `user/abc123` 就是前車之鑑）。
