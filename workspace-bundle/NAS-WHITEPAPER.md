@@ -256,8 +256,13 @@ finance.db         ──備份────▶    backup\finance_db\
 - [x] S0：建 `exchange`／`backup`／`archive` ＋ `producer`／`harvest`（N-01~N-05）— 2026-11-08 20:17，SMB 五項權限實測通過
 - [x] S0：建 `/volume1/agent-ops/`（N-06）— 含 `2026-11-08-nas-s0/README.md`
 - [x] S1：notebook 存認證（N-07）— `cmdkey` 已寫入 `harvest`，免 `net use` 可直接讀
-- [ ] S1：`python -X utf8 nas_sync.py --check --write-test`（要先設 `OC_NAS_HOST`／`OC_NAS_ROOT`）
-- [ ] S1b：**PC1 存 `producer` 認證**（`cmdkey /add:192.168.1.121 /user:producer /pass:<...>`）＋ `publish_outbox.py` 試推一包
+- [x] S1：`nas_sync.py --check`（設 `OC_NAS_HOST=192.168.1.121`、`OC_NAS_ROOT=\\192.168.1.121\exchange`）
+      → **rc=0**、SMB 445 OK、`pc1`／`pc2`／`pc3` 皆 OK。
+      `--write-test` 在 **notebook 一定會失敗（這是對的）**：notebook 是 `harvest`，本來就唯讀 exchange；
+      該工具會把本機當產出機，所以還會顯示「缺 `exchange\notebook\outbox`」——**預期行為，不要因此去建 notebook 目錄**。
+- [ ] S1b：**PC1 存 `producer` 認證**：把 repo 的 `set_nas_producer_cred.bat` 帶到 PC1 執行一次
+      （會 `cmdkey /add:192.168.1.121 /user:producer`，密碼在 notebook 的 `%USERPROFILE%\.nas_accounts.json`），
+      再從 PC1 跑 `publish_outbox.py --dry-run` → 試推一包
 - [ ] S1：NAS 裝 Tailscale（N-08，待使用者同意）
 - [ ] S2：PC1 影子 mirror（Phase 1）
 - [ ] S3：切 `OC_OUTBOX_ROOT(S)` → `harvest --dry-run` 全 `skipped_same`
