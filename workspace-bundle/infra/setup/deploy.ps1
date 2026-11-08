@@ -51,12 +51,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# ── 排程定義（與 ONBOARDING 第 8 步一致）──
+# ── 排程定義（與 ONBOARDING 第 8 步／DEPLOY-NEW-PC.md §4 一致）──
+# Only = 只在這幾種機器註冊（$null 表示任何機器）；避免把收割排到產出機。
 $TaskDefs = @(
     @{ Name = "FinanceNews_Pipeline";       Script = "pipeline.py";       Args = @("--full", "--batch", "150", "--time-budget", "480"); Kind = "interval"; Minutes = 30;  Desc = "金融新聞 pipeline（每 30 分）" }
     @{ Name = "FinanceNews_MorningReport";  Script = "pipeline.py";       Args = @("--report", "--deep", "--slot", "morning");           Kind = "daily";    At = "07:00"; Desc = "金融早報（每天 07:00）" }
     @{ Name = "FinanceNews_EveningReport";  Script = "pipeline.py";       Args = @("--report", "--deep", "--slot", "evening");           Kind = "daily";    At = "19:00"; Desc = "金融晚報（每天 19:00）" }
     @{ Name = "ChannelWatcherDaily";        Script = "channel_watcher.py"; Args = @("--once");                                           Kind = "daily";    At = "22:30"; Desc = "頻道監控（每天 22:30）" }
+    # 2026-11-08 NAS 上線後：產出機打包 → NAS；notebook 收割＋備份
+    @{ Name = "PublishOutboxDaily";         File = "publish_daily.bat";    Kind = "daily"; At = "22:50"; Only = @("pc1","pc2","pc3"); Desc = "打包 KB 產出 → NAS exchange\<machine>\outbox（NAS 不通 fallback 本機）" }
+    @{ Name = "HarvestPCDaily";             File = "harvest_daily.bat";    Kind = "daily"; At = "23:10"; Only = @("notebook");        Desc = "收割 NAS／各機 outbox → knowledge-base" }
+    @{ Name = "NasBackupDaily";             File = "backup_daily.bat";     Kind = "daily"; At = "01:30"; Only = @("notebook");        Desc = "KB／finance.db／shared → NAS backup" }
 )
 
 function Write-Section($Title) {
@@ -300,8 +305,78 @@ function Show-RepoState {
     }
 }
 
+function Test-Tcp {
+    param([string]$TargetHost, [int]$Port = 445, [int]$TimeoutMs = 2500)
+    $client = New-Object System.Net.Sockets.TcpClient
+    try {
+        $iar = $client.BeginConnect($TargetHost, $Port, $null, $null)
+        if (-not $iar.AsyncWaitHandle.WaitOne($TimeoutMs)) { return $false }
+        $client.EndConnect($iar)
+        return $true
+    } catch {
+        return $false
+    } finally {
+        $client.Close()
+    }
+}
+
+function Test-NasReadiness {
+    param([string]$MachineName, [bool]$Preview)
+
+    $lan = "192.168.1.121"
+    $tail = "100.65.113.20"
+    $account = if ($MachineName -eq "notebook") { "harvest" } else { "producer" }
+    $issues = 0
+
+    if ($Preview) {
+        Write-Host "  [dry] 測試 NAS 可達性（LAN $lan / tailnet $tail）與 cmdkey $account"
+        return 0
+    }
+
+    $lanOk = Test-Tcp -TargetHost $lan
+    $tailOk = Test-Tcp -TargetHost $tail
+    Write-Host "  可達性：LAN $lan = $(if ($lanOk) {'✅'} else {'❌'})   tailnet $tail = $(if ($tailOk) {'✅'} else {'❌'})"
+    $nas = if ($lanOk) { $lan } elseif ($tailOk) { $tail } else { $null }
+
+    if (-not $nas) {
+        Write-Host "  ❌ 兩條路都不通：NAS 沒開機／不在同網段且 Tailscale 未登入" -ForegroundColor Red
+        Write-Host "     先確認：tailscale status；或 Test-NetConnection $lan -Port 445" -ForegroundColor Yellow
+        return 2
+    }
+
+    # cmdkey 是「認主機名」的：這裡檢查實際會用到的那個
+    $credOk = $false
+    try {
+        $out = & cmdkey.exe "/list:$nas" 2>&1 | Out-String
+        $credOk = ($out -match [regex]::Escape($account))
+    } catch { }
+    if ($credOk) {
+        Write-Host "  憑證：cmdkey 已有 $account @ $nas ✅"
+    } else {
+        Write-Host "  憑證：cmdkey 沒有 $account @ $nas ❌" -ForegroundColor Red
+        Write-Host "     $s = Read-Host -AsSecureString 'NAS 密碼'; $p = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s)); cmdkey /add:$nas /user:$account /pass:`$p" -ForegroundColor Yellow
+        $issues += 1
+    }
+
+    # 看得到 share 才算真的通（沒憑證時 Directory.Exists 可能丟例外）
+    $shareOk = $false
+    try { $shareOk = [System.IO.Directory]::Exists("\\$nas\exchange") } catch { $shareOk = $false }
+    Write-Host "  exchange：$(if ($shareOk) {'✅ 可讀'} else {'❌ 讀不到'})（\\$nas\exchange）"
+    if (-not $shareOk) { $issues += 1 }
+
+    if ($MachineName -ne "notebook") {
+        $outbox = "\\$nas\exchange\$MachineName\outbox"
+        $obOk = $false
+        try { $obOk = [System.IO.Directory]::Exists($outbox) } catch { $obOk = $false }
+        Write-Host "  自己的 outbox：$(if ($obOk) {'✅'} else {'❌'})（$outbox）"
+        if (-not $obOk) { $issues += 1 }
+    }
+
+    return $issues
+}
+
 function Register-DeployTasks {
-    param([string]$Root, [string]$Python, [bool]$Preview)
+    param([string]$Root, [string]$Python, [bool]$Preview, [string]$MachineName = "")
 
     $existing = @()
     try {
@@ -309,14 +384,24 @@ function Register-DeployTasks {
     } catch { }
 
     foreach ($d in $TaskDefs) {
+        if ($d.ContainsKey("Only") -and $d.Only -and $d.Only -notcontains $MachineName) {
+            Write-Host "  - 略過 $($d.Name)（此任務只裝在 $($d.Only -join '/')）"
+            continue
+        }
         if ($Preview) {
             Write-Host "  [dry] 註冊排程 $($d.Name)（$($d.Desc)）"
             continue
         }
 
-        $action = New-ScheduledTaskAction -Execute $Python `
-            -Argument (('"{0}" {1}' -f (Join-Path $Root $d.Script), ($d.Args -join ' ')).Trim()) `
-            -WorkingDirectory $Root
+        if ($d.ContainsKey("File")) {
+            $action = New-ScheduledTaskAction -Execute "cmd.exe" `
+                -Argument ("/c `"$(Join-Path $Root $d.File)`"") `
+                -WorkingDirectory $Root
+        } else {
+            $action = New-ScheduledTaskAction -Execute $Python `
+                -Argument (('"{0}" {1}' -f (Join-Path $Root $d.Script), ($d.Args -join ' ')).Trim()) `
+                -WorkingDirectory $Root
+        }
 
         if ($d.Kind -eq "interval") {
             $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).Date `
@@ -348,9 +433,12 @@ function Register-DeployTasks {
 }
 
 function Unregister-DeployTasks {
-    param([bool]$Preview)
+    param([bool]$Preview, [string]$MachineName = "")
 
     foreach ($d in $TaskDefs) {
+        if ($d.ContainsKey("Only") -and $d.Only -and $d.Only -notcontains $MachineName) {
+            continue
+        }
         if ($Preview) {
             Write-Host "  [dry] 移除排程 $($d.Name)"
             continue
@@ -375,7 +463,7 @@ if ($DryRun) { Write-Host "  模式     ：DRY-RUN（不安裝、不寫入、不
 
 # 1. 機器身份
 Write-Host ""
-Write-Host "[1/5] 機器身份檢查..."
+Write-Host "[1/6] 機器身份檢查..."
 $info = Get-MachineInfo -Python $python -Root $root
 $detected = $info.machine
 
@@ -403,15 +491,15 @@ Write-Host "  ✅ 身份確認：$detected" -ForegroundColor Green
 
 # 2. 程式碼狀態（PC1/PC2 可能已有本地變更，會讓 git pull 失敗）
 Write-Host ""
-Write-Host "[2/5] 程式碼狀態..."
+Write-Host "[2/6] 程式碼狀態..."
 Show-RepoState -Root $root
 
 # 3. 安裝
 Write-Host ""
 if ($SkipSetup) {
-    Write-Host "[3/5] 安裝與執行期目錄 — 安裝已用 -SkipSetup 跳過"
+    Write-Host "[3/6] 安裝與執行期目錄 — 安裝已用 -SkipSetup 跳過"
 } else {
-    Write-Host "[3/5] 安裝與執行期目錄（setup_new_pc.bat）..."
+    Write-Host "[3/6] 安裝與執行期目錄（setup_new_pc.bat）..."
     Invoke-Setup -Root $root -Preview $DryRun.IsPresent
 }
 
@@ -429,7 +517,7 @@ if ($DryRun) {
 
 # 4. 健檢
 Write-Host ""
-Write-Host "[4/5] 健檢..."
+Write-Host "[4/6] 健檢..."
 $pending = 0
 $healthOk = $false
 try {
@@ -440,17 +528,29 @@ try {
     Write-Warning "  健檢失敗：$($_.Exception.Message)"
 }
 
-# 5. 排程
+# 5. NAS 連線與憑證（2026-11-08 NAS 上線後）
+Write-Host ""
+Write-Host "[5/6] NAS 連線與憑證..."
+$nasIssues = Test-NasReadiness -MachineName $detected -Preview $DryRun.IsPresent
+$tsCmd = Get-Command tailscale -ErrorAction SilentlyContinue
+if ($tsCmd) {
+    $tsIp = (& tailscale ip -4 2>$null | Select-Object -First 1)
+    Write-Host "  Tailscale：$(if ($tsIp) { "✅ $tsIp" } else { '⚠ 已安裝但未登入（tailscale up）' })"
+} else {
+    Write-Host "  Tailscale：⚠ 未安裝（不同網段時會連不到 NAS；external_tools.ps1 會裝）" -ForegroundColor Yellow
+}
+
+# 6. 排程
 Write-Host ""
 if ($UnregisterTasks) {
-    Write-Host "[5/5] 移除排程（切換日舊機用）..."
-    Unregister-DeployTasks -Preview $DryRun.IsPresent
+    Write-Host "[6/6] 移除排程（切換日舊機用）..."
+    Unregister-DeployTasks -Preview $DryRun.IsPresent -MachineName $detected
 } elseif ($RegisterTasks) {
-    Write-Host "[5/5] 註冊排程..."
+    Write-Host "[6/6] 註冊排程..."
     Write-Host "  ⚠️  排程是單一寫入者：請確認其他機器的同名任務已停用。" -ForegroundColor Yellow
-    Register-DeployTasks -Root $root -Python $python -Preview $DryRun.IsPresent
+    Register-DeployTasks -Root $root -Python $python -Preview $DryRun.IsPresent -MachineName $detected
 } else {
-    Write-Host "[5/5] 排程 — 未指定 -RegisterTasks，維持不註冊（預設）"
+    Write-Host "[6/6] 排程 — 未指定 -RegisterTasks，維持不註冊（預設）"
     Write-Host "      切換日再執行：deploy.ps1 -SkipSetup -RegisterTasks"
 }
 
@@ -467,12 +567,16 @@ Write-Host ""
 Write-Host "  仍須人工處理："
 Write-Host "    1. Gemini key：$env:USERPROFILE\.gemini_api_key（每台獨立）"
 Write-Host "    2. Telegram  ：$env:USERPROFILE\.telegram_env（BOT_TOKEN / CHAT_ID）"
-Write-Host "    3. PATH      ：外部工具安裝後需「重開終端」"
+Write-Host "    3. NAS 憑證  ：cmdkey /add:<NAS> /user:$(if ($detected -eq 'notebook') {'harvest'} else {'producer'})"
+Write-Host "         LAN 192.168.1.121 或 tailnet 100.65.113.20（見 DEPLOY-NEW-PC.md §3.2）"
+Write-Host "    4. Tailscale ：tailscale up（瀏覽器授權一次），再把 IP 寫進 config.py TAILSCALE_IPS"
+Write-Host "    5. PATH      ：外部工具安裝後需「重開終端」"
 Write-Host ""
-Write-Host "  不必複製（PC1/PC2）：finance.db、knowledge-base\、shared\watched_channels_state.json"
-Write-Host "    → 產出留在本機，之後由 notebook 單向收割（handoff Step 7）"
+Write-Host "  資料：新機不必從別台複製 knowledge-base（git 已含）；正本在 notebook，NAS backup\ 是備份"
+Write-Host "        產出留在本機 → 22:50 打包到 NAS → 23:10 notebook 收割（單向）"
 Write-Host ""
-Write-Host "  文件：workspace-bundle\ONBOARDING.md"
+Write-Host "  文件：workspace-bundle\DEPLOY-NEW-PC.md（現行，優先看這份）"
+Write-Host "        workspace-bundle\ONBOARDING.md（金融線細節；部分流程已過時）"
 Write-Host "  進度：workspace-bundle\HANDOFF-3MACHINE-DEPLOY.md"
 Write-Host ""
 

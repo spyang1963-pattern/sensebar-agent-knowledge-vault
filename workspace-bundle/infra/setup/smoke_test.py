@@ -50,6 +50,35 @@ def which(exe):
         return False
 
 
+def tcp_open(host, port=445, timeout=2.5):
+    """只測 TCP，不認證；用來判斷 NAS 走 LAN 還是 tailnet 可達。"""
+    import socket
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def cmdkey_has(host, account):
+    """cmdkey 的輸出是主控台編碼；帳號本身是 ASCII，直接比對 bytes 最保險。"""
+    try:
+        r = subprocess.run(["cmdkey", f"/list:{host}"], capture_output=True, timeout=20)
+        blob = ((r.stdout or b"") + (r.stderr or b"")).lower()
+        return account.encode().lower() in blob
+    except Exception:
+        return False
+
+
+def task_exists(name):
+    try:
+        r = subprocess.run(["schtasks", "/query", "/TN", name],
+                           capture_output=True, timeout=25)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true", help="以 JSON 輸出")
@@ -141,6 +170,57 @@ def main():
     check("Gemini key（筆記／報告）",
           (home / ".gemini_api_key").exists() or bool(os.environ.get("GEMINI_API_KEY")),
           "~/.gemini_api_key（僅提醒，影片線不需要）", )
+
+    # ── 6.5 NAS 與 Tailscale（2026-11-08 NAS 上線後） ──
+    nas_lan, nas_tail = "192.168.1.121", "100.65.113.20"
+    account = "harvest" if machine == "notebook" else "producer"
+    lan_ok = tcp_open(nas_lan)
+    tail_ok = tcp_open(nas_tail)
+    nas_host = nas_lan if lan_ok else (nas_tail if tail_ok else None)
+    check("NAS 可達（LAN 445 或 tailnet 445）", bool(nas_host),
+          f"LAN={lan_ok} tailnet={tail_ok}"
+          + ("" if nas_host else "；兩條都不通（NAS 沒開機／不同網段且 Tailscale 未登入）"))
+
+    if nas_host:
+        check(f"NAS 憑證（cmdkey {account} @ {nas_host}）", cmdkey_has(nas_host, account),
+              f"缺就執行：cmdkey /add:{nas_host} /user:{account} /pass:***")
+        share_ok = False
+        try:
+            share_ok = Path(rf"\\{nas_host}\exchange").is_dir()
+        except OSError:
+            share_ok = False
+        check("NAS exchange 可讀", share_ok, rf"\\{nas_host}\exchange")
+        if machine != "notebook":
+            ob = rf"\\{nas_host}\exchange\{machine}\outbox"
+            ob_ok = False
+            try:
+                ob_ok = Path(ob).is_dir()
+            except OSError:
+                ob_ok = False
+            check("NAS 自己的 outbox", ob_ok, ob)
+
+    ts_ip = ""
+    try:
+        r = subprocess.run(["tailscale", "ip", "-4"], capture_output=True, timeout=20)
+        if r.returncode == 0:
+            ts_ip = (r.stdout or b"").decode("ascii", "replace").strip().splitlines()[0] if r.stdout else ""
+    except Exception:
+        ts_ip = ""
+    check("Tailscale 已登入", bool(ts_ip),
+          ts_ip or "未安裝或未登入；不同網段時連不到 NAS（tailscale up）")
+
+    # ── 6.6 這台該有的排程與腳本 ──
+    if machine == "notebook":
+        expect_tasks = ["HarvestPCDaily", "NasBackupDaily"]
+        expect_files = ["harvest_daily.bat", "backup_daily.bat"]
+    else:
+        expect_tasks = ["PublishOutboxDaily"]
+        expect_files = ["publish_daily.bat"]
+    for f in expect_files:
+        check(f"腳本 {f}", (project / f).exists(), project / f)
+    for t in expect_tasks:
+        check(f"排程 {t}", task_exists(t),
+              "未註冊（切換日再跑 deploy.ps1 -SkipSetup -RegisterTasks）")
 
     # ── 7. 金融 db（只讀開啟） ──
     db = project / "financial_news" / "finance.db"

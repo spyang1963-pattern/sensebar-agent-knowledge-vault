@@ -95,9 +95,14 @@
 
 ## 快速開始（新 PC 安裝）
 
-1. 複製整個專案目錄到新 PC
-2. 執行 `setup.bat`（Windows）安裝所有依賴
-3. 到 https://console.groq.com 建立 API Key
+> **完整清單看 `workspace-bundle/DEPLOY-NEW-PC.md`**（2026-11-08 現行版）。
+> 最短版：`git clone` → `deploy.ps1 -Machine pcN` → 重開終端 → `smoke_test.py`
+> → 人工補「Gemini key、NAS 憑證、Tailscale 登入」→ 切換日 `deploy.ps1 -SkipSetup -RegisterTasks`。
+> ❌ 不要只跑舊的 `setup.bat`：它沒有 deno、Tailscale、NAS 憑證與 outbox 排程。
+
+1. 取得程式碼到 `D:\AI-Agent-Workspace`（`setup_new_pc.bat` 會 clone／pull）
+2. 執行 `deploy.ps1 -Machine pcN`（Git／Python／外部工具／套件／健檢／NAS 可達性）
+3. 到 https://console.groq.com 建立 API Key（`~\.groq_api_key`）
 4. 執行 `python run_pipeline.py raw/課程/原始.mp4`
 
 ## 目錄結構
