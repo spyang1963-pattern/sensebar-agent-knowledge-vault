@@ -166,7 +166,7 @@ finance.db         ──備份────▶    backup\finance_db\
 | N-04 | 使用者 `producer`（uid 1027，shell `/sbin/nologin`） | publish（PC1/2/3） | 只給各機寫 `exchange\<machine>\outbox`；**不能寫 backup** | publish 失敗（`WinError 1326`／權限被拒） | 停用帳號即可 | **active**（2026-11-08 20:16） |
 | N-05 | 使用者 `harvest`（uid 1028，shell `/sbin/nologin`） | 收割（notebook） | **唯讀** `exchange\`、可寫 `backup\` | 收割失敗 | 降權或停用 | **active**（2026-11-08 20:16） |
 | N-06 | `/volume1/agent-ops/`（NAS 本機，目前只有 `2026-11-08-nas-s0/README.md`） | 所有 agent 在 NAS 上的操作 | **agent 專用工作目錄**：腳本、日誌、暫存，一個任務一個子目錄 | 清掉會失去 agent 操作紀錄；**不含任何使用者的資料** | 整個目錄刪除即可 | **active**（2026-11-08 20:16） |
-| N-07 | notebook `cmdkey` 認證（`192.168.1.121`、`100.65.113.20` → `harvest`） | S1 | 讓 SMB 免密碼重連（重開機後仍有效）；在家走 LAN、外出走 tailnet | 收割／備份失敗（`WinError 1326`） | `cmdkey /delete:<host>` | **active**（2026-11-08 20:2x；22:0x 加 tailnet IP） |
+| N-07 | notebook `cmdkey` 認證（`192.168.1.121`、`100.65.113.20`、`datanas.tail6b5f31.ts.net` → `harvest`） | S1 | 讓 SMB 免密碼重連（重開機後仍有效）；在家走 LAN、外出走 tailnet | 收割／備份失敗（`WinError 1326`） | `cmdkey /delete:<host>` | **active**（2026-11-08 20:2x；22:1x 加 tailnet IP 與 FQDN） |
 | N-08 | NAS 上的 Tailscale（套件 `Tailscale` 1.104.5-700104005，官方 DSM7 SPK） | 遠端收割 | 讓 notebook 外出也能讀 NAS | 停用＝外出時收割 `offline`（不會壞資料） | `synopkg uninstall Tailscale` | **active（2026-11-08 21:31 安裝，待使用者開授權連結）** |
 | N-09 | notebook `%USERPROFILE%\.nas_admin`（`yang` 帳號／密碼，**repo 外**） | S0 建置 | 讓 agent 用 SSH 登入 NAS 做一次性設定 | 刪掉只是 agent 失去登入能力，**不影響 NAS 運作**；外流＝對方有 DSM 權限 | 直接刪檔；或改密碼／停用帳號 | **active**（2026-11-08；**S1 完成後刪除或改用金鑰**） |
 | N-10 | notebook `%USERPROFILE%\.nas_accounts.json`（`producer`／`harvest` 密碼，**repo 外**） | S0 建置 | 讓 PC1（producer）與 notebook（harvest）取用各自密碼 | 刪掉不會壞 NAS，只是要重設密碼（`synouser --setpw`）；外流＝可寫 exchange／backup | 刪檔＋改密碼 | **active**（2026-11-08 20:16） |
@@ -266,6 +266,8 @@ ExecStartPre=/bin/bash -c 'insmod /lib/modules/tun.ko 2>/dev/null || true; mkdir
 
 > 目前狀態（2026-11-08 22:1x）：**已完成**。`tailscale0 = 100.65.113.20`，notebook 以 `harvest`
 > 走 tailnet 實測：讀 `exchange` ✅、寫 `exchange` ❌（正確）、寫 `backup` ✅、讀 `archive` ✅。
+> ⚠ SMB **用名稱**（`\\datanas\…`）會失敗；`\\datanas.tail6b5f31.ts.net\…` 則**要先有該名稱的
+> `cmdkey`** 才會通（已加入）。日常請優先用 **IP**。
 
 ---
 

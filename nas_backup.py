@@ -64,7 +64,11 @@ def nas_root() -> Path:
     if explicit:
         return Path(explicit)
     host = os.environ.get("OC_NAS_HOST")
-    candidates = [host] if host else ["192.168.1.121", "100.65.113.20"]
+    candidates = [host] if host else [
+        "192.168.1.121",                  # 在家：LAN 直連，最快
+        "100.65.113.20",                  # 外出：Tailscale IP（節點固定）
+        "datanas.tail6b5f31.ts.net",      # 保險：MagicDNS FQDN
+    ]
     for h in candidates:
         if h and _smb_reachable(h):
             return Path(rf"\\{h}\backup")
