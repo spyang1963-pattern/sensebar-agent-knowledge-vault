@@ -425,7 +425,7 @@ PC1 的 `producer` 認證與 publish 試推、NAS Tailscale 授權（套件已�
 | Tailscale | 官方 DSM7 SPK `1.104.5` 已安裝、登入 tailnet；**`tailscale0 = 100.65.113.20`**；notebook 走 tailnet 實測五項權限全對 |
 | S2 影子 | PC1 102 包 → `exchange\pc1\outbox`（102 manifest／102 唯一 video_id／10.3 MB）；本機 108＝102＋6 個 2026-11-06 舊重複包（去重後捨棄，內容較舊） |
 | S3 收割端 | `harvest_daily.bat` 改 pc1 先讀 NAS、失敗退回 PC1；實跑 `pc1 source = NAS`、`skipped_same 102`、`rc=0` |
-| S3 產出端 | `publish_daily.bat` 已改 NAS 優先＋本機 fallback＋獨立帳本，**待 PC1 更新該檔** |
+| S3 產出端 | `publish_daily.bat` 已改 NAS 優先＋本機 fallback＋獨立帳本；PC1 實跑 `target = NAS`、`打包 0｜跳過 306｜失敗 0`、`rc=0`（306＝102 唯一產出＋204 重複任務，NAS 目錄仍 102） |
 
 **Tailscale 的關鍵陷阱（勿忘）**
 

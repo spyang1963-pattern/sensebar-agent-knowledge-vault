@@ -358,7 +358,9 @@ ExecStartPre=/bin/bash -c 'insmod /lib/modules/tun.ko 2>/dev/null || true; mkdir
       `harvest_pc.py --machine pc1 --root <NAS> --dry-run` → **skipped_same 102**（零衝突、零缺檔）。
 - [x] S3（notebook 端）：`harvest_daily.bat` 改為 pc1 先讀 NAS、NAS 不可達才退回 PC1 直讀；
       實跑 `pc1 source = NAS`、`skipped_same 102`、`rc=0`（2026-11-08 23:07）
-- [ ] S3（PC1 端）：`publish_daily.bat` 已改好（NAS 優先、本機 fallback、獨立帳本），**待 PC1 更新檔案**
-      未更新前 PC1 仍只寫本機 outbox，notebook 會收不到新包（但不會壞資料）
+- [x] S3（PC1 端）：`publish_daily.bat` 已更新並實跑 → `target = NAS`、
+      `打包 0｜未變/跳過 306｜失敗 0`、`rc=0`（2026-11-08 23:12）
+      **306 不是包數**：那是「任務數＝102 個唯一產出 ＋ 204 個同 stem 的重複任務」；
+      NAS 實際目錄仍是 102。看到 306 別以為漏了 204 包
 - ⚠ **bat 檔在 `chcp 65001` 之前不要放中文**：UTF-8 中文位元組可能含 `&`／`|`，
       cmd 會把它當指令分隔 → 實測噴 `'se' 不是內部或外部命令`。兩支 bat 已改成 ASCII-only 註解。
