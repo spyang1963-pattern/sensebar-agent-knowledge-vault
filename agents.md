@@ -733,7 +733,27 @@ python -X utf8 harvest_pc.py --machine pc1             # 再跑 skipped_same N�
 - ❌ 手動刪 outbox／帳本讓「看起來重收一次」（會失去冪等保證）
 - ❌ 用 `net use` 的 `pc1` 當使用者名稱（`pc1` 只是代號，實際是 `DESKTOP-NDLV9LI`）
 
-### NAS 預備（2026-11-07，尚未上線）
+### NAS（DS718+，**2026-11-08 實測已上線** `192.168.1.121`）
+
+- **先讀兩份**：`workspace-bundle/NAS-WHITEPAPER.md`（現況／登記表／紅線／opencode 評估）與
+  `workspace-bundle/NAS-PREP.md`（S0~S3 切換步驟）。2026-07 的 `financial_news/MULTIMACHINE_NAS_GUIDE.md`
+  **只是歷史 guide**，其「SQLite 上 NAS、NAS 跑收集排程」的設計已被推翻，不要拿它當規格。
+- **登記制（強制）**：任何 agent 在 NAS 上建立的檔案／設定，**先**在白皮書 §5 加一列
+  （ID `N-xx`／任務／用途／影響／回滾），再動手，做完回填 `active`；停用改 `retired` 不刪列。
+  agent 專用目錄固定 `/volume1/agent-ops/<任務代號>/`（每任務一個子目錄＋`README.md`），
+  **使用者的資料（`exchange`／`backup`／`archive`／相簿）永遠不放在那裡**。
+- **紅線**：`shared/tasks`、`task_status.json`、`finance.db` 不上 NAS；不用 `Everyone`／弱密碼；
+  notebook 不寫回 PC／NAS；2 GB RAM 的機器不跑長時間 AI 批次。
+- **S0 已完成（2026-11-08 20:2x）**：`exchange`／`backup`／`archive` 三分享＋`producer`／`harvest` 兩帳號
+  都已建好並以 SMB 實測權限（harvest：讀 exchange ✅／寫 exchange ❌／寫 backup ✅；
+  producer：寫 `exchange\pc1\outbox` ✅／寫 backup ❌）。notebook 的 `cmdkey` 已存 `harvest`
+  （`192.168.1.121`）。**設定分享／ACL 的步驟照白皮書 §5.1**，尤其
+  ❌ **不要跑 `synoacltool -enforce-inherit`**（會變成 `everyone` 完整控制）；
+  ❌ 也不要「先 `mkdir` 再 `synoshare --add`」（DSM 回 `share_create.c:134`）。
+- **憑證位置（repo 外，勿 commit）**：`%USERPROFILE%\.nas_admin`（`yang`，SSH 設定用，S1 後刪）、
+  `%USERPROFILE%\.nas_accounts.json`（`producer`／`harvest` 密碼）。PC1 要用 `producer`。
+- **尚未做**：`nas_sync.py --check --write-test`（需先設 `OC_NAS_HOST`／`OC_NAS_ROOT`）、
+  PC1 的 `producer` 認證與 publish 試推、NAS 上的 Tailscale（待使用者同意）。
 
 計畫與切換步驟：**`workspace-bundle/NAS-PREP.md`**（Synology DS718+；定位＝備援＋交換區，不當執行機，SQLite 不放 NAS）。
 
