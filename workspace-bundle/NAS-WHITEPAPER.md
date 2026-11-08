@@ -350,5 +350,15 @@ ExecStartPre=/bin/bash -c 'insmod /lib/modules/tun.ko 2>/dev/null || true; mkdir
 - [x] **H-01／H-02 刪除**（83 MB；`資料分享區` 現在是空的）
 - [x] S1：NAS 裝 Tailscale（N-08／N-12）— **完成**：`tailscale0 = 100.65.113.20`，
       notebook 以 `harvest` 走 tailnet 實測（讀 exchange ✅／寫 exchange ❌／寫 backup ✅／讀 archive ✅）
-- [ ] S2：PC1 影子 mirror（Phase 1）
-- [ ] S3：切 `OC_OUTBOX_ROOT(S)` → `harvest --dry-run` 全 `skipped_same`
+- [x] S2：PC1 把 102 包影印到 `exchange\pc1\outbox`（2026-11-08 23:0x）
+      **本機 108 vs NAS 102 不是漏包**：本機多出的 6 個（task 101/109/115/117/133/139）
+      是 2026-11-06 的舊重複包（同 video_id、同 stem、只有 5 檔且摘要較短）；
+      `publish_outbox` 以 stem／video_id 去重後只留較完整的那一份（7 檔、含課程筆記）。
+      NAS 稽核：**102 目錄／102 manifest／102 個唯一 video_id／無重複／10.3 MB**。
+      `harvest_pc.py --machine pc1 --root <NAS> --dry-run` → **skipped_same 102**（零衝突、零缺檔）。
+- [x] S3（notebook 端）：`harvest_daily.bat` 改為 pc1 先讀 NAS、NAS 不可達才退回 PC1 直讀；
+      實跑 `pc1 source = NAS`、`skipped_same 102`、`rc=0`（2026-11-08 23:07）
+- [ ] S3（PC1 端）：`publish_daily.bat` 已改好（NAS 優先、本機 fallback、獨立帳本），**待 PC1 更新檔案**
+      未更新前 PC1 仍只寫本機 outbox，notebook 會收不到新包（但不會壞資料）
+- ⚠ **bat 檔在 `chcp 65001` 之前不要放中文**：UTF-8 中文位元組可能含 `&`／`|`，
+      cmd 會把它當指令分隔 → 實測噴 `'se' 不是內部或外部命令`。兩支 bat 已改成 ASCII-only 註解。
