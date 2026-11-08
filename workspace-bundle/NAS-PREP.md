@@ -385,3 +385,15 @@ Copy-Item financial_news\finance.db H:\_backup\finance_latest.db
 - ❌ Phase 2 後立刻刪 PC1 本機 outbox（NAS 還沒驗證完就是唯一副本）。
 - ❌ 把 `shared\tasks`／`finance.db` 放上 NAS（控制面與 SQLite 留本機）。
 - ❌ 在 NAS 上用 `Everyone`／弱密碼（PC2 舊 `Share` 的 `user/abc123` 就是前車之鑑）。
+
+---
+
+## 14. 決策紀錄（2026-11-08）
+
+| 問題 | 決定 | 依據 |
+|---|---|---|
+| NAS 上要不要裝 opencode？ | **暫不裝**。先開 SSH 通道讓 notebook 上的 agent 直接操作；Tailscale 為第二順位；opencode 只在「真的需要 NAS 常駐 agent」時才用 Container Manager 跑，且用途限 NAS 本機運維 | 2 GB RAM、QuickConnect 不轉 SSH、NAS 上看不到 repo 的 `AGENTS.md`／KB，另養一個 agent 只會多一份會分歧的上下文 |
+| 7 月那份 NAS 計畫還算數嗎？ | **不算**。July guide 只當「開箱步驟」的歷史文件；規格以本檔＋`NAS-WHITEPAPER.md` 為準 | July 設計把 SQLite 與收集排程放 NAS，與 §1「DB 不上 NAS」衝突 |
+| 建置的東西怎麼記？ | **登記制**：`NAS-WHITEPAPER.md` §5 登記表（`N-xx`）＋ agent 專用目錄 `/volume1/agent-ops/<任務代號>/` | 使用者要求「不可隨便更動」，且要知道**為哪個任務而建** |
+
+> 相關：`NAS-WHITEPAPER.md` §8 有完整評估表（相容性／記憶體／額度／上下文／遠端／維護）。
