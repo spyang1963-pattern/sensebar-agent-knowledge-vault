@@ -756,18 +756,24 @@ python -X utf8 harvest_pc.py --machine pc1             # 再跑 skipped_same N�
   PC1 的 `producer` 認證與 publish 試推、NAS 上的 Tailscale 授權（套件已裝，見下）。
 - **每日備份（2026-11-08 起可用）**：`python -X utf8 nas_backup.py`（或雙擊 `backup_daily.bat`）
   把 `knowledge-base\`、`financial_news\finance.db`（SQLite backup API＋`quick_check`＋逐列雜湊驗證）、
-  `shared\` 鏡像到 `\\192.168.1.121\backup\`。第二次起 `rc=0` 無變更代表冪等。
+  `shared\` 鏡像到 NAS `backup\`。第二次起 `rc=0` 無變更代表冪等。
+  **自動選路**：未設 `OC_NAS_BACKUP_ROOT` 時，先試 LAN `192.168.1.121`、不通再試 tailnet
+  `100.65.113.20`（外出也備得成）；要看用了哪條路，日誌第一行會印 `備份 → \\<host>\backup\`。
   **排程 `NasBackupDaily` 每天 01:30**（21:39 建立、試跑 rc=0；設定與 `HarvestPCDaily` 同：
   `hpspy`／Interactive／`StartWhenAvailable`／可電池／`IgnoreNew`）。未登入 Windows 就不會跑，
   下次登入會補跑；要立刻補備份就 `Start-ScheduledTask -TaskName NasBackupDaily`。
 - **影音已離線**：`shared\notebook\results` 的 mp4/mp3（6.06 GB／1691 檔）已搬到
   `\\192.168.1.121\archive\notebook-results`，本機只留 json/srt/md；`D:` 因此多出 6.1 GB。
   **要找回影片**去 NAS 那個目錄，不要以為結果被刪了。
-- **Tailscale on NAS（2026-11-08）**：官方 DSM7 SPK（套件名 **`Tailscale`**，大寫）已安裝啟動。
-  ⚠ DSM7 沒有 `/dev/net/tun` 時套件會**自動退回 `--tun=userspace-networking`**，那樣遠端無法用 SMB
-  連入；已用 systemd drop-in `pkgctl-Tailscale.service.d/tun-device.conf` 在啟動前 `insmod /lib/modules/tun.ko`
-  ＋`mknod` 修好（**重開機後仍需這個 drop-in，別刪**）。Synology 版**不支援 `--accept-routes`**。
-  授權：`tailscale login` 會印一次性網址，要人到瀏覽器按同意（管理心得見白皮書 §5.2）。
+- **Tailscale on NAS（2026-11-08）**：官方 DSM7 SPK（套件名 **`Tailscale`**，大寫）已安裝並**已登入 tailnet**
+  `spyang1963@gmail.com`；NAS tailnet IP **`100.65.113.20`**、MagicDNS `datanas.tail6b5f31.ts.net`。
+  ⚠ 兩個坑（都會讓它**默默退回 userspace 網路**，狀態仍顯示 Running、但沒有 `tailscale0`）：
+  ① DSM7 沒有 `/dev/net/tun` → 需 drop-in `pkgctl-Tailscale.service.d/tun-device.conf` 在啟動前
+  `insmod /lib/modules/tun.ko`＋`mknod`（`/dev` 重開機就消失）；
+  ② 套件預設以 `tailscale` 使用者跑、`CapEff=0` → `tstun.New: operation not permitted`；
+  已把 `/var/packages/Tailscale/conf/privilege` 改成 `defaults.run-as = root`。
+  **套件升級會覆蓋 privilege，升級後要先檢查這個檔**。Synology 版不支援 `--accept-routes`。
+  詳細步驟：白皮書 §5.2。notebook 已存 `cmdkey` 給 `100.65.113.20`（外出用 tailnet、在家用 LAN）。
 
 計畫與切換步驟：**`workspace-bundle/NAS-PREP.md`**（Synology DS718+；定位＝備援＋交換區，不當執行機，SQLite 不放 NAS）。
 

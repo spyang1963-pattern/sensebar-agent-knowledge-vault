@@ -422,7 +422,7 @@ PC1 的 `producer` 認證與 publish 試推、NAS Tailscale 授權（套件已�
 | 影音離線 | `shared\notebook\results` 的 1691 個 mp4/mp3（6.06 GB）→ `archive\notebook-results`；本機 0 檔、`D:` +6.1 GB |
 | July 殘留 | `H-01`／`H-02`（83 MB）已刪，`資料分享區` 清空 |
 | 排程 | `NasBackupDaily` 每天 **01:30**（`backup_daily.bat`），試跑 `LastTaskResult=0`、全程約 4.5 分鐘 |
-| Tailscale | 官方 DSM7 SPK `1.104.5` 已安裝啟動；**DSM7 無 `/dev/net/tun` 會自動退回 userspace 網路**，已用 systemd drop-in 修正（白皮書 §5.2，N-12）；**只差瀏覽器授權** |
+| Tailscale | 官方 DSM7 SPK `1.104.5` 已安裝、登入 tailnet；**`tailscale0 = 100.65.113.20`**；notebook 走 tailnet 實測五項權限全對 |
 
 **Tailscale 的關鍵陷阱（勿忘）**
 
@@ -431,7 +431,11 @@ PC1 的 `producer` 認證與 publish 試推、NAS Tailscale 授權（套件已�
    那不是「還沒登入」，是套件的 DSM7 預設行為。
 3. 修法是 `/etc/systemd/system/pkgctl-Tailscale.service.d/tun-device.conf` 在啟動前
    `insmod /lib/modules/tun.ko`＋`mknod /dev/net/tun`（`/dev` 是 devtmpfs，重開機會消失）。
-4. Synology 版**不支援 `--accept-routes`**，不要拿它當 subnet router。
+4. 更難查的是**權限**：套件預設以 `tailscale` 使用者跑（`CapEff=0`），即使 tun 存在也會
+   `tstun.New: operation not permitted` 後默默退回 userspace；要把
+   `/var/packages/Tailscale/conf/privilege` 改成 `defaults.run-as = root`（只加 `executable` 那條**無效**）。
+   **套件升級會覆蓋這個檔**。
+5. Synology 版**不支援 `--accept-routes`**，不要拿它當 subnet router。
 
 ---
 

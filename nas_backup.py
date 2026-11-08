@@ -39,9 +39,37 @@ FIN_DB = ROOT / "financial_news" / "finance.db"
 LOG_DIR = ROOT / "logs"
 
 
+def _smb_reachable(host: str, timeout: float = 3.0) -> bool:
+    """快速確認 SMB 445 是否可連（避免 is_dir() 在跨機無認證時卡很久）。"""
+    import socket
+    try:
+        with socket.create_connection((host, 445), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
 def nas_root() -> Path:
-    host = os.environ.get("OC_NAS_HOST", "192.168.1.121")
-    return Path(os.environ.get("OC_NAS_BACKUP_ROOT", rf"\\{host}\backup"))
+    """回傳可用的 NAS backup 根目錄。
+
+    優先序：
+      1. `OC_NAS_BACKUP_ROOT`（明確指定就只用它）
+      2. `OC_NAS_HOST`
+      3. 內建候選：LAN `192.168.1.121` → Tailscale `100.65.113.20`
+
+    為什麼要 fallback：notebook 在家走 LAN，外出只剩 Tailscale；
+    排程（01:30）不會有人顧，寫死其中一邊就一定有一邊會失敗。
+    """
+    explicit = os.environ.get("OC_NAS_BACKUP_ROOT")
+    if explicit:
+        return Path(explicit)
+    host = os.environ.get("OC_NAS_HOST")
+    candidates = [host] if host else ["192.168.1.121", "100.65.113.20"]
+    for h in candidates:
+        if h and _smb_reachable(h):
+            return Path(rf"\\{h}\backup")
+    # 全部不通：回第一個候選，交給 main() 印出「不可達」
+    return Path(rf"\\{candidates[0]}\backup")
 
 
 def human(n: float) -> str:
