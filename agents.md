@@ -754,6 +754,13 @@ python -X utf8 harvest_pc.py --machine pc1             # 再跑 skipped_same N�
   `%USERPROFILE%\.nas_accounts.json`（`producer`／`harvest` 密碼）。PC1 要用 `producer`。
 - **尚未做**：`nas_sync.py --check --write-test`（需先設 `OC_NAS_HOST`／`OC_NAS_ROOT`）、
   PC1 的 `producer` 認證與 publish 試推、NAS 上的 Tailscale（待使用者同意）。
+- **每日備份（2026-11-08 起可用）**：`python -X utf8 nas_backup.py`（或雙擊 `backup_daily.bat`）
+  把 `knowledge-base\`、`financial_news\finance.db`（SQLite backup API＋`quick_check`＋逐列雜湊驗證）、
+  `shared\` 鏡像到 `\\192.168.1.121\backup\`。第二次起 `rc=0` 無變更代表冪等。
+  **尚未排程**（未啟用前要手動跑）。
+- **影音已離線**：`shared\notebook\results` 的 mp4/mp3（6.06 GB／1691 檔）已搬到
+  `\\192.168.1.121\archive\notebook-results`，本機只留 json/srt/md；`D:` 因此多出 6.1 GB。
+  **要找回影片**去 NAS 那個目錄，不要以為結果被刪了。
 
 計畫與切換步驟：**`workspace-bundle/NAS-PREP.md`**（Synology DS718+；定位＝備援＋交換區，不當執行機，SQLite 不放 NAS）。
 

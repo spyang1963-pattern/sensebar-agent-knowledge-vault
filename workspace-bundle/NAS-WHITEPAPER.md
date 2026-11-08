@@ -51,7 +51,7 @@
 |---|---|---|---|
 | `exchange` | `/volume1/exchange` | `producer` RW／`harvest` **RO**／`@administrators` RW／`guest` 拒絕 | `pc1/outbox`、`pc2/outbox`、`pc3/outbox` |
 | `backup` | `/volume1/backup` | `harvest` RW／`@administrators` RW／`producer` 拒絕／`guest` 拒絕 | `knowledge-base/`、`finance_db/`、`shared/` |
-| `archive` | `/volume1/archive` | `producer` RW／`harvest` RO／`@administrators` RW／`guest` 拒絕 | `videos/` |
+| `archive` | `/volume1/archive` | `producer` RW／`harvest` RW（2026-11-08 21:0x 加開，用來把 notebook 的成品搬上去）／`@administrators` RW／`guest` 拒絕 | `videos/`、`notebook-results/`（6.06 GB／1691 個 mp4·mp3） |
 | `資料分享區` | `/volume1/資料分享區` | ACL 開、回收桶開（管理員限定）、RW／RO 名單空白、可瀏覽（**使用者的，不由 agent 管理**） | `finance/pip`（24 MB）、`finance/workspace`（59 MB）＝ **2026-07 的殘留**（見 §3.1） |
 
 **驗收（2026-11-08 20:2x，notebook 以 SMB 實測）**
@@ -65,6 +65,16 @@
 | `producer` 寫 `backup` | 拒 | ✅ |
 
 > 這五條就是「方向只有 PC → NAS → notebook」的**機器層保證**，不是靠人記得。改權限前先看 §5.1。
+
+**2026-11-08 21:1x 實際灌進去的資料（第一份完整備份）**
+
+| 目的地 | 內容 | 體積 | 驗收 |
+|---|---|---|---|
+| `backup\knowledge-base` | 全部 KB | **4540 檔／140.5 MB** | 兩邊檔數、大小一致（robocopy `rc=0/1`、0 失敗） |
+| `backup\finance_db\finance.db` | 事件 51,580／快照 16,251 | **57.3 MB** | `PRAGMA quick_check=ok`＋**逐列雜湊與本機完全相同**（用 SQLite backup API，不是直接 copy） |
+| `backup\shared` | `tasks`／`results` 的 json·srt·md（**不含影音**） | **7957 檔／165.2 MB** | 兩邊一致 |
+| `archive\notebook-results` | 原本在 notebook `shared\notebook\results` 的 mp4/mp3 | **1691 檔／6.06 GB** | 搬完本機 0 檔、NAS 1691 檔；**D: 可用空間 32.3 → 38.4 GB** |
+| `/volume1` 總用量 | 上述全部 | **6.4 GB／7.0 TB（1%）** | `df` |
 
 ### 1.4 已安裝套件（16 個，**沒有** Container Manager／Docker／Tailscale）
 
@@ -150,8 +160,8 @@ finance.db         ──備份────▶    backup\finance_db\
 | ID | 物件（路徑／設定） | 屬於哪個任務 | 用途 | 亂動會怎樣（影響） | 回滾 | 狀態 |
 |---|---|---|---|---|---|---|
 | N-01 | `\\NAS\exchange` = `/volume1/exchange` | 跨機收割 | PC 產出包的中央交換區（`pc1/pc2/pc3/outbox`） | 收割全部 `offline`；PC 的 publish 失敗 | 刪分享、把 `OC_OUTBOX_ROOT(S)` 拿掉即回本機路徑 | **active**（2026-11-08 20:17） |
-| N-02 | `\\NAS\backup` = `/volume1/backup` | 每日備份 | 收 `knowledge-base\`、`finance.db`、`shared\` 備份（子目錄已建空） | 沒有備份；不影響生產 | 刪分享；備份檔另存 | **active**（2026-11-08 20:17） |
-| N-03 | `\\NAS\archive` = `/volume1/archive`（`videos\`） | 冷片歸檔 | 30 天以上影片離線存放 | 只影響空間回收，不影響流程 | 刪分享；影片搬回 | **active**（2026-11-08 20:17） |
+| N-02 | `\\NAS\backup` = `/volume1/backup` | 每日備份 | 收 `knowledge-base\`（4540 檔／140.5 MB）、`finance_db\finance.db`（57.3 MB，已驗證）、`shared\`（7957 檔／165.2 MB） | 沒有備份；不影響生產 | 刪分享；備份檔另存 | **active**（2026-11-08 20:17；21:1x 首次完整備份完成） |
+| N-03 | `\\NAS\archive` = `/volume1/archive`（`videos\`、`notebook-results\`） | 冷片歸檔＋成品離線 | `notebook-results\`＝notebook 的 mp4/mp3（1691 檔／6.06 GB）；`videos\`＝30 天以上冷片（空） | 只影響空間回收，不影響流程 | 刪分享；影片搬回 | **active**（2026-11-08 20:17；21:00 搬入 6.06 GB） |
 | N-04 | 使用者 `producer`（uid 1027，shell `/sbin/nologin`） | publish（PC1/2/3） | 只給各機寫 `exchange\<machine>\outbox`；**不能寫 backup** | publish 失敗（`WinError 1326`／權限被拒） | 停用帳號即可 | **active**（2026-11-08 20:16） |
 | N-05 | 使用者 `harvest`（uid 1028，shell `/sbin/nologin`） | 收割（notebook） | **唯讀** `exchange\`、可寫 `backup\` | 收割失敗 | 降權或停用 | **active**（2026-11-08 20:16） |
 | N-06 | `/volume1/agent-ops/`（NAS 本機，目前只有 `2026-11-08-nas-s0/README.md`） | 所有 agent 在 NAS 上的操作 | **agent 專用工作目錄**：腳本、日誌、暫存，一個任務一個子目錄 | 清掉會失去 agent 操作紀錄；**不含任何使用者的資料** | 整個目錄刪除即可 | **active**（2026-11-08 20:16） |
@@ -159,8 +169,9 @@ finance.db         ──備份────▶    backup\finance_db\
 | N-08 | NAS 上的 Tailscale（套件） | 遠端收割 | 讓 notebook 外出也能讀 NAS | 外出時收割 `offline`（不會壞資料） | 移除套件 | pending |
 | N-09 | notebook `%USERPROFILE%\.nas_admin`（`yang` 帳號／密碼，**repo 外**） | S0 建置 | 讓 agent 用 SSH 登入 NAS 做一次性設定 | 刪掉只是 agent 失去登入能力，**不影響 NAS 運作**；外流＝對方有 DSM 權限 | 直接刪檔；或改密碼／停用帳號 | **active**（2026-11-08；**S1 完成後刪除或改用金鑰**） |
 | N-10 | notebook `%USERPROFILE%\.nas_accounts.json`（`producer`／`harvest` 密碼，**repo 外**） | S0 建置 | 讓 PC1（producer）與 notebook（harvest）取用各自密碼 | 刪掉不會壞 NAS，只是要重設密碼（`synouser --setpw`）；外流＝可寫 exchange／backup | 刪檔＋改密碼 | **active**（2026-11-08 20:16） |
-| H-01 | `/volume1/資料分享區/finance/workspace/`（59 MB） | 2026-07 舊計畫殘留 | 舊版 repo 副本，**不是** agent 建的、也不是生產資料 | 刪掉不影響任何現行流程；但**別從這裡取腳本回來跑**（版本已歧異） | 已無回滾需求 | active（待使用者決定是否刪） |
-| H-02 | `/volume1/資料分享區/finance/pip/`（24 MB） | 2026-07 舊計畫殘留 | Python pip 安裝殘留 | 同上 | 已無回滾需求 | active（待使用者決定是否刪） |
+| N-11 | notebook `nas_backup.py` ＋ `backup_daily.bat`（日誌 `logs\nas_backup.log`、`logs\backup_daily.log`） | 每日備份（N-02 的執行者） | KB／finance.db／shared → NAS `backup\`；`finance.db` 用 SQLite backup API（一致性快照）＋`quick_check`＋筆數驗證 | 沒跑＝沒有新備份（舊備份還在，不會壞資料） | 刪掉腳本；備份檔不動 | **active（手動驗收過，尚未排程）**（2026-11-08 21:14） |
+| H-01 | `/volume1/資料分享區/finance/workspace/`（59 MB） | 2026-07 舊計畫殘留 | 舊版 repo 副本，**不是** agent 建的、也不是生產資料 | 已刪；不影響任何現行流程 | 無（已無需求） | **retired**（2026-11-08 21:01 刪除） |
+| H-02 | `/volume1/資料分享區/finance/pip/`（24 MB） | 2026-07 舊計畫殘留 | Python pip 安裝殘留 | 已刪 | 無 | **retired**（2026-11-08 21:01 刪除） |
 
 > **N-06 是關鍵**：agent 在 NAS 上建立的東西**一律**放 `/volume1/agent-ops/<任務代號>/`，
 > 並在該子目錄放一個 `README.md` 寫「為什麼建、對應哪個 repo 任務、怎麼刪」。
@@ -263,6 +274,12 @@ finance.db         ──備份────▶    backup\finance_db\
 - [ ] S1b：**PC1 存 `producer` 認證**：把 repo 的 `set_nas_producer_cred.bat` 帶到 PC1 執行一次
       （會 `cmdkey /add:192.168.1.121 /user:producer`，密碼在 notebook 的 `%USERPROFILE%\.nas_accounts.json`），
       再從 PC1 跑 `publish_outbox.py --dry-run` → 試推一包
+- [x] **P0 備份（2026-11-08 21:1x 完成）**：KB 4540 檔／140.5 MB、`finance.db` 57.3 MB（逐列雜湊相同）、
+      `shared` 7957 檔／165.2 MB；腳本 `nas_backup.py`＋`backup_daily.bat` 可重跑（第二次 `rc=0` 無變更）
+- [ ] **P0 備份排程**：要不要啟用 `NasBackupDaily`（建議 **23:30**，接在 `HarvestPCDaily` 23:10 之後）？
+      未啟用前後要手動跑 `backup_daily.bat`
+- [x] **6.06 GB 影音搬到 `archive\notebook-results`**（本機 0 檔、NAS 1691 檔、D: +6.1 GB）
+- [x] **H-01／H-02 刪除**（83 MB；`資料分享區` 現在是空的）
 - [ ] S1：NAS 裝 Tailscale（N-08，待使用者同意）
 - [ ] S2：PC1 影子 mirror（Phase 1）
 - [ ] S3：切 `OC_OUTBOX_ROOT(S)` → `harvest --dry-run` 全 `skipped_same`
