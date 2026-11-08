@@ -128,7 +128,7 @@ tailscale ip -4         # 記下這台的 100.x
 
 | 任務 | 時間 | 機器 | 指令 | 用途 |
 |---|---|---|---|---|
-| `PublishOutboxDaily` | 22:50 | pc1/pc2/pc3 | `publish_daily.bat` | 打包 → NAS `exchange\<machine>\outbox`（NAS 不通 fallback 本機） |
+| `PublishOutboxDaily` | 22:50 | pc1/pc2/pc3 | `publish_daily.bat` | 打包 → NAS `exchange\<machine>\outbox`（自動偵測機器；LAN 不通改用 tailnet；兩條都不通才 fallback 本機） |
 | `HarvestPCDaily` | 23:10 | **notebook** | `harvest_daily.bat` | 收割 NAS（pc1；pc2/pc3 未上 NAS 前仍走各機）→ `knowledge-base\` |
 | `NasBackupDaily` | 01:30 | **notebook** | `backup_daily.bat` | KB／finance.db／shared → NAS `backup\` |
 | `ChannelWatcherDaily` | 22:30 | 一台 | `channel_watcher.py --once` | 頻道掃描（單一寫入者） |
@@ -150,6 +150,9 @@ python -X utf8 publish_outbox.py --dry-run
 # 3) 真的推一次（產出機）
 python -X utf8 publish_outbox.py --outbox "\\<nas>\exchange\<machine>\outbox" --ledger working\_outbox_published_nas.json
 ```
+
+> `<nas>` 先試 `192.168.1.121`（同內網），不通就改 `100.65.113.20`（Tailscale）。
+> `publish_daily.bat` 會自己判斷（機器名從 `config.py` 取，不用為每台改檔）。
 
 期望：`smoke_test` 0 項失敗；dry-run 列出包數；真實推送 `失敗 0`，NAS 上
 `Get-ChildItem \\<nas>\exchange\<machine>\outbox -Directory` 數量與本機一致。
