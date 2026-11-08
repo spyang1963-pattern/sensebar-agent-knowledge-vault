@@ -410,7 +410,28 @@ Copy-Item financial_news\finance.db H:\_backup\finance_latest.db
    **紅線等級**，已寫進白皮書紅線 2。
 
 **尚未做**：`nas_sync.py --check --write-test`（要先設 `OC_NAS_HOST`／`OC_NAS_ROOT`）、
-PC1 的 `producer` 認證與 publish 試推、NAS Tailscale（N-08，待同意）。
+PC1 的 `producer` 認證與 publish 試推、NAS Tailscale 授權（套件已裝好）。
+
+### 13.7 P0 備份與 Tailscale（2026-11-08 21:0x–21:4x）
+
+| 項目 | 結果 |
+|---|---|
+| KB 備份 | 4540 檔／140.5 MB → `backup\knowledge-base`，兩邊檔數一致、0 失敗 |
+| finance.db | 57.3 MB → `backup\finance_db\finance.db`；`quick_check=ok`、**逐列雜湊與本機相同**（用 SQLite backup API，非直接 copy） |
+| shared 備份 | 7957 檔／165.2 MB → `backup\shared` |
+| 影音離線 | `shared\notebook\results` 的 1691 個 mp4/mp3（6.06 GB）→ `archive\notebook-results`；本機 0 檔、`D:` +6.1 GB |
+| July 殘留 | `H-01`／`H-02`（83 MB）已刪，`資料分享區` 清空 |
+| 排程 | `NasBackupDaily` 每天 **01:30**（`backup_daily.bat`），試跑 `LastTaskResult=0`、全程約 4.5 分鐘 |
+| Tailscale | 官方 DSM7 SPK `1.104.5` 已安裝啟動；**DSM7 無 `/dev/net/tun` 會自動退回 userspace 網路**，已用 systemd drop-in 修正（白皮書 §5.2，N-12）；**只差瀏覽器授權** |
+
+**Tailscale 的關鍵陷阱（勿忘）**
+
+1. 套件名稱是 **`Tailscale`（大寫）**；`synopkg status tailscale` 會說找不到。
+2. `--tun=userspace-networking` 模式下沒有 `tailscale0`，遠端**不能**用 SMB 連進來；
+   那不是「還沒登入」，是套件的 DSM7 預設行為。
+3. 修法是 `/etc/systemd/system/pkgctl-Tailscale.service.d/tun-device.conf` 在啟動前
+   `insmod /lib/modules/tun.ko`＋`mknod /dev/net/tun`（`/dev` 是 devtmpfs，重開機會消失）。
+4. Synology 版**不支援 `--accept-routes`**，不要拿它當 subnet router。
 
 ---
 

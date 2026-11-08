@@ -166,10 +166,11 @@ finance.db         ──備份────▶    backup\finance_db\
 | N-05 | 使用者 `harvest`（uid 1028，shell `/sbin/nologin`） | 收割（notebook） | **唯讀** `exchange\`、可寫 `backup\` | 收割失敗 | 降權或停用 | **active**（2026-11-08 20:16） |
 | N-06 | `/volume1/agent-ops/`（NAS 本機，目前只有 `2026-11-08-nas-s0/README.md`） | 所有 agent 在 NAS 上的操作 | **agent 專用工作目錄**：腳本、日誌、暫存，一個任務一個子目錄 | 清掉會失去 agent 操作紀錄；**不含任何使用者的資料** | 整個目錄刪除即可 | **active**（2026-11-08 20:16） |
 | N-07 | notebook `cmdkey` 認證（`192.168.1.121` → `harvest`） | S1 | 讓 SMB 免密碼重連（重開機後仍有效） | 收割／備份失敗（`WinError 1326`） | `cmdkey /delete:192.168.1.121` | **active**（2026-11-08 20:2x，已驗收） |
-| N-08 | NAS 上的 Tailscale（套件） | 遠端收割 | 讓 notebook 外出也能讀 NAS | 外出時收割 `offline`（不會壞資料） | 移除套件 | pending |
+| N-08 | NAS 上的 Tailscale（套件 `Tailscale` 1.104.5-700104005，官方 DSM7 SPK） | 遠端收割 | 讓 notebook 外出也能讀 NAS | 停用＝外出時收割 `offline`（不會壞資料） | `synopkg uninstall Tailscale` | **active（2026-11-08 21:31 安裝，待使用者開授權連結）** |
 | N-09 | notebook `%USERPROFILE%\.nas_admin`（`yang` 帳號／密碼，**repo 外**） | S0 建置 | 讓 agent 用 SSH 登入 NAS 做一次性設定 | 刪掉只是 agent 失去登入能力，**不影響 NAS 運作**；外流＝對方有 DSM 權限 | 直接刪檔；或改密碼／停用帳號 | **active**（2026-11-08；**S1 完成後刪除或改用金鑰**） |
 | N-10 | notebook `%USERPROFILE%\.nas_accounts.json`（`producer`／`harvest` 密碼，**repo 外**） | S0 建置 | 讓 PC1（producer）與 notebook（harvest）取用各自密碼 | 刪掉不會壞 NAS，只是要重設密碼（`synouser --setpw`）；外流＝可寫 exchange／backup | 刪檔＋改密碼 | **active**（2026-11-08 20:16） |
-| N-11 | notebook `nas_backup.py` ＋ `backup_daily.bat`（日誌 `logs\nas_backup.log`、`logs\backup_daily.log`） | 每日備份（N-02 的執行者） | KB／finance.db／shared → NAS `backup\`；`finance.db` 用 SQLite backup API（一致性快照）＋`quick_check`＋筆數驗證 | 沒跑＝沒有新備份（舊備份還在，不會壞資料） | 刪掉腳本；備份檔不動 | **active（手動驗收過，尚未排程）**（2026-11-08 21:14） |
+| N-11 | notebook `nas_backup.py` ＋ `backup_daily.bat`（日誌 `logs\nas_backup.log`、`logs\backup_daily.log`） | 每日備份（N-02 的執行者） | KB／finance.db／shared → NAS `backup\`；`finance.db` 用 SQLite backup API（一致性快照）＋`quick_check`＋筆數驗證 | 沒跑＝沒有新備份（舊備份還在，不會壞資料） | 刪掉腳本；備份檔不動 | **active**（2026-11-08 21:14 手動驗收；21:39 建立排程 `NasBackupDaily` 每天 **01:30**，試跑 rc=0） |
+| N-12 | NAS：`/var/packages/Tailscale`（套件本體）、`/etc/systemd/system/pkgctl-Tailscale.service.d/tun-device.conf`（agent 建立）、`/dev/net/tun`（`tun.ko`） | N-08 的實作 | 讓 Tailscale 用**核心網路**（`tailscale0`）而不是 `--tun=userspace-networking`，否則遠端無法用 SMB 連入 | 刪 drop-in 後套件會退回 userspace 模式（**遠端 SMB 失效，其餘不影響**）；卸載套件即完全回滾 | 刪 drop-in＋`systemctl daemon-reload`；必要時 `synopkg uninstall Tailscale` | **active**（2026-11-08 21:32；tun 已載入、`ip tuntap` 可建） |
 | H-01 | `/volume1/資料分享區/finance/workspace/`（59 MB） | 2026-07 舊計畫殘留 | 舊版 repo 副本，**不是** agent 建的、也不是生產資料 | 已刪；不影響任何現行流程 | 無（已無需求） | **retired**（2026-11-08 21:01 刪除） |
 | H-02 | `/volume1/資料分享區/finance/pip/`（24 MB） | 2026-07 舊計畫殘留 | Python pip 安裝殘留 | 已刪 | 無 | **retired**（2026-11-08 21:01 刪除） |
 
@@ -205,6 +206,42 @@ finance.db         ──備份────▶    backup\finance_db\
 > 另一個坑：SMB 對同一台主機**只保留一個 session**。先用 `producer` 連過，之後就算 `cmdkey` 已改成
 > `harvest`，也會沿用舊 session 的身份（會看到「harvest 竟然寫得進 exchange」）。換身份測試前要
 > `Restart-Service LanmanWorkstation`（或等 session 逾時）再測，否則會誤判權限設定錯誤。
+
+### 5.2 NAS 上的 Tailscale（N-08／N-12，2026-11-08 實作）
+
+**做法**：用 Tailscale **官方 DSM7 SPK**（不需要 Docker／Container Manager）＋一個 systemd drop-in。
+
+| 步驟 | 指令／路徑 |
+|---|---|
+| 下載 | `https://pkgs.tailscale.com/stable/tailscale-x86_64-<ver>-700104005-dsm7.spk`（檔名版本要含 `700104005`） |
+| 安裝 | `synopkg install <spk>`；套件名稱是 **`Tailscale`（大寫 T）**，`synopkg status tailscale` 會回 `non_installed` |
+| 啟動 | `synopkg start Tailscale`；執行檔在 `/var/packages/Tailscale/target/bin/` |
+| 狀態／登入 | `/var/packages/Tailscale/target/bin/tailscale status` ／ `tailscale login`（會印一次性網址，**要人到瀏覽器授權**） |
+
+⚠ **DSM7 最大的坑：套件預設用 userspace 網路**
+`start-stop-status` 裡有一段：DSM7 且 `/dev/net/tun` 不存在時，自動加 `--tun=userspace-networking`。
+後果是**沒有 `tailscale0` 介面**，只能單向對外，遠端 **無法用 SMB 連進 NAS**（收割／備份就沒用）。
+
+修法（N-12，已建立）：
+
+```ini
+# /etc/systemd/system/pkgctl-Tailscale.service.d/tun-device.conf
+[Service]
+ExecStartPre=/bin/bash -c 'insmod /lib/modules/tun.ko 2>/dev/null || true; mkdir -p /dev/net; [ -e /dev/net/tun ] || mknod /dev/net/tun c 10 200; chmod 666 /dev/net/tun'
+```
+
+- 這台 `tun.ko` 在 **`/lib/modules/tun.ko`**（不在 `.../kernel/drivers/net/`），`insmod` 前若已載入會回
+  `File exists`，視為正常。
+- `/dev` 是 devtmpfs，**重開機就會消失**；靠上面的 `ExecStartPre` 在套件啟動前重建。
+- 建完 drop-in 要 `systemctl daemon-reload`，再 `synopkg restart Tailscale`。
+- 驗收：`ps aux | grep tailscaled` **不能**出現 `--tun=userspace-networking`；登入後 `ip addr show tailscale0` 要有介面。
+- 其他限制：Synology 版**不支援 `--accept-routes`**（會直接報錯），所以不要拿它當 subnet router；
+  但當「一般節點」讓 notebook 直接連它的 tailnet IP 是沒問題的。
+- 記憶體實測：`tailscaled` 約 **36 MB**，2 GB 的機器完全夠。
+- 移除：刪 drop-in → `systemctl daemon-reload` → `synopkg uninstall Tailscale`（不會動到任何分享）。
+
+> 目前狀態（2026-11-08 21:40）：套件已安裝並啟動、tun 已就緒，**只差使用者在瀏覽器完成一次授權**
+> （`tailscale login` 印出的網址）。授權後才會有 `100.x.y.z` 的 NAS tailnet IP。
 
 ---
 
@@ -276,10 +313,15 @@ finance.db         ──備份────▶    backup\finance_db\
       再從 PC1 跑 `publish_outbox.py --dry-run` → 試推一包
 - [x] **P0 備份（2026-11-08 21:1x 完成）**：KB 4540 檔／140.5 MB、`finance.db` 57.3 MB（逐列雜湊相同）、
       `shared` 7957 檔／165.2 MB；腳本 `nas_backup.py`＋`backup_daily.bat` 可重跑（第二次 `rc=0` 無變更）
-- [ ] **P0 備份排程**：要不要啟用 `NasBackupDaily`（建議 **23:30**，接在 `HarvestPCDaily` 23:10 之後）？
-      未啟用前後要手動跑 `backup_daily.bat`
+- [x] **P0 備份排程**：`NasBackupDaily` **每天 01:30**（2026-11-08 21:39 建立，試跑 `LastTaskResult=0`）。
+      設定與 `HarvestPCDaily` 同：`hpspy`／Interactive／`StartWhenAvailable`／可電池／`IgnoreNew`／6 小時上限。
+      未登入 Windows 時不會跑，下次登入由 `StartWhenAvailable` 補跑
 - [x] **6.06 GB 影音搬到 `archive\notebook-results`**（本機 0 檔、NAS 1691 檔、D: +6.1 GB）
+      **程式面已確認沒有依賴**：`scheduler.py` 收割只讀 `.md`／`.srt`／`.txt`；
+      `ipc.py.upload_results()` 是通用複製（不挑副檔名，少媒體不影響）；
+      `sync_results.py` 是 PC→KB 同步、與 `results\` 媒體無關；GUI 沒有用 `results\*.mp4` 做預覽。
+      ⇒ 只有「人想直接點開舊成品影片」時要改去 NAS 拿，程式流程不受影響。
 - [x] **H-01／H-02 刪除**（83 MB；`資料分享區` 現在是空的）
-- [ ] S1：NAS 裝 Tailscale（N-08，待使用者同意）
+- [ ] S1：NAS 裝 Tailscale（N-08）— **套件已裝、tun 已修好（N-12）**，待使用者開 `tailscale login` 網址授權
 - [ ] S2：PC1 影子 mirror（Phase 1）
 - [ ] S3：切 `OC_OUTBOX_ROOT(S)` → `harvest --dry-run` 全 `skipped_same`

@@ -150,3 +150,29 @@ Select-String -Path D:\opencode-data\opencode\log\opencode.log `
   NAS 預備 hooks（commit `7f22a49`）、`oc_usage.py` 假警報修正（commit `9dee32a`）。
 - 待決（等使用者）：repo 只留程式碼、移除 `stock-monitor*.zip`、`AI_Agent_Worker` 觸發方式、
   PC2／NAS 準備順序（分析見 `workspace-bundle/NAS-PREP.md` 的「PC2 / NAS 準備順序」）。
+
+---
+
+## 10. 同日第二次撞牆：2026-11-08 21:33:22（免費池，big-pickle）
+
+| 欄位 | 值 |
+|---|---|
+| 撞牆時間（本機） | **2026-11-08 21:33:22**（+08:00） |
+| 撞牆時間（UTC） | `2026-11-08T13:33:22Z` |
+| 公告 reset 時間 | **未擷取**（本機 log 只有「Free usage limit reached」版本，**沒有** `reset at`）；沿用上一次伺服器宣告值 **上午 8:01** |
+| 當下日累計（08:01 起算） | **195 次** |
+| 當下 5h 滾動窗 | **195 / 200（97.5%）**，窗起點 16:33 |
+| 當下 24h | **323 次**（big-pickle 302 ＋ deepseek-v4.1-flash 21） |
+| 當下主用模型 | `opencode/big-pickle`（195 次全部是它；`opencode-go` 只有 21 次、在窗外） |
+| 撞牆前最後一件事 | 正在跑 NAS **Tailscale 套件安裝**（21:30 下載官方 SPK → 21:31 安裝 → 21:32 restart 套件），撞牆後改跑 `opencode-go/deepseek-v4.1-flash` |
+| 快照檔 | `working\quota_wall_20261108_2136.json` ／ `.txt`（21:36 由 `oc_usage.py` 產生） |
+
+**這次的判讀價值**
+
+1. **5h 這次非常接近上限**（195/200），與 11-06 的「5h 213 仍正常」不衝突——
+   只能說 5h 是**短期爆量指標**，195 這種貼線值本來就隨時會撞。
+2. **日累計 195 就撞**，再次證明「日 330／270 才是瓶頸」的說法不成立；
+   日累計高低與是否被拒**沒有固定門檻**（伺服器可能把重試／中斷步驟也計入）。
+3. 24h 323 已接近歷史觀察帶（330～337），但同一天更早的 02:31 是 24h 278 就撞。
+4. 撞牆後**沒有再試免費池**，直接切 `opencode-go/deepseek-v4.1-flash`；Go 月額度仍
+   `rate-limited`（100%，11/10 22:32 重置），但請求可正常成功。

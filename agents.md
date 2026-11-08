@@ -753,14 +753,21 @@ python -X utf8 harvest_pc.py --machine pc1             # 再跑 skipped_same N�
 - **憑證位置（repo 外，勿 commit）**：`%USERPROFILE%\.nas_admin`（`yang`，SSH 設定用，S1 後刪）、
   `%USERPROFILE%\.nas_accounts.json`（`producer`／`harvest` 密碼）。PC1 要用 `producer`。
 - **尚未做**：`nas_sync.py --check --write-test`（需先設 `OC_NAS_HOST`／`OC_NAS_ROOT`）、
-  PC1 的 `producer` 認證與 publish 試推、NAS 上的 Tailscale（待使用者同意）。
+  PC1 的 `producer` 認證與 publish 試推、NAS 上的 Tailscale 授權（套件已裝，見下）。
 - **每日備份（2026-11-08 起可用）**：`python -X utf8 nas_backup.py`（或雙擊 `backup_daily.bat`）
   把 `knowledge-base\`、`financial_news\finance.db`（SQLite backup API＋`quick_check`＋逐列雜湊驗證）、
   `shared\` 鏡像到 `\\192.168.1.121\backup\`。第二次起 `rc=0` 無變更代表冪等。
-  **尚未排程**（未啟用前要手動跑）。
+  **排程 `NasBackupDaily` 每天 01:30**（21:39 建立、試跑 rc=0；設定與 `HarvestPCDaily` 同：
+  `hpspy`／Interactive／`StartWhenAvailable`／可電池／`IgnoreNew`）。未登入 Windows 就不會跑，
+  下次登入會補跑；要立刻補備份就 `Start-ScheduledTask -TaskName NasBackupDaily`。
 - **影音已離線**：`shared\notebook\results` 的 mp4/mp3（6.06 GB／1691 檔）已搬到
   `\\192.168.1.121\archive\notebook-results`，本機只留 json/srt/md；`D:` 因此多出 6.1 GB。
   **要找回影片**去 NAS 那個目錄，不要以為結果被刪了。
+- **Tailscale on NAS（2026-11-08）**：官方 DSM7 SPK（套件名 **`Tailscale`**，大寫）已安裝啟動。
+  ⚠ DSM7 沒有 `/dev/net/tun` 時套件會**自動退回 `--tun=userspace-networking`**，那樣遠端無法用 SMB
+  連入；已用 systemd drop-in `pkgctl-Tailscale.service.d/tun-device.conf` 在啟動前 `insmod /lib/modules/tun.ko`
+  ＋`mknod` 修好（**重開機後仍需這個 drop-in，別刪**）。Synology 版**不支援 `--accept-routes`**。
+  授權：`tailscale login` 會印一次性網址，要人到瀏覽器按同意（管理心得見白皮書 §5.2）。
 
 計畫與切換步驟：**`workspace-bundle/NAS-PREP.md`**（Synology DS718+；定位＝備援＋交換區，不當執行機，SQLite 不放 NAS）。
 
