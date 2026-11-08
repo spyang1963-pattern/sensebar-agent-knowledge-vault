@@ -243,3 +243,90 @@ python -X utf8 publish_outbox.py --dry-run
 - ❌ 看到 PC2 445 通就急著開分享＋存憑證（NAS 一到就作廢）。
 - ❌ 在 PC2 上直接放幾十支任務當「測試」（它 `tasks_completed: 0`，先 smoke test ＋ 1 支）。
 - ❌ 把 `shared\tasks` 或 `finance.db` 放上 NAS（控制面與 SQLite 都留本機）。
+
+---
+
+## 12. 2026-11-08 白天複核（撞牆後接手第一件事）
+
+> 背景：§11 是 02:37 撞牆當下寫的。結論正確，但它把「現在」縮到只剩「PC2 裝 deno」，
+> 而 deno 需要**有人在 PC2 前面**（沒有遠端通道），所以照那張表，今天實際可執行的動作是 **0**。
+> 本節補「不等硬體、也不等人」的部分，並修正三個 §11 沒觀察到的事實。
+
+### 12.1 複核結果（notebook 端唯讀實測）
+
+| 檢查 | 結果 | 與 §11 的差異 |
+|---|---|---|
+| `python -X utf8 nas_sync.py --check` | NAS 尚未設定（預備狀態，rc=0） | 相同 |
+| `Test-NetConnection 100.113.234.81 -Port 445` | **True**；`tailscale status` = `active; direct` | 相同 |
+| `shared\pc2\status\heartbeat.json` | `offline`、`pid: null`、`last_seen 2026-07-23` | 相同（新架構 worker 從未啟動） |
+| `Test-Path \\100.113.234.81\AI-Agent-Workspace` | **False**（新分享不存在） | §11 寫「先不要開」，實際是「確實沒開」 |
+| `\\100.113.234.81\Share` | **可讀**，舊帳號 `user/abc123` 直接通過認證 | §11 未提：PC2 還開著**七月世代舊 Share** |
+
+舊 Share 內容（2026-11-08 實測）：
+
+| 目錄 | 內容 |
+|---|---|
+| `tasks\task_status.json` | 236 KB，停在 **2026-07-31**（舊架構最後一次派工） |
+| `videos\` | 20 檔 / **3.8 GB**（7 月的課程影片） |
+| `output\` | 424 檔 / 335 MB |
+| `AI-Agent-Workspace\` | 59 檔 / 57 MB（7/19 的專案快照，與現行 repo 無關） |
+
+**修正兩句**：
+
+1. 「PC2 從沒跑過任務」要精確成「**新架構**沒跑過；舊 Share 架構在 7 月跑過，之後換代就停了」。
+2. notebook 沒有 PC2 的**新**分享認證（`WinError 1326`），但**有**舊 Share 的弱憑證。
+   舊分享是**暴露面**，不是解法 —— 它讓「PC2 有網路」看起來像「PC2 可用」，兩者不同。
+
+### 12.2 備份缺口：比 §11 寫的小，但比「等 NAS」急
+
+| 標的 | 大小 | 現況 |
+|---|---|---|
+| `knowledge-base/`（**正本**） | 140.5 MB / 4539 檔 | 只在 notebook `D:`，**無任何備份** |
+| `financial_news/finance.db` | 57.3 MB | 同上（最後寫入 2026-09-10，pipeline 已停用） |
+| PC1 `outbox` | 108 包 / 852 檔 / **10.6 MB** | 可重生的成品包，不是唯一副本 |
+| `shared\notebook\results` | **6.36 GB / 1691 任務**（7 月～11/04） | 舊產物（mp4／mp3），佔住 `D:`；`D:` 只剩 **32.3 GB** |
+
+NAS 的兩個價值要分開看：**交換層**（等硬體）與**備份**（不必等硬體）。
+notebook 有 `H:`（外接 USB 3.7 TB，剩 1.5 TB），先做「KB ＋ finance.db 快照（約 200 MB）」就能補最痛的一塊。
+
+### 12.3 修正後的優先序（風險 → 架構 → 產能）
+
+| 級 | 動作 | 觸發條件 | 成本 | 為什麼排這裡 |
+|---|---|---|---|---|
+| **P0** | KB ＋ finance.db 快照到 `H:\_backup\`，留 `backup_pre_nas.bat` | 現在 | 3 分鐘 | 正本只有一份，`D:` 只剩 32 GB |
+| **P0** | `shared\notebook\results` 的 mp4／mp3 移到 `H:`（md／srt 留著） | 現在（需同意） | 10 分鐘 | 回收 ~6 GB；舊產物不會再變動 |
+| **P1** | PC2 到手 30 分鐘收拾：關舊 `Share`、停用 `user/abc123`、裝 deno、`smoke_test.py` 25 項 | 有人在 PC2 前 | 30 分鐘 | 舊分享是弱憑證暴露面 |
+| **P1** | NAS Phase 1 影子（`nas_sync.py --mirror --verify`） | NAS 到貨 | 半天 | 零風險，先跑一週 |
+| **P2** | PC2 開 worker（修 `AI_Agent_Worker` 觸發）＋ **1 支**測試任務 → 確認 outbox／publish | P1 之後 | 1~2 小時 | `tasks_completed: 0`，別直接放整批 |
+| **P2** | NAS Phase 2（`OC_OUTBOX_ROOT`／`OC_OUTBOX_ROOTS`）＋收割驗收 | Phase 1 一週無異常 | 半天 | 切完不要立刻刪本機 outbox |
+| **P3** | PC3（無 Tailscale IP、未部署） | NAS 上線後 | — | 三台裡最不重要 |
+
+### 12.4 反向意見：NAS 若延期超過一個月
+
+§11.4 說「NAS 延期就回頭做 PC2 的 SMB 憑證」。**建議不要**：那等於把已知會壞的設計
+（每台 PC 各自開分享、各自存憑證、`WinError 1326` 無限循環）再複製一次；
+而且 PC2 就算通了 SMB，派工仍要人 RDP 進去跑 `queue_youtube.py`（本專案刻意**沒有**中央派遣）。
+
+折衷做法（NAS 延期時）：
+
+- PC2 只當「**有人在旁邊時的本地批次機**」：不開分享、不設 publish 排程，
+  跑完手動把成品併回 notebook（或等 NAS 上線再走正常路徑）。
+- 交換層維持「PC1 → notebook」單線（目前正常：`harvest --dry-run` 全 `skipped_same`）。
+- 這樣 PC2 的價值是**短期爆量**（一次 10~20 支），不是常態產能。
+
+### 12.5 需要使用者決定（兩個輸入）
+
+1. **NAS 大概什麼時候到？** ≤2 週／1 個月／還沒採購 → 決定 §11.4 走哪條。
+2. **P0 兩項要不要現在做？**（快照到 `H:`、清 `results` 的 mp4／mp3）
+
+### 12.6 P0 驗收
+
+```powershell
+# H: 需接著
+robocopy knowledge-base H:\_backup\KB_latest /MIR /R:1 /W:1 /NFL /NDL
+Copy-Item financial_news\finance.db H:\_backup\finance_latest.db
+# 期望：H:\_backup\KB_latest 檔案數 = 4539；第二次跑「複製 0」
+```
+
+> 不要做：把 `H:\_backup` 當唯一備份。USB 接在同一台機器上，勒索／竊盜／機器損壞都擋不住；
+> 它是 NAS 上線前的過渡，NAS 到貨後仍要 Hyper Backup ＋ Snapshot Replication。
