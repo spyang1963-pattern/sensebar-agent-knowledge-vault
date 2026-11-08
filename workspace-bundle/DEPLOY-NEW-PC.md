@@ -53,7 +53,7 @@ powershell -ExecutionPolicy Bypass -File D:\AI-Agent-Workspace\workspace-bundle\
 | Tesseract | ✅ | `external_tools.ps1` | 文件圖片 OCR 備援 |
 | **Deno（JS runtime）** | ✅（2026-11-08 補） | `external_tools.ps1` | 缺它 yt-dlp 抓得到 metadata 但**下載影片一律 403** |
 | **Tailscale** | ✅（2026-11-08 補） | `external_tools.ps1` | 不同網段時靠它連 NAS；登入仍要人工 |
-| 執行期目錄 | ✅ | `deploy.ps1` | `working`／`output`／`videos`／`shared\tasks`／`shared\<machine>\{status,results}` |
+| 執行期目錄 | ✅ | `deploy.ps1` | `working`／`output`／`videos`／`logs`／`raw`／`shorts`／`shared\tasks`／`shared\<machine>\{status,results}` |
 | 機器身份 | ✅（檢查） | `deploy.ps1` | 讀 `config.py`；不符直接中止 |
 | 排程（outbox／收割／備份） | ✅（2026-11-08 補） | `deploy.ps1 -RegisterTasks` | 依機器自動篩選，不會把收割排到產出機 |
 | 健檢 | ✅ | `infra\health_check.py` | 金融／影音／股票／XQ 四線能力 |
@@ -184,6 +184,15 @@ python -X utf8 harvest_pc.py --machine pc1 --dry-run      # 應全 skipped_same
    `external_tools.ps1` 就是這樣壞掉的）。`.bat` 相反：**不要 BOM、不要中文**。
 10. **`setup.bat` 是舊版**（只裝 auto-editor／groq／ffmpeg／VLC），不要拿它當新機安裝；
     一律用 `deploy.ps1`。
+11. **Tesseract 裝了但不在 PATH**（PC2 實踩）：winget 版不會自己加 PATH，
+    `pytesseract` 會直接 `TesseractNotFoundError`。`external_tools.ps1` 現在會自動把
+    `C:\Program Files\Tesseract-OCR` 加進使用者 PATH；加完要開新終端。
+12. **Obsidian 的實際路徑是 `%LOCALAPPDATA%\Programs\Obsidian\Obsidian.exe`**（不是
+    `%LOCALAPPDATA%\Obsidian\`）。要讓 `.obsidian\` 出現，用 Obsidian 開一次
+    `D:\AI-Agent-Workspace` 當 vault 即可（設定會存在 repo 內、可同步）。
+13. **改了 repo 一定要 `git push`**：其他機器只拉得到 origin。PC2 曾因此拿到舊版
+    `external_tools.ps1`（沒有 Deno）而卡住。**檢查法**：`git status -sb` 若顯示
+    `ahead N` 就是還有 N 個 commit 沒推。
 
 ---
 

@@ -244,7 +244,7 @@ function Ensure-RuntimeDirs {
     # shared\ 尤其重要：ipc.py 的 get_assigned_tasks() 在 shared\tasks 不存在時
     # 「靜默回傳空清單」，worker 會永遠領不到任務（2026-11-05 PC2 實踩）。
     param([string]$Root, [string]$MachineName)
-    $dirs = @("working", "output", "videos",
+    $dirs = @("working", "output", "videos", "logs", "raw", "shorts",
               "shared\tasks", "shared\errors")
     if ($MachineName) {
         $dirs += "shared\$MachineName\status"

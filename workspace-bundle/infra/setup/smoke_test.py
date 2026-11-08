@@ -154,6 +154,17 @@ def main():
     check("ffmpeg（PATH）", which("ffmpeg"), "")
     check("ffprobe（PATH）", which("ffprobe"), "")
     check("VLC（燒字幕用固定路徑）", vlc.exists(), vlc)
+    tess_path = shutil.which("tesseract")
+    tess_default = Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
+    check("Tesseract OCR（PATH 或預設路徑）",
+          bool(tess_path) or tess_default.exists(),
+          tess_path or (f"{tess_default}（不在 PATH，pytesseract 會失敗）"
+                        if tess_default.exists() else "未安裝"))
+    la = Path(os.environ.get("LOCALAPPDATA", ""))
+    obs_candidates = [la / "Obsidian" / "Obsidian.exe",
+                      la / "Programs" / "Obsidian" / "Obsidian.exe"]
+    obs_hit = next((p for p in obs_candidates if p.exists()), None)
+    check("Obsidian", obs_hit is not None, obs_hit or "未安裝（vault 可稍後再開）")
     check("yt-dlp（YouTube 下載）", which("yt-dlp"), "")
     # 2026-11-06 事故：沒有 JS runtime 時 yt-dlp 抓 metadata 正常、真正下載影片一律 403，
     # 66 支任務因此全滅。這一項一定要在驗收時就擋下來。

@@ -22,6 +22,22 @@ foreach ($t in $tools) {
     winget install --id $t.Id -e --accept-source-agreements --accept-package-agreements
 }
 
+# 2026-11-08 PC2 實踩：Tesseract 的 winget 套件不會把自己加進 PATH，
+# 檔案存在但 pytesseract 仍拋 TesseractNotFoundError。這裡補進使用者 PATH（只加一次）。
+$tessDir = "C:\Program Files\Tesseract-OCR"
+if (Test-Path (Join-Path $tessDir "tesseract.exe")) {
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    if ($userPath -notlike "*$tessDir*") {
+        [Environment]::SetEnvironmentVariable("Path", ($userPath.TrimEnd(';') + ";" + $tessDir), "User")
+        Write-Host "  [OK] 已把 $tessDir 加入使用者 PATH（需開新終端）"
+    } else {
+        Write-Host "  [OK] $tessDir 已在使用者 PATH"
+    }
+    if ($env:Path -notlike "*$tessDir*") { $env:Path = $env:Path + ";" + $tessDir }
+} else {
+    Write-Host "  [WARN] 找不到 $tessDir\tesseract.exe（OCR 會失敗）" -ForegroundColor Yellow
+}
+
 Write-Host ""
 Write-Host "=== Verify (in a NEW terminal) ==="
 Write-Host "  ffmpeg -version"
