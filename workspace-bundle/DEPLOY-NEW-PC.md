@@ -207,5 +207,6 @@ python -X utf8 harvest_pc.py --machine pc1 --dry-run      # 應全 skipped_same
 | `deploy.ps1` 原本沒有 outbox／收割／備份排程 | 新機裝好也不會自動發佈／收割 | ✅ 已補（依機器篩選） |
 | `smoke_test.py` 原本不檢查 NAS／憑證／排程 | 裝完看起來全綠，實際上線才發現連不到 NAS | ✅ 已補 |
 | `ONBOARDING.md` 第 3／5／8 步是 2026-08 舊流程 | 會叫人用 AnyDesk 複製 KB、漏掉 deno 與新排程 | ⚠ 已在本檔標示；ONBOARDING 僅保留金融線細節 |
-| PC2／PC3 尚未存 NAS 憑證與 Tailscale 登入 | 每晚 `offline`／無法發佈 | ⏳ 待做（每台一次，見 §3） |
+| PC2 ready（2026-11-09 00:1x） | 環境、Deno、Tesseract PATH、Tailscale、NAS `producer` 憑證與寫入權限全部驗證通過；**刻意未註冊排程**（尚無產出） | ✅ 完成 |
+| PC3 尚未存 NAS 憑證與 Tailscale 登入 | 每晚 `offline`／無法發佈 | ⏳ 待做（每台一次，見 §3） |
 | PC3 尚未遷到 `D:\AI-Agent-Workspace`、`TAILSCALE_IPS["pc3"]=None` | 無法納入自動流程 | ⏳ 待做 |
