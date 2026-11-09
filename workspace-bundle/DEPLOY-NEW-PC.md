@@ -205,8 +205,10 @@ python -X utf8 harvest_pc.py --machine pc1 --dry-run      # 應全 skipped_same
     「要不要開始領任務？」「先手動跑一支測試影片」當成指令去做（2026-11-09 實際發生過一次，
     幸好當下沒有任何動作）。
 15. **任務管理 GUI「點了沒反應」幾乎都是 pythonw 靜默死亡**（2026-11-09 PC2 實踩）：
-    `pythonw.exe` 沒有主控台，啟動期任何例外都不會顯示，程式直接消失。最經典的觸發點是
-    **雙擊 `.pyw`**——舊的 `task_manager_gui.pyw` 是 2026-07 的副本，第 13 行是沒有防護的
+    `pythonw.exe` 沒有主控台，啟動期任何例外都不會顯示，程式直接消失。**PC2 當時雙擊的是
+    `.py`（不是 `.pyw`）**——`.py` 的檔案關聯各機不同，若被關聯到 `pythonw.exe` 就同樣沒有
+    主控台；再加上舊的單一實例鎖，兩條路都會「靜默退出」。最經典的觸發點仍是**雙擊 `.pyw`**：
+    舊的 `task_manager_gui.pyw` 是 2026-07 的副本，第 13 行是沒有防護的
     `sys.stdout.reconfigure(...)`，而 pythonw 下 `sys.stdout` 是 `None` → 一啟動就
     `AttributeError`（已實測：同一份檔用 `python.exe` 開得起來，用 `pythonw.exe` 退出碼 1、
     沒有視窗、沒有訊息）。另一個靜默死法是舊的單一實例鎖：`%TEMP%\task_manager_gui.lock`
