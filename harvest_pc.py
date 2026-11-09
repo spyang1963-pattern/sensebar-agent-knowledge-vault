@@ -190,7 +190,8 @@ def harvest_one(pkg_dir, machine, kb_root, ledger, index, dry_run=False, replace
 
     # 2) 帳本已收過且 sha256 全對
     rec = ledger.get(key) or {}
-    if rec.get("sha256") and all(rec["sha256"].get(f.get("name")) == f.get("sha256") for f in files):
+    if rec.get("sha256") and all(
+            rec["sha256"].get((f.get("rel") or f.get("name"))) == f.get("sha256") for f in files):
         return "skipped_same", "帳本相符"
 
     # 3) 逐檔比對
@@ -199,30 +200,45 @@ def harvest_one(pkg_dir, machine, kb_root, ledger, index, dry_run=False, replace
     #      **但檔名命中 --replace → 走「覆蓋」（先備份舊檔）**
     #      不同支影片（僅同名）→ 視為衝突，整包隔離
     #    - 存在且相同 → 略過
+    #
+    #    2026-11-09：manifest 可以帶 rel（例：直播報告/<stem>.docx）。舊包沒有 rel →
+    #    一律當成放在 kb_subdir 根（`.get("rel") or name`），所以舊 outbox 仍可正常收割。
+    def _rel_of(f):
+        rel_f = (f.get("rel") or f.get("name") or "").strip().replace("\\", "/")
+        if not rel_f:
+            return ""
+        if rel_f.startswith("/") or ":" in rel_f or any(part in ("..", "") for part in rel_f.split("/")):
+            return ""
+        return rel_f
+
+    def _target_of(f):
+        return dest_dir / _rel_of(f)
+
     def _want_replace(name):
         return bool(replace) and any(p and p in name for p in replace)
 
     conflicts, already, kept, missing, replaced = [], [], [], [], []
     for f in files:
         name = f.get("name") or ""
-        if not name or "/" in name or "\\" in name or name in (".", ".."):
-            return "bad", f"檔名不合法：{name!r}"
-        target = dest_dir / name
+        rel_f = _rel_of(f)
+        if not name or not rel_f or "/" in name or "\\" in name or name in (".", ".."):
+            return "bad", f"檔名不合法：{name!r}（rel={f.get('rel')!r}）"
+        target = dest_dir / rel_f
         if not target.exists():
             missing.append(f)
             continue
         try:
             if sha256(target) == f.get("sha256"):
-                already.append(name)
+                already.append(rel_f)
             elif same_family:
                 if _want_replace(name):
                     replaced.append(f)
                 else:
-                    kept.append(name)
+                    kept.append(rel_f)
             else:
-                conflicts.append(name)
+                conflicts.append(rel_f)
         except OSError:
-            conflicts.append(name)
+            conflicts.append(rel_f)
     if conflicts:
         if not dry_run:
             dst = kb_root / "_harvest_conflicts" / machine / task_id
@@ -240,8 +256,9 @@ def harvest_one(pkg_dir, machine, kb_root, ledger, index, dry_run=False, replace
         kept_smaller = []
         for f in replaced:
             name = f["name"]
-            src = pkg_dir / name
-            target = dest_dir / name
+            rel_f = _rel_of(f)
+            src = pkg_dir / rel_f
+            target = dest_dir / rel_f
             try:
                 src_size = src.stat().st_size
                 tgt_size = target.stat().st_size
@@ -290,21 +307,23 @@ def harvest_one(pkg_dir, machine, kb_root, ledger, index, dry_run=False, replace
     try:
         for f in missing + replaced:
             name = f["name"]
-            src = pkg_dir / name
+            rel_f = _rel_of(f)
+            src = pkg_dir / rel_f
             if not src.exists():
-                return "error", f"outbox 缺檔：{name}"
-            target = dest_dir / name
+                return "error", f"outbox 缺檔：{rel_f}"
+            target = dest_dir / rel_f
+            target.parent.mkdir(parents=True, exist_ok=True)
             if target.exists():
                 backup_dir.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(target, backup_dir / name)
-            tmp = dest_dir / (name + ".part")
+                shutil.copy2(target, backup_dir / rel_f.replace("/", "__"))
+            tmp = target.with_name(target.name + ".part")
             shutil.copy2(src, tmp)
             got = sha256(tmp)
             if got != f.get("sha256"):
                 tmp.unlink(missing_ok=True)
-                return "error", f"sha256 不符：{name}"
+                return "error", f"sha256 不符：{rel_f}"
             os.replace(tmp, target)
-            written.append(name)
+            written.append(rel_f)
     except Exception as e:
         return "error", f"複製失敗：{e}"
 
@@ -313,7 +332,7 @@ def harvest_one(pkg_dir, machine, kb_root, ledger, index, dry_run=False, replace
         "harvested_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
         "dest": str(dest_dir / written[0]) if written else str(dest_dir),
         "title": manifest.get("title"),
-        "sha256": {f["name"]: f.get("sha256") for f in files},
+        "sha256": {(f.get("rel") or f.get("name")): f.get("sha256") for f in files},
     }
     if video_id:
         # 索引一律指向「逐字稿本體」`<stem>.md`；指向 ` 摘要.md` 會讓下一次判斷不同家族
@@ -321,7 +340,8 @@ def harvest_one(pkg_dir, machine, kb_root, ledger, index, dry_run=False, replace
         if (manifest.get("stem") or "").strip() and base.exists():
             index[video_id] = str(base)
         elif video_id not in index:
-            index[video_id] = str(dest_dir / written[0]) if written else str(dest_dir)
+            first_md = next((w for w in written if w.lower().endswith(".md")), None)
+            index[video_id] = str(dest_dir / (first_md or written[0])) if written else str(dest_dir)
     return "harvested", f"{len(written)} 檔 → {dest_dir}"
 
 

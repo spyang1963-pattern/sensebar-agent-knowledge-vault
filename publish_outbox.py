@@ -53,6 +53,10 @@ PROGRESS_DIR = PROJECT_ROOT / "working" / "_task_progress"
 
 # 哪些副檔名算「文字產出」
 EXTS = {".md", ".srt", ".txt", ".docx"}
+# 條目附屬檔案可能放在條目同層的子目錄（例：20VTA／三師爸直播的「直播報告\<stem>.docx」）。
+# 收割端會照 manifest 的 rel 還原路徑，所以這裡要收得到，否則報告永遠留在產出機。
+SUBEXTS = ("直播報告",)
+
 
 # 任務型別 → 是否有 KB 產出可收割
 HARVESTABLE = {"youtube", "note", "summary", "video", "subtitle", "audio", "document", "web"}
@@ -202,7 +206,11 @@ def resolve_stem(tid, info):
 
 
 def collect_files(md_path):
-    """同一 stem 的所有產出（逐字稿、srt、link、筆記、摘要…）。"""
+    """同一 stem 的所有產出（逐字稿、srt、link、筆記、摘要…）。
+
+    除了條目同層，也收 `SUBEXTS` 指名的子目錄（直播報告），
+    否則搬去產出機的掃描產出會少掉 .docx 報告。
+    """
     stem = md_path.with_suffix("")
     out = []
     for f in sorted(stem.parent.glob(md_path.stem + "*")):
@@ -215,7 +223,25 @@ def collect_files(md_path):
         if rest and not rest.startswith((".", " ")):
             continue
         out.append(f)
+    for sub in SUBEXTS:
+        d = stem.parent / sub
+        if not d.is_dir():
+            continue
+        for f in sorted(d.glob(md_path.stem + "*")):
+            if f.is_file() and f.suffix.lower() in EXTS:
+                rest = f.name[len(md_path.stem):]
+                if rest and not rest.startswith((".", " ")):
+                    continue
+                out.append(f)
     return out
+
+
+def rel_in_pack(md_path, f):
+    """檔案在 KB 條目目錄內的相對路徑（一律用 /）；同層檔就是檔名。"""
+    try:
+        return str(f.relative_to(md_path.parent)).replace("\\", "/")
+    except ValueError:
+        return f.name
 
 
 def local_video_for(md_path):
@@ -294,9 +320,11 @@ def publish_one(tid, info, out_root, kb_root, ledger, dry_run=False, force=False
 
     manifest_files = []
     for f in files:
-        target = dest / f.name
+        rel_f = rel_in_pack(md_path, f)
+        target = dest / rel_f
+        target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(f, target)
-        manifest_files.append({"name": f.name, "bytes": target.stat().st_size,
+        manifest_files.append({"name": f.name, "rel": rel_f, "bytes": target.stat().st_size,
                                "sha256": sha256(target)})
 
     # note / summary 任務多半沒有 video_id，從 KB 條目回填（收割器靠它精確去重）

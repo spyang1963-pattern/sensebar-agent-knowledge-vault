@@ -24,9 +24,9 @@ from datetime import datetime, timezone, timedelta
 sys.stdout.reconfigure(encoding="utf-8")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from config import (
-    log, PROJECT_ROOT, SHARED_ROOT,
+    log, PROJECT_ROOT, SHARED_ROOT, MACHINE,
     load_channel_state, save_channel_state, get_watched_channels,
-    CHANNEL_STATE_FILE,
+    CHANNEL_STATE_FILE, load_task_status,
 )
 from watchdog import notify_line_and_email
 
@@ -777,6 +777,79 @@ def process_no_subs(video_id, title, langs, kb_dir, format_spec=None, save_to_kb
     return md_path
 
 
+def kb_subdir_of(md_path):
+    """KB 條目所在子目錄（相對 knowledge-base，用 / 分隔）；算不出來就回空字串。"""
+    try:
+        rel = Path(md_path).parent.relative_to(KB_ROOT)
+        return str(rel).replace("\\", "/")
+    except (ValueError, OSError):
+        return ""
+
+
+def record_harvest_task(video_id, title, md_path, channel_name=""):
+    """把掃描收成的條目登記成一筆「已完成」任務，讓收割鏈看得到。
+
+    為什麼需要（2026-11-09 實查）：`publish_outbox.py` 是**任務驅動**的（`iter_tasks()`），
+    只打包 task_status／shared\\tasks 裡有紀錄的條目。`channel_watcher` 自己產生的 KB 條目
+    以前不需要登記，是因為掃描就跑在 notebook（收割的正本機）上；掃描搬到產出機之後
+    沒有這筆紀錄 → 產出永遠不會被 publish／harvest，等於白做。
+
+    寫入 `shared\\tasks\\task_<id>.json`（status=**completed**，worker 不會撿），
+    不動 `task_status.json` 以免和 GUI／scheduler 的 mirror 打架。
+    `publish_outbox.iter_tasks()` 只認 `status == "completed"`，所以不能用 "done"。
+    失敗只警告，不影響收成。
+    """
+    try:
+        tasks_dir = Path(SHARED_ROOT) / "tasks"
+        tasks_dir.mkdir(parents=True, exist_ok=True)
+        used = []
+        for f in tasks_dir.glob("task_*.json"):
+            try:
+                used.append(int(f.stem.split("_", 1)[1]))
+            except (IndexError, ValueError):
+                pass
+        try:
+            for k in ((load_task_status() or {}).get("tasks") or {}):
+                if str(k).isdigit():
+                    used.append(int(k))
+        except Exception:
+            pass
+        tid = str((max(used) if used else 0) + 1)
+        now = datetime.now().isoformat()
+        info = {
+            "type": "youtube",
+            "status": "completed",
+            "assigned_to": MACHINE,
+            "priority": 0,
+            "name": title,
+            "title": title,
+            "video_id": video_id,
+            "url": f"https://www.youtube.com/watch?v={video_id}",
+            "source_url": f"channel_watcher:{channel_name}"[:300],
+            "kb_subdir": kb_subdir_of(md_path),
+            "harvest_to_kb": True,
+            "auto_note": False,
+            "auto_summary": False,
+            "burn_subs": False,
+            "note": "頻道掃描收成（自動登記，供 publish_outbox 收割）",
+            "discovered_at": now,
+            "started_at": now,
+            "completed_at": now,
+            "last_error": None,
+            "machine": MACHINE,
+            "output_keys": [],
+        }
+        payload = {"task_id": tid, "task_info": info, "status": "completed",
+                   "assigned_to": MACHINE}
+        target = tasks_dir / f"task_{tid}.json"
+        tmp = target.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
+        os.replace(tmp, target)
+        log(f"  📤 已登記收割任務 #{tid}（publish_outbox 會打包這筆）")
+    except Exception as e:
+        log(f"  ⚠️ 登記收割任務失敗（收成不受影響）：{e}")
+
+
 def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未知頻道", burn_subs=False, note=False, summary=False, format_spec=None, dedup=True):
     """掃描單一播放清單，處理新影片
     source: playlist_id 或 YouTube URL
@@ -867,6 +940,7 @@ def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未
         if md_path:
             processed += 1
             index[vid] = str(md_path)  # 即時更新索引：同批其他清單也遇同支即去重
+            record_harvest_task(vid, title, md_path, channel_name)
             log(f"  ✅ 有字幕處理完成")
             _last_scan_details.append({
                 "channel": channel_name,
@@ -879,6 +953,7 @@ def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未
             md_path = process_no_subs(vid, title, langs, kb_dir, format_spec=format_spec)
             if md_path:
                 processed += 1
+                record_harvest_task(vid, title, md_path, channel_name)
                 log(f"  ✅ 離線轉錄完成")
                 _last_scan_details.append({
                     "channel": channel_name,
