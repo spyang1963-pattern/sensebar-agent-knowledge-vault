@@ -12,16 +12,21 @@
 
 | 角色 | 機器 | 必需 | 不需要 |
 |---|---|---|---|
-| 產出機 | pc1 / pc2 / pc3 | 跑 pipeline、產生 KB 條目、22:50 打包到 NAS（或本機 outbox） | 23:10 收割、01:30 備份 |
-| 收割機 | notebook | 23:10 從 NAS 收割、01:30 備份到 NAS、`knowledge-base\` 是**唯一正本** | 大量轉錄（可用但非必要） |
+| 產出機 | pc1 / pc2 | 跑 pipeline、產生 KB 條目、22:50 打包到 NAS（或本機 outbox） | 23:10 收割、01:30 備份 |
+| 產出機＋頻道掃描 | **pc2（現行）** | 同上，另加 22:30 `channel_then_publish.bat`（掃完才打包） | 收割／備份 |
+| 金融線（自成一格） | pc3 | `FinanceNews_*`、XQ 儀表板行情快照；報告用 **HTML** 在 PC3 看，資料在 PC3 知識庫 | 收割到 notebook（**刻意不收割**）、打包 |
+| 收割機 | notebook | 23:10 從 NAS 收割、01:30 備份到 NAS、`knowledge-base\` 是 youtube-clips 類產出的**正本** | 大量轉錄（可用但非必要） |
 
 **運作模型（2026-11-09 使用者確認，勿再改回「跨機分配」）**：
 每一台都是**獨立執行機**——自己在自己的 GUI 建任務、自己跑 worker 把任務做完，
-產出落在**本機** `knowledge-base\`，22:50 由 `publish_daily.bat` 打包到 NAS，
+產出落在**本機** `knowledge-base\`，由 22:50 打包到 NAS（有掃頻道的機器是掃完才打包），
 notebook 只負責 23:10 收割＋01:30 備份。**不做跨機任務分配**：
 `assigned_to`、`scheduler.py --redistribute`、`sync_shared.bat` 都是舊「三機分工」時代的遺留，
 **不要依賴**（舊模式很複雜、常出問題才改成現在這樣）。
 好處：任何一台關機或壞掉只是少一份產能，不會拖垮其他台。
+
+**PC3 是刻意的例外**：每日報告／深度報告、融資券分析、盤前盤後預測榜、XQ 儀表板的行情即時資料
+全在 PC3 產出，HTML 直接看，資料留在 PC3 知識庫 → **不收割到 notebook**。不要把它當成「漏收割」去補。
 
 `config.py` 會用主機名判斷角色（`MACHINE_ALIASES`）。**新主機名一定要先加進去**，否則
 `deploy.ps1` 會直接中止（這是刻意的，避免在錯的機器建排程）。
@@ -155,21 +160,43 @@ tailscale ip -4         # 記下這台的 100.x
 | `PublishOutboxDaily` | 22:50 | pc1/pc2/pc3 | `publish_daily.bat` | 打包 → NAS `exchange\<machine>\outbox`（自動偵測機器；LAN 不通改用 tailnet；兩條都不通才 fallback 本機） |
 | `HarvestPCDaily` | 23:10 | **notebook** | `harvest_daily.bat` | 收割 NAS（pc1；pc2/pc3 未上 NAS 前仍走各機）→ `knowledge-base\` |
 | `NasBackupDaily` | 01:30 | **notebook** | `backup_daily.bat` | KB／finance.db／shared → NAS `backup\` |
-| `ChannelWatcherDaily` | 22:30 | 一台 | `channel_watcher.py --once` | 頻道掃描（單一寫入者） |
-| `FinanceNews_*` | 每 30 分／07:00／19:00 | 一台 | `pipeline.py …` | 金融線（單一寫入者） |
+| `ChannelWatcherDaily` | 22:30 | **一台產出機（現行 PC2）** | `channel_then_publish.bat` | 頻道掃描（單一寫入者）＋**掃完才打包** |
+| `FinanceNews_*` | 每 30 分／07:00／19:00 | 一台（現行 PC3） | `pipeline.py …` | 金融線（單一寫入者；報告／儀表板留在 PC3，不收割） |
 
 `deploy.ps1 -RegisterTasks` 會**依機器自動篩選**：outbox 只裝在 pc1/2/3，收割與備份只裝在 notebook。
 但 `ChannelWatcherDaily`／`FinanceNews_*` 沒有機器限制，用**全量** `-RegisterTasks` 會一起裝到該台。
 
-**PC2／PC3（獨立執行機，只負責打包自己的產出）請只裝打包那支：**
+**一台產出機只能有「掃描＋打包」或「純打包」其中一種**（`deploy.ps1` 會自動擋下同時選到兩個的情況）：
+
+| 這台負責什麼 | 裝哪支 | 時間 |
+|---|---|---|
+| 有掃頻道（現行 **PC2**） | `-Tasks ChannelWatcherDaily` | 22:30 掃描 → 掃完自動打包 |
+| 只打包自己的產出（PC1／PC3） | `-Tasks PublishOutboxDaily` | 22:50 打包 |
 
 ```powershell
+# PC2：掃頻道（@sensebar＋20VTA）並在掃完後打包
 powershell -ExecutionPolicy Bypass -File D:\AI-Agent-Workspace\workspace-bundle\infra\setup\deploy.ps1 `
-  -Machine pc2 -SkipSetup -RegisterTasks -Tasks PublishOutboxDaily
+  -Machine pc2 -SkipSetup -RegisterTasks -Tasks ChannelWatcherDaily
+
+# PC1／PC3：只打包
+powershell -ExecutionPolicy Bypass -File D:\AI-Agent-Workspace\workspace-bundle\infra\setup\deploy.ps1 `
+  -Machine pc3 -SkipSetup -RegisterTasks -Tasks PublishOutboxDaily
 ```
 
-`-Tasks` 可複選（例：`-Tasks PublishOutboxDaily,ChannelWatcherDaily`）。先加 `-DryRun` 看它要裝什麼再真的跑
-（會印「略過 XXX（未列入 -Tasks）」）。
+> **為什麼不能 22:30 掃描 ＋ 22:50 另開打包**：掃描常跑超過 20 分鐘，22:50 會把**半寫入的 KB 檔**
+> 打包出去，收割端存下第一版之後就變成永久衝突。`channel_then_publish.bat` 是「掃完才打包」。
+
+**接手頻道掃描（換機／新機）一定要先匯入游標**，否則會把每個清單最新 `max_initial` 支（約 27 支）
+當新片重抓（重複下載、重複轉錄、重複燒字幕）：
+
+```powershell
+python -X utf8 channel_watcher.py --seed-state workspace-bundle\infra\bootstrap\watched_channels_state_20261108.json
+python -X utf8 channel_watcher.py --status    # 確認 9 個來源的「最近 ID」與舊機一致
+```
+
+游標檔在各機自己的 `shared\watched_channels_state.json`（`shared\` 不在 git）；要更新 seed 就從
+現行掃描機複製一份新的到 `workspace-bundle\infra\bootstrap\`。舊機確認新機跑過一次後要
+`Disable-ScheduledTask -TaskName ChannelWatcherDaily`（同一任務全時間只能一台跑）。
 
 ---
 

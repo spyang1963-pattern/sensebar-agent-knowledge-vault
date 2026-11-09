@@ -230,7 +230,7 @@ python auto_update.py
 
 ### 設定 Windows 排程任務
 
-> **注意（2026-11-03）**：以下 `SensebarAutoUpdate` 建立指令僅為歷史紀錄，**不要在新 PC 執行**。頻道掃描統一由 `ChannelWatcherDaily`（每天 22:30，`channel_watcher.py --once`）負責，@sensebar 與 20VTA 共用同一次掃描。
+> **注意（2026-11-03 建立／2026-11-09 移到 PC2）**：以下 `SensebarAutoUpdate` 建立指令僅為歷史紀錄，**不要在新 PC 執行**。頻道掃描統一由 `ChannelWatcherDaily`（每天 22:30，`channel_then_publish.bat`＝掃描後打包；現行裝在 **PC2**）負責，@sensebar 與 20VTA 共用同一次掃描。
 
 ```powershell
 # 【歷史紀錄，勿執行】舊的 10:00 任務
@@ -294,15 +294,34 @@ watched_channels:
 
 **必知**：`channel_url` 目前**沒有任何作用**，真正被掃的只有 `playlists`（`id` 或 `url` 皆可）。`kb_dir.name == "直播"` 的來源會**自動**呼叫直播報告產生器；`format` 只供燒字幕下載用（預設 1080p H.264，`YT_DL_FORMAT_720` 為 720p）。
 
-### 自動排程（現況：2026-11-03 修正）
+### 自動排程（現況：2026-11-09 掃描移到 PC2）
 
-**頻道掃描只有一個排程：`ChannelWatcherDaily`，每天 22:30 執行 `channel_watcher.py --once`，一次掃完 `watched_channels` 內所有頻道（@sensebar＋20VTA），每頻道每日僅掃一次。**
+**頻道掃描仍只有一個排程：`ChannelWatcherDaily`，每天 22:30，一次掃完 `watched_channels` 內所有頻道（@sensebar＋20VTA），每頻道每日僅掃一次。**
 
+- **2026-11-09 起這支改裝在 PC2**（原本在 notebook）。原因：三機各自獨立執行後，掃描屬於「產出」，
+  該由產出機做；notebook 只收割。
+- **指令改成 `channel_then_publish.bat`**（22:30）：先 `channel_watcher.py --once`，**掃完才** `publish_daily.bat`。
+  不可改回「22:30 掃描 ＋ 22:50 另外打包」——掃描常跑超過 20 分鐘，22:50 會打包到**半寫入的 KB 檔**，
+  收割端保存第一版之後就變成永久衝突。因此 `deploy.ps1` 有守門：同一台同時選到
+  `ChannelWatcherDaily` 與 `PublishOutboxDaily` 時會自動略過後者。
+- **接手／換機一定要先匯入游標**，否則新機把每個清單最新 `max_initial` 支（共 ~27 支）當新片重抓：
+  ```powershell
+  python -X utf8 channel_watcher.py --seed-state workspace-bundle\infra\bootstrap\watched_channels_state_20261108.json
+  python -X utf8 channel_watcher.py --status      # 確認 9 個來源的「最近 ID」與舊機相同
+  ```
+  游標檔是**各機自己的** `shared\watched_channels_state.json`（`shared\` 不在 git），所以 seed 檔另外放在
+  `workspace-bundle\infra\bootstrap\`，要更新就從現行掃描機複製一份新的進去。
+- **PC2 只裝這支**（不要全量 `-RegisterTasks`，會把金融線／頻道掃描一起裝）：
+  `deploy.ps1 -Machine pc2 -SkipSetup -RegisterTasks -Tasks ChannelWatcherDaily`
+- **notebook 端要停用**（同一任務只能一台跑）：`Disable-ScheduledTask -TaskName ChannelWatcherDaily`。
+  確認 PC2 已成功掃過一次再停 notebook，避免中間漏一天。
 - **固定 22:30**，不改成其他時間；排程設定（2026-11-03）：
   - `StartWhenAvailable = true` → 22:30 若關機／休眠而錯過，開機後**補跑一次**
   - `DisallowStartIfOnBatteries = false`、`StopIfGoingOnBatteries = false` → 未插電也會在 22:30 正常跑，跑到一半拔電也不會被中止
   - `MultipleInstancesPolicy = IgnoreNew` → 補跑與固定掃描不會同時開兩份
   - 補跑與固定掃描合計仍以「一天一次」為原則；若補跑已跑完，當晚 22:30 仍照常掃（新片通常還沒有）
+- **掃描的輸出以前看不到**：`config.log()` 只 `print`，不寫檔，排程執行等於無聲。現在
+  `channel_then_publish.bat` 會把整段輸出附加到 `logs\channel_watcher.log`（含 rc 與打包 rc），查問題看那裡。
 
 - 舊的 `SensebarAutoUpdate`（每天 10:00 執行 `auto_update.bat`）已 **Disable**，不要再啟用，否則 @sensebar 會變成一天掃兩次（10:00 與 22:30）。
 - `auto_update.py` / `auto_update.bat` 仍保留供**手動**補片使用（`auto_update.bat` 已支援 `--no-pause`，排程呼叫時不會卡在 pause）。
@@ -390,10 +409,16 @@ notebook 23:10 收割＋01:30 備份。**不做跨機任務分配。**
 - 一台機器要開始吃任務：開 GUI → 按「☐ 可加入任務」（會變成「☑ 停止工作指派」），
   它就會在本機反覆跑 `worker.py --once`；關掉 GUI 就停（要背景常駐就另外開
   `python -X utf8 worker.py`）。
-- 產出要能被 notebook 收到，該台必須有 `PublishOutboxDaily`（22:50）＋ NAS `producer` 憑證。
-  只裝這支（不把金融線／頻道掃描一起裝到該台）：
-  `deploy.ps1 -Machine pcN -SkipSetup -RegisterTasks -Tasks PublishOutboxDaily`
-  （`-Tasks` 可複選；加 `-DryRun` 先看要裝什麼。）
+- 產出要能被 notebook 收到，該台必須有**打包**排程＋ NAS `producer` 憑證。兩種擇一：
+  - 只打包自己的產出：`deploy.ps1 -Machine pcN -SkipSetup -RegisterTasks -Tasks PublishOutboxDaily`（22:50）
+  - 也負責頻道掃描：`-Tasks ChannelWatcherDaily`（22:30 跑 `channel_then_publish.bat`，**掃完才打包**）
+  **不要兩個都裝**（掃描還在寫就打包 → 收割端留下半成品；`deploy.ps1` 會自動擋）。
+  `-Tasks` 可複選；加 `-DryRun` 先看要裝什麼。**頻道掃描全時間只有一台**（現行 PC2）。
+- **PC3 例外：金融線自成一格**（2026-11-09 使用者說明）——每日報告／深度報告由 PC3 跑，
+  用 **HTML** 就能閱讀；XQ 儀表板的行情即時快照也在 PC3，儀表板內的數據與各種報告
+  （融資券分析、盤前／盤後預測榜等）都由 PC3 主導產出，資料就在 **PC3 自己的知識庫**。
+  ⇒ **不收割到 notebook**（所以 PC3 不需要 `PublishOutboxDaily`）。
+  動 PC3 的東西前先記得這點：它不是「少一份產出」，而是刻意留在本機的整套金融線。
 
 ## 任務管理 GUI：新增 YouTube 任務（2026-11-03 修正）
 

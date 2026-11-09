@@ -59,13 +59,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# -Tasks 允許兩種寫法：`-Tasks A,B`（powershell -File 會把逗號當成同一個字串）與 `-Tasks A B`。
+$Tasks = @($Tasks | Where-Object { $_ } | ForEach-Object { $_ -split ',' } |
+           ForEach-Object { $_.Trim() } | Where-Object { $_ })
+
 # ── 排程定義（與 ONBOARDING 第 8 步／DEPLOY-NEW-PC.md §4 一致）──
 # Only = 只在這幾種機器註冊（$null 表示任何機器）；避免把收割排到產出機。
 $TaskDefs = @(
     @{ Name = "FinanceNews_Pipeline";       Script = "pipeline.py";       Args = @("--full", "--batch", "150", "--time-budget", "480"); Kind = "interval"; Minutes = 30;  Desc = "金融新聞 pipeline（每 30 分）" }
     @{ Name = "FinanceNews_MorningReport";  Script = "pipeline.py";       Args = @("--report", "--deep", "--slot", "morning");           Kind = "daily";    At = "07:00"; Desc = "金融早報（每天 07:00）" }
     @{ Name = "FinanceNews_EveningReport";  Script = "pipeline.py";       Args = @("--report", "--deep", "--slot", "evening");           Kind = "daily";    At = "19:00"; Desc = "金融晚報（每天 19:00）" }
-    @{ Name = "ChannelWatcherDaily";        Script = "channel_watcher.py"; Args = @("--once");                                           Kind = "daily";    At = "22:30"; Desc = "頻道監控（每天 22:30）" }
+    @{ Name = "ChannelWatcherDaily";        File = "channel_then_publish.bat"; Kind = "daily"; At = "22:30"; Only = @("pc1","pc2","pc3"); Desc = "頻道監控（22:30，掃完自動打包到 NAS；只裝在做掃描的產出機）" }
     # 2026-11-08 NAS 上線後：產出機打包 → NAS；notebook 收割＋備份
     @{ Name = "PublishOutboxDaily";         File = "publish_daily.bat";    Kind = "daily"; At = "22:50"; Only = @("pc1","pc2","pc3"); Desc = "打包 KB 產出 → NAS exchange\<machine>\outbox（NAS 不通 fallback 本機）" }
     @{ Name = "HarvestPCDaily";             File = "harvest_daily.bat";    Kind = "daily"; At = "23:10"; Only = @("notebook");        Desc = "收割 NAS／各機 outbox → knowledge-base" }
@@ -431,6 +435,8 @@ function Register-DeployTasks {
         $existing = @(Get-ScheduledTask -ErrorAction Stop | ForEach-Object { $_.TaskName })
     } catch { }
 
+    # 先依 -Tasks／Only 篩出這次真的要處理的排程
+    $selected = @()
     foreach ($d in $TaskDefs) {
         if ($Tasks -and $Tasks.Count -gt 0 -and $Tasks -notcontains $d.Name) {
             Write-Host "  - 略過 $($d.Name)（未列入 -Tasks）"
@@ -440,6 +446,18 @@ function Register-DeployTasks {
             Write-Host "  - 略過 $($d.Name)（此任務只裝在 $($d.Only -join '/')）"
             continue
         }
+        $selected += $d
+    }
+
+    # 掃描與打包二選一：channel_then_publish.bat 掃完就會打包，
+    # 兩個都裝會在掃描還沒寫完時打包 → 收割端收到半成品，之後變成衝突。
+    $names = @($selected | ForEach-Object { $_.Name })
+    if (($names -contains "ChannelWatcherDaily") -and ($names -contains "PublishOutboxDaily")) {
+        $selected = @($selected | Where-Object { $_.Name -ne "PublishOutboxDaily" })
+        Write-Host "  - 略過 PublishOutboxDaily（ChannelWatcherDaily 掃完會自動打包）"
+    }
+
+    foreach ($d in $selected) {
         if ($Preview) {
             Write-Host "  [dry] 註冊排程 $($d.Name)（$($d.Desc)）"
             continue

@@ -224,14 +224,33 @@ def main():
     if machine == "notebook":
         expect_tasks = ["HarvestPCDaily", "NasBackupDaily"]
         expect_files = ["harvest_daily.bat", "backup_daily.bat"]
+        for f in expect_files:
+            check(f"腳本 {f}", (project / f).exists(), project / f)
+        for t in expect_tasks:
+            check(f"排程 {t}", task_exists(t),
+                  "未註冊（切換日再跑 deploy.ps1 -SkipSetup -RegisterTasks）")
     else:
-        expect_tasks = ["PublishOutboxDaily"]
-        expect_files = ["publish_daily.bat"]
-    for f in expect_files:
-        check(f"腳本 {f}", (project / f).exists(), project / f)
-    for t in expect_tasks:
-        check(f"排程 {t}", task_exists(t),
-              "未註冊（切換日再跑 deploy.ps1 -SkipSetup -RegisterTasks）")
+        # 產出機的「打包」有兩條合法路徑（2026-11-09 起）：
+        #   只打包   → PublishOutboxDaily（22:50）
+        #   有掃頻道 → ChannelWatcherDaily（22:30 跑 channel_then_publish.bat：掃完才打包）
+        # 兩個都裝會在掃描還沒寫完時打包，收割端會收到半成品 → 要求剛好裝一個。
+        has_pub = task_exists("PublishOutboxDaily")
+        has_watch = task_exists("ChannelWatcherDaily")
+        check("腳本 publish_daily.bat", (project / "publish_daily.bat").exists(), project / "publish_daily.bat")
+        if machine == "pc3":
+            # PC3＝金融線自成一格：每日／深度報告用 HTML 在 PC3 看、資料在 PC3 知識庫，
+            # 「不收割到 notebook」是既定決策 → 沒有打包排程不算 ❌。
+            check("打包排程（PC3 可省略）", True,
+                  "PC3 走本機報告＋本機知識庫，不收割；哪天要收割再加 PublishOutboxDaily")
+        else:
+            check("打包路徑（PublishOutboxDaily 或 ChannelWatcherDaily）", has_pub or has_watch,
+                  "都沒有：deploy.ps1 -SkipSetup -RegisterTasks -Tasks PublishOutboxDaily")
+        check("掃描與打包未重複註冊", not (has_pub and has_watch),
+              "兩個都裝了：channel_then_publish.bat 已含打包，請移除 PublishOutboxDaily")
+        if has_watch:
+            check("腳本 channel_then_publish.bat",
+                  (project / "channel_then_publish.bat").exists(),
+                  project / "channel_then_publish.bat")
 
     # ── 6.5 GUI 入口（2026-11-09 PC2 實踩：新機雙擊 .py 完全沒反應）──
     # 檢查兩件事：repo 內的 launch_gui.bat，以及桌面「任務管理.lnk」。

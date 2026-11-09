@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from config import (
     log, PROJECT_ROOT, SHARED_ROOT,
     load_channel_state, save_channel_state, get_watched_channels,
+    CHANNEL_STATE_FILE,
 )
 from watchdog import notify_line_and_email
 
@@ -1018,6 +1019,74 @@ def scan_all_channels():
     return total
 
 
+def seed_channel_state(seed_path):
+    """把另一台機器的掃描游標匯入本機（接手掃描／新機上線用）。
+
+    seed 檔格式與 `shared/watched_channels_state.json` 相同：
+    `{來源: {"last_video_id": ..., "last_check": ...}}`。
+    沒有游標的新機若直接 `--once`，會把每個清單最新 `max_initial` 支當新片重抓
+    （重複下載、重複轉錄、重複燒字幕）；先匯入游標就不會。
+
+    規則：
+    - 來源不在 config.yaml 的 watched_channels → 只警告，不寫入（多半是清單已改）
+    - 本機沒有該來源 → 寫入
+    - 本機有、seed 的 last_check 較新 → 覆蓋（游標只往前，不倒退）
+    - 本機較新 → 保留本機
+    """
+    seed_file = Path(seed_path)
+    if not seed_file.exists():
+        log(f"❌ 找不到 seed 檔：{seed_file}")
+        return 1
+    try:
+        seed = json.loads(seed_file.read_text(encoding="utf-8"))
+    except Exception as e:
+        log(f"❌ seed 檔不是合法 JSON：{e}")
+        return 1
+
+    valid = set()
+    for ch in get_watched_channels():
+        for pl in ch.get("playlists", []):
+            src = pl.get("url", "") or pl.get("id", "")
+            if src:
+                valid.add(src)
+
+    state = load_channel_state()
+    added, updated, kept, ignored = [], [], [], []
+    for src, s in seed.items():
+        if not isinstance(s, dict) or not s.get("last_video_id"):
+            continue
+        if valid and src not in valid:
+            ignored.append(src)
+            continue
+        cur = state.get(src) or {}
+        new = {
+            "last_video_id": s["last_video_id"],
+            "last_check": s.get("last_check", ""),
+        }
+        if not cur.get("last_video_id"):
+            state[src] = new
+            added.append(src)
+        elif str(s.get("last_check", "")) > str(cur.get("last_check", "")):
+            state[src] = new
+            updated.append(src)
+        else:
+            kept.append(src)
+
+    if added or updated:
+        save_channel_state(state)
+
+    log(f"匯入游標 {seed_file.name}：新增 {len(added)}｜更新 {len(updated)}｜"
+        f"保留本機 {len(kept)}｜略過(不在設定) {len(ignored)}")
+    if ignored:
+        for src in ignored:
+            log(f"  ⚠️ 不在 config.yaml watched_channels，略過：{src}")
+    if not added and not updated:
+        log("  ℹ️ 沒有寫入任何游標（本機已是最新，或 seed 不含有效來源）")
+    log(f"  狀態檔案：{CHANNEL_STATE_FILE}")
+    log("  下一步：`--status` 確認，再 `--once` 實際掃描")
+    return 0
+
+
 def show_status():
     """顯示監控狀態"""
     state = load_channel_state()
@@ -1197,7 +1266,12 @@ def main():
     ap.add_argument("--status", action="store_true", help="顯示監控狀態")
     ap.add_argument("--interval", type=int, default=3600, help="掃描間隔秒數（預設 3600）")
     ap.add_argument("--setup-schedule", action="store_true", help="建立 Windows 排程（每週一 22:00）")
+    ap.add_argument("--seed-state", metavar="FILE",
+                    help="匯入另一台機器的掃描游標後結束（接手掃描／新機上線用）")
     args = ap.parse_args()
+
+    if args.seed_state:
+        return seed_channel_state(args.seed_state)
 
     if args.setup_schedule:
         _setup_schedule()
