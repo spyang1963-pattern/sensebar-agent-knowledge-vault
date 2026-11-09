@@ -315,6 +315,15 @@ watched_channels:
   ```
   游標檔是**各機自己的** `shared\watched_channels_state.json`（`shared\` 不在 git），所以 seed 檔另外放在
   `workspace-bundle\infra\bootstrap\`，要更新就從現行掃描機複製一份新的進去。
+- **產出機的 KB 從零開始，所以另備「已知 video_id 種子」**：`knowledge-base/*` 不進 git，
+  新機的 `kb_video_index()` 是空的 → 游標一旦遺失（直播下架、清單改動），
+  `scan_playlist` 的「上次 ID 未找到」分支會抓 `max_initial` 支重處理，去重擋不住
+  （重複下載＋重複轉錄＋重複燒字幕）。`workspace-bundle\infra\bootstrap\kb_video_ids.txt`
+  （notebook KB 抽出，2026-11-09 為 247 筆有 id 的條目）由 `_build_kb_video_index()` 一併載入，
+  只提供 id、**不建立任何條目**，命中時 log 顯示 `→ seed(notebook)`。要更新就從現行 KB 重新產生。
+- **目錄／格式對齊要驗**：`python -X utf8 workspace-bundle\infra\setup\check_harvest_align.py`
+  會造一個模擬直播條目（md/srt/link.txt／課程筆記 docx／`直播報告\` docx），走真正的
+  publish→harvest，確認落地路徑與 notebook 知識庫一致、第二次為 `skipped_same`。
 - **PC2 只裝這支**（不要全量 `-RegisterTasks`，會把金融線／頻道掃描一起裝）：
   `deploy.ps1 -Machine pc2 -SkipSetup -RegisterTasks -Tasks ChannelWatcherDaily`
 - **notebook 端要停用**（同一任務只能一台跑）：`Disable-ScheduledTask -TaskName ChannelWatcherDaily`。

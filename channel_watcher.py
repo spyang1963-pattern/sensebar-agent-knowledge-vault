@@ -35,6 +35,8 @@ WORKING = PROJECT_ROOT / "working"
 KB_ROOT = PROJECT_ROOT / "knowledge-base"
 YT_VIDEOS = Path(r"D:\YouTube_Videos")
 YT_VIDEOS.mkdir(parents=True, exist_ok=True)
+# 已知 video_id 種子（notebook KB 的 id 清單；產出機 KB 從零開始時補足去重能力）
+KB_VIDEO_IDS_SEED = PROJECT_ROOT / "workspace-bundle" / "infra" / "bootstrap" / "kb_video_ids.txt"
 
 # 最近一次掃描的詳細處理明細（供通知產生）
 _last_scan_details = []
@@ -525,7 +527,14 @@ _KB_VIDEO_INDEX = None
 
 def _build_kb_video_index(kb_root=None):
     """掃描 KB 建立 {video_id: md路徑}。來源：.md 開頭 8KB（連結寫在表頭）＋ .link.txt 全文。
-    .link.txt 若對應 .md 存在則記 md 路徑（較易辨識），否則記連結檔。"""
+    .link.txt 若對應 .md 存在則記 md 路徑（較易辨識），否則記連結檔。
+
+    另載入「已知 video_id 種子」（`workspace-bundle/infra/bootstrap/kb_video_ids.txt`）：
+    產出機的 knowledge-base 不進 git（從零開始），光靠掃描游標去重不夠——游標一旦
+    遺失（直播下架、清單改動），`scan_playlist` 會抓 `max_initial` 支重處理，
+    而沒有索引就擋不住（重複下載＋重複轉錄＋重複燒字幕）。種子檔只提供 id、
+    不建立任何條目，值一律標成 `seed(notebook)`（僅供 log 顯示）。
+    """
     root = Path(kb_root) if kb_root else KB_ROOT
     idx = {}
     for p in root.rglob("*.md"):
@@ -546,6 +555,14 @@ def _build_kb_video_index(kb_root=None):
         if m and m.group(1) not in idx:
             md = p.with_name(p.name[:-len(".link.txt")] + ".md")
             idx[m.group(1)] = str(md if md.exists() else p)
+    try:
+        if KB_VIDEO_IDS_SEED.exists():
+            for line in KB_VIDEO_IDS_SEED.read_text(encoding="utf-8", errors="replace").splitlines():
+                vid = line.strip()
+                if len(vid) == 11 and re.fullmatch(r"[A-Za-z0-9_-]{11}", vid):
+                    idx.setdefault(vid, "seed(notebook)")
+    except OSError:
+        pass
     return idx
 
 
@@ -778,9 +795,18 @@ def process_no_subs(video_id, title, langs, kb_dir, format_spec=None, save_to_kb
 
 
 def kb_subdir_of(md_path):
-    """KB 條目所在子目錄（相對 knowledge-base，用 / 分隔）；算不出來就回空字串。"""
+    """KB 條目所在子目錄（相對 knowledge-base，用 / 分隔）；算不出來就回空字串。
+
+    一律先 resolve()：呼叫端若傳相對路徑，`relative_to` 會拋 ValueError →
+    退回空字串 → publish_outbox 只會在 youtube-clips／KB 根找，條目就收不到
+    （2026-11-09 PC2 實測踩到：手動登記時的相對路徑）。正式掃描是絕對路徑，
+    但不該讓「傳相對路徑」變成靜默失敗。
+    """
     try:
-        rel = Path(md_path).parent.relative_to(KB_ROOT)
+        p = Path(md_path)
+        if not p.is_absolute():
+            p = (Path.cwd() / p)
+        rel = p.resolve().parent.relative_to(Path(KB_ROOT).resolve())
         return str(rel).replace("\\", "/")
     except (ValueError, OSError):
         return ""

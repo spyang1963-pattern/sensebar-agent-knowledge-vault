@@ -200,18 +200,25 @@ python -X utf8 channel_watcher.py --status    # 確認 9 個來源的「最近 I
 
 ---
 
-## 5. 驗收（三關，全部要綠）
+## 5. 驗收（四關，全部要綠）
 
 ```powershell
 # 1) 唯讀自我檢查（身份、工具、金鑰、NAS、排程）
 python -X utf8 workspace-bundle\infra\setup\smoke_test.py
 
-# 2) 打包演練（不寫檔）
+# 2) 收割鏈「目錄與格式對齊」（在 working\_align_check\ 內模擬，不碰真實 KB／NAS）
+python -X utf8 workspace-bundle\infra\setup\check_harvest_align.py
+
+# 3) 打包演練（不寫檔）
 python -X utf8 publish_outbox.py --dry-run
 
-# 3) 真的推一次（產出機）
+# 4) 真的推一次（產出機）
 python -X utf8 publish_outbox.py --outbox "\\<nas>\exchange\<machine>\outbox" --ledger working\_outbox_published_nas.json
 ```
+
+> 第 2 關是 2026-11-09 新增：產出機的 `knowledge-base\` 從零開始（`knowledge-base/*` 不進 git），
+> 所以要用模擬條目證明「打包 → 收割」後落地路徑與 notebook 完全相同（含 `直播報告\<stem>.docx`）。
+> 新機務必跑，不要等到有真新片才發現路徑不對。
 
 > `<nas>` 先試 `192.168.1.121`（同內網），不通就改 `100.65.113.20`（Tailscale）。
 > `publish_daily.bat` 會自己判斷（機器名從 `config.py` 取，不用為每台改檔）。

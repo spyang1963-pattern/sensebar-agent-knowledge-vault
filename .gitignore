@@ -41,3 +41,6 @@ knowledge-base/*
 # YouTube 登入 cookies（視同帳號密碼，絕對不可進版控）
 cookies.txt
 *.cookies.txt
+
+# root-level runtime logs (bat/py append here; not source)
+logs/
