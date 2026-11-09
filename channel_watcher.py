@@ -756,9 +756,10 @@ def process_has_subs(video_id, title, langs, kb_dir, burn_subs=False, format_spe
     return md_path
 
 
-def process_no_subs(video_id, title, langs, kb_dir, format_spec=None, save_to_kb=True):
+def process_no_subs(video_id, title, langs, kb_dir, format_spec=None, save_to_kb=True, burn_subs=True):
     """無字幕路徑：下載影片 → Pipeline → 燒字幕 → KB 條目。成功回傳 md_path，失敗回傳 None
-    save_to_kb=False：只處理（下載＋轉錄＋燒字幕）不寫入 KB，成功回傳影片路徑。"""
+    save_to_kb=False：只處理（下載＋轉錄＋燒字幕）不寫入 KB，成功回傳影片路徑。
+    burn_subs=False：跳過燒字幕（一條 2 小時的直播要多花 1–2 小時與數百 MB）。"""
     log("  [轉錄] 無 YouTube 字幕，啟動離線 Pipeline...")
 
     date_prefix = get_video_date(video_id)
@@ -782,9 +783,13 @@ def process_no_subs(video_id, title, langs, kb_dir, format_spec=None, save_to_kb
     transcript = srt_to_transcript(srt_src)
 
     # 燒字幕：輸出到影片同資料夾（ffmpeg），成功才寫入 KB 連結
-    burned_path = Path(video_path).with_name(Path(video_path).stem + "_字幕.mp4")
-    if not burn_subtitles(video_path, srt_src, burned_path):
-        burned_path = None
+    burned_path = None
+    if burn_subs:
+        burned_path = Path(video_path).with_name(Path(video_path).stem + "_字幕.mp4")
+        if not burn_subtitles(video_path, srt_src, burned_path):
+            burned_path = None
+    else:
+        log("  [燒字幕] 已關閉（burn_subs: false）→ 影片請用 YouTube 連結觀看")
 
     if not save_to_kb:
         return video_path
@@ -976,7 +981,8 @@ def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未
                 "kb": str(md_path),
             })
         else:
-            md_path = process_no_subs(vid, title, langs, kb_dir, format_spec=format_spec)
+            md_path = process_no_subs(vid, title, langs, kb_dir, format_spec=format_spec,
+                                      burn_subs=burn_subs)
             if md_path:
                 processed += 1
                 record_harvest_task(vid, title, md_path, channel_name)
