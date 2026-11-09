@@ -388,11 +388,15 @@ Clipping/
 - **陷阱**：`kb_video_index(refresh=True)` 首次約 1 分鐘（已放背景執行，對話框會顯示「正在比對知識庫」）；GUI 是長駐程序，**改完必須關閉重開**才會載入新碼，否則按「建立」仍是舊行為（看起來像沒作用、任務清單沒訊息）。
 - 舊的 `channel_watcher.process_youtube_url()` 仍保留（上限 5 支、供手動呼叫），但 GUI 已不使用。
 
-### 開 GUI：一律用 `launch_gui.bat`（2026-11-09 PC2 實踩）
+### 開 GUI：桌面「任務管理」捷徑或 `launch_gui.bat`（2026-11-09 PC2 實踩）
 
 ```powershell
 D:\AI-Agent-Workspace\launch_gui.bat     # pythonw → pyw → python 依序嘗試，同機通用
 ```
+
+- **桌面「任務管理」捷徑**由 `deploy.ps1` 建立（`pythonw.exe` + `task_manager_gui.py`），雙擊即開。
+- ⚠️ **不要雙擊 `task_manager_gui.py`**：`.py` 走「檔案關聯」，各機不同。PC2 這樣點**完全沒反應、
+  沒有任何訊息**（notebook 看起來正常，只是因為它本來就有桌面捷徑）。
 
 - **症狀**：雙擊後「完全沒反應、沒有視窗、沒有錯誤訊息」。`pythonw.exe` 沒有主控台，
   啟動期任何例外都是靜默死亡，看起來像程式壞掉。

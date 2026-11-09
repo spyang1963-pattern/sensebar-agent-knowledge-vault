@@ -233,6 +233,37 @@ def main():
         check(f"排程 {t}", task_exists(t),
               "未註冊（切換日再跑 deploy.ps1 -SkipSetup -RegisterTasks）")
 
+    # ── 6.5 GUI 入口（2026-11-09 PC2 實踩：新機雙擊 .py 完全沒反應）──
+    # 檢查兩件事：repo 內的 launch_gui.bat，以及桌面「任務管理.lnk」。
+    # 捷徑指向 pythonw + task_manager_gui.py，所以不依賴各機的 .py 檔案關聯。
+    check("GUI 啟動器 launch_gui.bat", (project / "launch_gui.bat").exists(),
+          project / "launch_gui.bat")
+
+    def _lnk_target(path):
+        try:
+            out = subprocess.run(
+                ["powershell", "-NoProfile", "-Command",
+                 f"$s=New-Object -ComObject WScript.Shell;"
+                 f"$l=$s.CreateShortcut('{path}');"
+                 f"Write-Output $l.TargetPath"],
+                capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=25)
+            return (out.stdout or "").strip()
+        except Exception:
+            return ""
+
+    desktop = Path(os.path.expanduser("~")) / "Desktop"
+    one_drive = Path(os.path.expanduser("~")) / "OneDrive" / "Desktop"
+    lnks = [d / "任務管理.lnk" for d in (desktop, one_drive)]
+    lnk = next((p for p in lnks if p.exists()), None)
+    if lnk is None:
+        check("桌面 GUI 捷徑（任務管理.lnk）", False,
+              "不存在 → 跑 deploy.ps1，或雙擊 repo 內的 launch_gui.bat")
+    else:
+        tgt = _lnk_target(str(lnk))
+        check("桌面 GUI 捷徑（任務管理.lnk）", "python" in tgt.lower(),
+              f"{lnk} -> {tgt or '（讀不到目標）'}")
+
     # ── 7. 金融 db（只讀開啟） ──
     db = project / "financial_news" / "finance.db"
     if db.exists():

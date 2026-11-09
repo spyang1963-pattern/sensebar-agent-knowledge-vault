@@ -54,6 +54,7 @@ powershell -ExecutionPolicy Bypass -File D:\AI-Agent-Workspace\workspace-bundle\
 | **Deno（JS runtime）** | ✅（2026-11-08 補） | `external_tools.ps1` | 缺它 yt-dlp 抓得到 metadata 但**下載影片一律 403** |
 | **Tailscale** | ✅（2026-11-08 補） | `external_tools.ps1` | 不同網段時靠它連 NAS；登入仍要人工 |
 | 執行期目錄 | ✅ | `deploy.ps1` | `working`／`output`／`videos`／`logs`／`raw`／`shorts`／`shared\tasks`／`shared\<machine>\{status,results}` |
+| **桌面「任務管理」捷徑** | ✅（2026-11-09 補） | `deploy.ps1` | 指向 `pythonw.exe task_manager_gui.py`；**不依賴各機的 `.py` 檔案關聯**（PC2 曾雙擊 `.py` 完全沒反應） |
 | 機器身份 | ✅（檢查） | `deploy.ps1` | 讀 `config.py`；不符直接中止 |
 | 排程（outbox／收割／備份） | ✅（2026-11-08 補） | `deploy.ps1 -RegisterTasks` | 依機器自動篩選，不會把收割排到產出機 |
 | 健檢 | ✅ | `infra\health_check.py` | 金融／影音／股票／XQ 四線能力 |
@@ -64,6 +65,21 @@ powershell -ExecutionPolicy Bypass -File D:\AI-Agent-Workspace\workspace-bundle\
 | **NAS 帳號憑證** | ❌ | 人工 | `cmdkey /add:<NAS> /user:producer`（產出機）或 `harvest`（notebook） |
 | **Tailscale 登入** | ❌ | 人工 | `tailscale up` 後在瀏覽器授權（一次性） |
 | **排程切換** | 半自動 | 人工決定時機 | 同一任務全時間只能一台跑 |
+
+### 2.1 開 GUI（雙擊就能用，不要雙擊 `.py`）
+
+| 方式 | 說明 |
+|---|---|
+| 桌面 **「任務管理」捷徑** | `deploy.ps1` 自動建立（`pythonw.exe` + `task_manager_gui.py`）。雙擊即開，無主控台視窗 |
+| repo 內 **`launch_gui.bat`** | 任何機器都能用（`pythonw` → `pyw` → `python` 依序嘗試）；PC2 首次就是靠這支 |
+| ❌ 雙擊 `task_manager_gui.py` | **不要這樣做**。`.py` 走「檔案關聯」，各機不同（PC2 完全沒反應、也沒有任何訊息），notebook 剛好有捷徑才看起來正常 |
+
+打不開時的排錯順序：
+
+1. 先看有沒有「**任務管理 GUI 已經在執行中**」的對話框 → 代表已經開著（同使用者只能開一個），去工作列找視窗。
+2. 用有主控台的方式跑，錯誤會直接印在畫面上：
+   `python -X utf8 D:\AI-Agent-Workspace\task_manager_gui.py`
+3. 還是沒反應就看 `working\task_manager_gui_error.log`（pythonw 的例外都會寫在這裡）。
 
 ---
 

@@ -261,6 +261,46 @@ function Ensure-RuntimeDirs {
     return $made
 }
 
+function Ensure-GuiShortcut {
+    # 2026-11-09 PC2 實踩：新機沒有桌面捷徑，雙擊 task_manager_gui.py 會走「檔案關聯」，
+    # 而各機關聯不同（PC2 完全沒反應、也沒有任何錯誤訊息）。notebook 之所以一直正常，
+    # 是因為桌面上本來就有一個 cmd → python task_manager_gui.py 的捷徑。
+    # 這裡在桌面建一個「pythonw + task_manager_gui.py」的捷徑：無主控台、路徑由本機推導，
+    # 不寫死使用者名稱（舊的 管理介面.lnk 就是寫死 C:\Users\hpspy\... 才不能帶到別台）。
+    param([string]$Root, [bool]$Preview)
+
+    $target = Join-Path $Root "task_manager_gui.py"
+    if (-not (Test-Path -LiteralPath $target)) { return "找不到 task_manager_gui.py，略過捷徑" }
+
+    $pythonw = $null
+    foreach ($exe in @("pythonw.exe", "pyw.exe")) {
+        $cmd = Get-Command $exe -ErrorAction SilentlyContinue
+        if ($cmd) { $pythonw = $cmd.Source; break }
+    }
+    if (-not $pythonw) { return "找不到 pythonw.exe（GUI 捷徑未建立，可改用 launch_gui.bat）" }
+
+    $desktop = [Environment]::GetFolderPath("Desktop")
+    if (-not $desktop -or -not (Test-Path -LiteralPath $desktop)) { return "找不到桌面資料夾" }
+    $lnkPath = Join-Path $desktop "任務管理.lnk"
+
+    if ($Preview) { return "（預覽）會建立 $lnkPath -> $pythonw" }
+
+    try {
+        $sh = New-Object -ComObject WScript.Shell
+        $lnk = $sh.CreateShortcut($lnkPath)
+        $lnk.TargetPath = $pythonw
+        $lnk.Arguments = '"' + $target + '"'
+        $lnk.WorkingDirectory = $Root
+        $lnk.IconLocation = "$pythonw,0"
+        $lnk.WindowStyle = 1
+        $lnk.Description = "任務管理 GUI（pythonw，無主控台）"
+        $lnk.Save()
+        return "已建立桌面捷徑：$lnkPath"
+    } catch {
+        return "建立桌面捷徑失敗：$($_.Exception.Message)"
+    }
+}
+
 function Invoke-Setup {
     param([string]$Root, [bool]$Preview)
 
@@ -514,6 +554,10 @@ if ($DryRun) {
         Write-Host "  執行期目錄已存在"
     }
 }
+
+# 桌面「任務管理」捷徑（雙擊就能開 GUI，不依賴 .py 檔案關聯）
+$guiMsg = Ensure-GuiShortcut -Root $root -Preview $DryRun.IsPresent
+Write-Host "  $guiMsg"
 
 # 4. 健檢
 Write-Host ""
