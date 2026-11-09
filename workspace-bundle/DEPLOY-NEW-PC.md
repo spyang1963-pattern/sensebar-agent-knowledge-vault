@@ -159,6 +159,17 @@ tailscale ip -4         # 記下這台的 100.x
 | `FinanceNews_*` | 每 30 分／07:00／19:00 | 一台 | `pipeline.py …` | 金融線（單一寫入者） |
 
 `deploy.ps1 -RegisterTasks` 會**依機器自動篩選**：outbox 只裝在 pc1/2/3，收割與備份只裝在 notebook。
+但 `ChannelWatcherDaily`／`FinanceNews_*` 沒有機器限制，用**全量** `-RegisterTasks` 會一起裝到該台。
+
+**PC2／PC3（獨立執行機，只負責打包自己的產出）請只裝打包那支：**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File D:\AI-Agent-Workspace\workspace-bundle\infra\setup\deploy.ps1 `
+  -Machine pc2 -SkipSetup -RegisterTasks -Tasks PublishOutboxDaily
+```
+
+`-Tasks` 可複選（例：`-Tasks PublishOutboxDaily,ChannelWatcherDaily`）。先加 `-DryRun` 看它要裝什麼再真的跑
+（會印「略過 XXX（未列入 -Tasks）」）。
 
 ---
 

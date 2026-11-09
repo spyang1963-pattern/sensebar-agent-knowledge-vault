@@ -391,6 +391,9 @@ notebook 23:10 收割＋01:30 備份。**不做跨機任務分配。**
   它就會在本機反覆跑 `worker.py --once`；關掉 GUI 就停（要背景常駐就另外開
   `python -X utf8 worker.py`）。
 - 產出要能被 notebook 收到，該台必須有 `PublishOutboxDaily`（22:50）＋ NAS `producer` 憑證。
+  只裝這支（不把金融線／頻道掃描一起裝到該台）：
+  `deploy.ps1 -Machine pcN -SkipSetup -RegisterTasks -Tasks PublishOutboxDaily`
+  （`-Tasks` 可複選；加 `-DryRun` 先看要裝什麼。）
 
 ## 任務管理 GUI：新增 YouTube 任務（2026-11-03 修正）
 

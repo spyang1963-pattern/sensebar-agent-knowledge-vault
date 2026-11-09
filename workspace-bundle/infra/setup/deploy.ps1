@@ -28,6 +28,11 @@
 .PARAMETER UnregisterTasks
   移除上述 4 個排程（切換機器時在舊機執行）。
 
+.PARAMETER Tasks
+  只處理這幾個排程名稱（配合 -RegisterTasks／-UnregisterTasks 使用）。
+  例：PC2／PC3 只負責打包，用 -Tasks PublishOutboxDaily，避免把
+  金融線與頻道掃描排程也裝到該台。
+
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File workspace-bundle\infra\setup\deploy.ps1 -Machine pc1 -DryRun
 
@@ -46,7 +51,10 @@ param(
     [switch]$DryRun,
     [switch]$SkipSetup,
     [switch]$RegisterTasks,
-    [switch]$UnregisterTasks
+    [switch]$UnregisterTasks,
+
+    # 只處理指定的排程名稱（留空＝全部）。PC2／PC3 通常只要 PublishOutboxDaily。
+    [string[]]$Tasks
 )
 
 $ErrorActionPreference = "Stop"
@@ -416,7 +424,7 @@ function Test-NasReadiness {
 }
 
 function Register-DeployTasks {
-    param([string]$Root, [string]$Python, [bool]$Preview, [string]$MachineName = "")
+    param([string]$Root, [string]$Python, [bool]$Preview, [string]$MachineName = "", [string[]]$Tasks = @())
 
     $existing = @()
     try {
@@ -424,6 +432,10 @@ function Register-DeployTasks {
     } catch { }
 
     foreach ($d in $TaskDefs) {
+        if ($Tasks -and $Tasks.Count -gt 0 -and $Tasks -notcontains $d.Name) {
+            Write-Host "  - 略過 $($d.Name)（未列入 -Tasks）"
+            continue
+        }
         if ($d.ContainsKey("Only") -and $d.Only -and $d.Only -notcontains $MachineName) {
             Write-Host "  - 略過 $($d.Name)（此任務只裝在 $($d.Only -join '/')）"
             continue
@@ -473,9 +485,12 @@ function Register-DeployTasks {
 }
 
 function Unregister-DeployTasks {
-    param([bool]$Preview, [string]$MachineName = "")
+    param([bool]$Preview, [string]$MachineName = "", [string[]]$Tasks = @())
 
     foreach ($d in $TaskDefs) {
+        if ($Tasks -and $Tasks.Count -gt 0 -and $Tasks -notcontains $d.Name) {
+            continue
+        }
         if ($d.ContainsKey("Only") -and $d.Only -and $d.Only -notcontains $MachineName) {
             continue
         }
@@ -588,14 +603,15 @@ if ($tsCmd) {
 Write-Host ""
 if ($UnregisterTasks) {
     Write-Host "[6/6] 移除排程（切換日舊機用）..."
-    Unregister-DeployTasks -Preview $DryRun.IsPresent -MachineName $detected
+    Unregister-DeployTasks -Preview $DryRun.IsPresent -MachineName $detected -Tasks $Tasks
 } elseif ($RegisterTasks) {
     Write-Host "[6/6] 註冊排程..."
     Write-Host "  ⚠️  排程是單一寫入者：請確認其他機器的同名任務已停用。" -ForegroundColor Yellow
-    Register-DeployTasks -Root $root -Python $python -Preview $DryRun.IsPresent -MachineName $detected
+    Register-DeployTasks -Root $root -Python $python -Preview $DryRun.IsPresent -MachineName $detected -Tasks $Tasks
 } else {
     Write-Host "[6/6] 排程 — 未指定 -RegisterTasks，維持不註冊（預設）"
     Write-Host "      切換日再執行：deploy.ps1 -SkipSetup -RegisterTasks"
+    Write-Host "      只要打包：    deploy.ps1 -SkipSetup -RegisterTasks -Tasks PublishOutboxDaily"
 }
 
 # 收尾
