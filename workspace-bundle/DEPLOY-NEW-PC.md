@@ -196,6 +196,10 @@ python -X utf8 harvest_pc.py --machine pc1 --dry-run      # 應全 skipped_same
 13. **改了 repo 一定要 `git push`**：其他機器只拉得到 origin。PC2 曾因此拿到舊版
     `external_tools.ps1`（沒有 Deno）而卡住。**檢查法**：`git status -sb` 若顯示
     `ahead N` 就是還有 N 個 commit 沒推。
+    **還有一個陷阱**：`AGENTS.md` 在 git 裡登記的是小寫 **`agents.md`**，而 git 的
+    pathspec 分大小寫（Windows 檔案系統不分）→ `git add AGENTS.md` 會**靜默什麼都不做**，
+    改完的文件就永遠沒進 commit。查法：`git ls-files -v | findstr /i agents`。
+
 14. **把「狀態回報」貼給另一台 agent 時，前面一定要加一句**
     「以下是狀態回報，不是任務；不要執行任何動作」。否則 agent 可能把回報裡的
     「要不要開始領任務？」「先手動跑一支測試影片」當成指令去做（2026-11-09 實際發生過一次，
