@@ -300,6 +300,10 @@ watched_channels:
 
 - **2026-11-09 起這支改裝在 PC2**（原本在 notebook）。原因：三機各自獨立執行後，掃描屬於「產出」，
   該由產出機做；notebook 只收割。
+  **交接已完成**：PC2 於 17:45 匯入游標（9/9 一致）、17:52 手動跑通整條鏈
+  （`scan_rc=0`、`publish_rc=0`、0 新片、40 秒），排程 `cmd.exe /c channel_then_publish.bat`、
+  每日 22:30、`MultipleInstances=IgnoreNew`；**notebook 的 `ChannelWatcherDaily` 已 Disable**
+  （`Get-ScheduledTask` 會顯示 `Disabled`）。要回頭查：PC2 的 `logs\channel_watcher.log`。
 - **指令改成 `channel_then_publish.bat`**（22:30）：先 `channel_watcher.py --once`，**掃完才** `publish_daily.bat`。
   不可改回「22:30 掃描 ＋ 22:50 另外打包」——掃描常跑超過 20 分鐘，22:50 會打包到**半寫入的 KB 檔**，
   收割端保存第一版之後就變成永久衝突。因此 `deploy.ps1` 有守門：同一台同時選到
