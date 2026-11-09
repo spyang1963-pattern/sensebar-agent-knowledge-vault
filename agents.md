@@ -388,6 +388,31 @@ Clipping/
 - **陷阱**：`kb_video_index(refresh=True)` 首次約 1 分鐘（已放背景執行，對話框會顯示「正在比對知識庫」）；GUI 是長駐程序，**改完必須關閉重開**才會載入新碼，否則按「建立」仍是舊行為（看起來像沒作用、任務清單沒訊息）。
 - 舊的 `channel_watcher.process_youtube_url()` 仍保留（上限 5 支、供手動呼叫），但 GUI 已不使用。
 
+### 開 GUI：一律用 `launch_gui.bat`（2026-11-09 PC2 實踩）
+
+```powershell
+D:\AI-Agent-Workspace\launch_gui.bat     # pythonw → pyw → python 依序嘗試，同機通用
+```
+
+- **症狀**：雙擊後「完全沒反應、沒有視窗、沒有錯誤訊息」。`pythonw.exe` 沒有主控台，
+  啟動期任何例外都是靜默死亡，看起來像程式壞掉。
+- **已發生的兩個根因**（都已修）：
+  1. `task_manager_gui.pyw` 是 2026-07 的舊副本，且第 13 行 `sys.stdout.reconfigure(...)`
+     沒有防護 —— pythonw 下 `sys.stdout` 是 `None` → `AttributeError` 立即退出。
+     **現在 `.pyw` 只是薄殼**，實作只有 `task_manager_gui.py` 一份。
+  2. 舊的單一實例鎖：`%TEMP%\task_manager_gui.lock` 的 PID 被別的程式重用時，GUI 會
+     `sys.exit(0)` 靜默退出。**現在改用具名 mutex**（OS 自動釋放，不會有殘留鎖），
+     已有一個在跑會跳 MessageBox 說明。
+- **現在的失敗一定看得見**：啟動例外 → MessageBox ＋ `working\task_manager_gui_error.log`。
+- **排錯第一步**（有主控台才看得到 traceback）：
+
+  ```powershell
+  python -X utf8 D:\AI-Agent-Workspace\task_manager_gui.py
+  ```
+
+- `管理介面.bat`／`.vbs`／`.lnk` **沒有進 git**（`.lnk` 還寫死 `C:\Users\hpspy\...`），
+  所以別台不會有這些檔；跨機請用 `launch_gui.bat`。
+
 ### 用命令列建立 YouTube 任務：`queue_youtube.py`（2026-11-06）
 
 GUI 只能在本機按，而且**以前不記來源網址**（17 筆任務失敗後查不出是哪份清單展開的）。改用這支可重複、可稽核：
