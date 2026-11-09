@@ -322,6 +322,13 @@ watched_channels:
   - 補跑與固定掃描合計仍以「一天一次」為原則；若補跑已跑完，當晚 22:30 仍照常掃（新片通常還沒有）
 - **掃描的輸出以前看不到**：`config.log()` 只 `print`，不寫檔，排程執行等於無聲。現在
   `channel_then_publish.bat` 會把整段輸出附加到 `logs\channel_watcher.log`（含 rc 與打包 rc），查問題看那裡。
+- **掃描收成會自動登記收割任務（`record_harvest_task()`，2026-11-09 新增，勿移除）**：
+  `publish_outbox.py` 是**任務驅動**的（`iter_tasks()` 只認 `status == "completed"`），
+  `channel_watcher` 自己產生的 KB 條目若沒有任務紀錄，**永遠不會被 publish／harvest**。
+  以前沒事是因為掃描跑在 notebook（正本機）。現在每支收成後寫
+  `shared\tasks\task_<id>.json`（`status=completed`，worker 不會撿），失敗只警告。
+  另外 `publish_outbox.SUBEXTS = ("直播報告",)`：直播報告 `.docx` 在條目同層的子目錄，
+  manifest 逐檔帶 `rel`，`harvest_pc` 依 `rel` 還原路徑（舊包沒有 `rel` 仍可收割）。
 
 - 舊的 `SensebarAutoUpdate`（每天 10:00 執行 `auto_update.bat`）已 **Disable**，不要再啟用，否則 @sensebar 會變成一天掃兩次（10:00 與 22:30）。
 - `auto_update.py` / `auto_update.bat` 仍保留供**手動**補片使用（`auto_update.bat` 已支援 `--no-pause`，排程呼叫時不會卡在 pause）。
