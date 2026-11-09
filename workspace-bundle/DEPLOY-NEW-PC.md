@@ -15,6 +15,14 @@
 | 產出機 | pc1 / pc2 / pc3 | 跑 pipeline、產生 KB 條目、22:50 打包到 NAS（或本機 outbox） | 23:10 收割、01:30 備份 |
 | 收割機 | notebook | 23:10 從 NAS 收割、01:30 備份到 NAS、`knowledge-base\` 是**唯一正本** | 大量轉錄（可用但非必要） |
 
+**運作模型（2026-11-09 使用者確認，勿再改回「跨機分配」）**：
+每一台都是**獨立執行機**——自己在自己的 GUI 建任務、自己跑 worker 把任務做完，
+產出落在**本機** `knowledge-base\`，22:50 由 `publish_daily.bat` 打包到 NAS，
+notebook 只負責 23:10 收割＋01:30 備份。**不做跨機任務分配**：
+`assigned_to`、`scheduler.py --redistribute`、`sync_shared.bat` 都是舊「三機分工」時代的遺留，
+**不要依賴**（舊模式很複雜、常出問題才改成現在這樣）。
+好處：任何一台關機或壞掉只是少一份產能，不會拖垮其他台。
+
 `config.py` 會用主機名判斷角色（`MACHINE_ALIASES`）。**新主機名一定要先加進去**，否則
 `deploy.ps1` 會直接中止（這是刻意的，避免在錯的機器建排程）。
 

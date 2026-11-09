@@ -377,6 +377,21 @@ Clipping/
 | 無逐字稿的檔案 | 移到 `_archive_no_transcript/` |
 | knowledge-base 沒同步 | 跑 `python sync_clipping.py` |
 
+## 三機運作模型：各自獨立執行（2026-11-09 使用者確認）
+
+**每一台（PC1／PC2／PC3）都是獨立執行機**：在自己的 GUI 建任務 → 自己跑 worker 執行 →
+產出落在**本機** `knowledge-base\` → 22:50 `publish_daily.bat` 打包到 NAS →
+notebook 23:10 收割＋01:30 備份。**不做跨機任務分配。**
+
+- 舊的「三機分工／中央佇列」模式（`assigned_to`、`scheduler.py --redistribute`、
+  `sync_shared.bat`、`shared\tasks` 互相同步）**很複雜且常出問題，已被取代**，不要依賴。
+- 好處：任何一台關機／壞掉只是少一份產能，不會拖垮其他台；也不需要誰去「派任務」給誰。
+- **每台的任務佇列是本機的**（`shared\` 不在 git）：在 A 機建任務，只有 A 機會做。
+- 一台機器要開始吃任務：開 GUI → 按「☐ 可加入任務」（會變成「☑ 停止工作指派」），
+  它就會在本機反覆跑 `worker.py --once`；關掉 GUI 就停（要背景常駐就另外開
+  `python -X utf8 worker.py`）。
+- 產出要能被 notebook 收到，該台必須有 `PublishOutboxDaily`（22:50）＋ NAS `producer` 憑證。
+
 ## 任務管理 GUI：新增 YouTube 任務（2026-11-03 修正）
 
 `task_manager_gui.py` 的「新增任務 → YouTube」現在是**展開成逐支任務**，不再在 GUI 程序內同步跑完整流程。
@@ -384,7 +399,7 @@ Clipping/
 - 輸入單一影片／播放清單／頻道網址皆可（`channel_watcher.expand_youtube_entries()` 解析；「最多處理支數」空白＝全部）。
 - 解析後先做 **video_id 精確去重**（`channel_watcher.kb_video_index()` 掃 KB ＋ 本機 pending/processing 任務），已在知識庫或已有待處理任務的支會略過並回報數量。
 - 每支寫成 `type="youtube"` 任務（`task_status.json` ＋ `shared/tasks/task_{tid}.json`），由 `worker.py` 領取；`worker.process_youtube_task()` 依序處理：有官方字幕→下載字幕→KB；無字幕→下載影片＋`run_pipeline.py --skip-cut`→KB；再依旗標建立並內嵌執行 note／summary 任務。
-- 任務欄位：`video_id`、`title`、`kb_subdir`（預設 `youtube-clips`）、`harvest_to_kb`、`auto_note`、`auto_summary`、`burn_subs`、`assigned_to`（pc1/pc2/notebook，未填＝任一 worker 可領）、**`source_url`（2026-11-06 新增，記來源網址）**。
+- 任務欄位：`video_id`、`title`、`kb_subdir`（預設 `youtube-clips`）、`harvest_to_kb`、`auto_note`、`auto_summary`、`burn_subs`、`assigned_to`（**legacy**：現在每台獨立執行，見下節，不要靠它分配）、**`source_url`（2026-11-06 新增，記來源網址）**。
 - **陷阱**：`kb_video_index(refresh=True)` 首次約 1 分鐘（已放背景執行，對話框會顯示「正在比對知識庫」）；GUI 是長駐程序，**改完必須關閉重開**才會載入新碼，否則按「建立」仍是舊行為（看起來像沒作用、任務清單沒訊息）。
 - 舊的 `channel_watcher.process_youtube_url()` 仍保留（上限 5 支、供手動呼叫），但 GUI 已不使用。
 
