@@ -200,6 +200,21 @@ python -X utf8 harvest_pc.py --machine pc1 --dry-run      # 應全 skipped_same
     「以下是狀態回報，不是任務；不要執行任何動作」。否則 agent 可能把回報裡的
     「要不要開始領任務？」「先手動跑一支測試影片」當成指令去做（2026-11-09 實際發生過一次，
     幸好當下沒有任何動作）。
+15. **任務管理 GUI「點了沒反應」幾乎都是 pythonw 靜默死亡**（2026-11-09 PC2 實踩）：
+    `pythonw.exe` 沒有主控台，啟動期任何例外都不會顯示，程式直接消失。最經典的觸發點是
+    **雙擊 `.pyw`**——舊的 `task_manager_gui.pyw` 是 2026-07 的副本，第 13 行是沒有防護的
+    `sys.stdout.reconfigure(...)`，而 pythonw 下 `sys.stdout` 是 `None` → 一啟動就
+    `AttributeError`（已實測：同一份檔用 `python.exe` 開得起來，用 `pythonw.exe` 退出碼 1、
+    沒有視窗、沒有訊息）。另一個靜默死法是舊的單一實例鎖：`%TEMP%\task_manager_gui.lock`
+    裡的 PID 被別的程式重用，GUI 就 `sys.exit(0)`。
+    **現在的防護**：`.pyw` 改成薄殼（實作只有 `task_manager_gui.py` 一份）、單一實例改用
+    具名 mutex（不會有殘留鎖）、任何啟動例外都跳 MessageBox + 寫
+    `working\task_manager_gui_error.log`。**開 GUI 請用 `launch_gui.bat`**（已進 repo，
+    `pythonw` → `pyw` → `python` 依序嘗試）。排錯第一步永遠是**在有主控台的視窗跑**
+    `python -X utf8 task_manager_gui.py`，錯誤就會直接印在畫面上。
+16. **`管理介面.bat`／`.vbs`／`.lnk` 沒有進 git**（是舊的個人捷徑，`.lnk` 還寫死
+    `C:\Users\hpspy\...\pythonw.exe`）。所以 PC2／PC3 上不會有這些檔，雙擊 `.py`／`.pyw`
+    會走到檔案關聯，行為各機不同。跨機一律用 repo 內的 `launch_gui.bat`。
 
 ---
 

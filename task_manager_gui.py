@@ -5,7 +5,7 @@
 用法:
   python task_manager_gui.py
 """
-import os, sys, json, threading, time, subprocess, socket, ctypes, re
+import os, sys, json, threading, time, subprocess, socket, ctypes, re, traceback, tempfile
 from datetime import datetime
 from tkinter import ttk, messagebox, filedialog
 import tkinter as tk
@@ -2493,30 +2493,127 @@ class FileSelectionDialog:
         return self.selected
 
 
-if __name__ == "__main__":
-    import tempfile
-    lock_file = os.path.join(tempfile.gettempdir(), "task_manager_gui.lock")
-    if os.path.exists(lock_file):
-        try:
-            with open(lock_file, 'r') as f:
-                old_pid = int(f.read().strip())
-            # 檢查舊進程是否還活著
-            import ctypes
-            handle = ctypes.windll.kernel32.OpenProcess(0x100000, False, old_pid)
-            if handle:
-                ctypes.windll.kernel32.CloseHandle(handle)
-                sys.exit(0)
-        except Exception:
-            pass
-    
-    lock_fd = os.open(lock_file, os.O_CREAT | os.O_TRUNC | os.O_WRONLY)
-    os.write(lock_fd, str(os.getpid()).encode())
-    os.close(lock_fd)
-    
+# ---------------------------------------------------------------- 啟動防護
+# 2026-11-09 PC2 實踩：用 pythonw 啟動（雙擊 .pyw／.vbs／捷徑）時，pythonw 沒有主控台，
+# 任何啟動期例外都會「無聲消失」——沒有視窗、沒有訊息、也沒有 log，使用者只看到
+# 「點了沒反應」，很容易誤判成程式壞了。舊版還有一個更糟的行為：偵測到鎖檔的 PID
+# 還活著就 `sys.exit(0)`，而 PID 會被回收重用（重開機後尤其容易），於是明明沒人開
+# 視窗，GUI 卻一直靜默退出。
+#
+# 現在的做法：
+#   1. 單一實例改用「具名 mutex」——程序結束時由作業系統自動釋放，不會留下殘留鎖。
+#   2. 已經有視窗在跑 → 跳 MessageBox 說明（看得見，不再靜默）。
+#   3. 任何啟動例外 → 寫 working\task_manager_gui_error.log ＋ 跳 MessageBox。
+#   4. 順手清掉舊版殘留的 %TEMP%\task_manager_gui.lock（只有確認 PID 不是 python 才刪）。
+
+LEGACY_LOCK = os.path.join(tempfile.gettempdir(), "task_manager_gui.lock")
+_GUI_MUTEX = None
+
+
+def _pid_is_python(pid):
+    """PID 還活著、而且真的是 python（避免 PID 重用造成誤判）。"""
     try:
-        TaskManagerGUI()
-    finally:
+        from ctypes import wintypes
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        h = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+        if not h:
+            return False
         try:
-            os.remove(lock_file)
+            code = wintypes.DWORD()
+            if not k32.GetExitCodeProcess(h, ctypes.byref(code)):
+                return False
+            if code.value != STILL_ACTIVE:
+                return False
+            buf = ctypes.create_unicode_buffer(1024)
+            size = wintypes.DWORD(1024)
+            if k32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)):
+                return "python" in os.path.basename(buf.value).lower()
+            return True
+        finally:
+            k32.CloseHandle(h)
+    except Exception:
+        return False
+
+
+def _cleanup_legacy_lock():
+    try:
+        if not os.path.exists(LEGACY_LOCK):
+            return
+        try:
+            old_pid = int(open(LEGACY_LOCK, encoding="utf-8").read().strip() or 0)
         except Exception:
-            pass
+            old_pid = 0
+        if old_pid and _pid_is_python(old_pid):
+            return          # 舊版真的還在跑，不要碰別人的鎖
+        os.remove(LEGACY_LOCK)
+    except Exception:
+        pass
+
+
+def _acquire_gui_singleton():
+    """True＝可以開視窗。用 mutex，程序死掉時 OS 自動釋放，不會留下殘留鎖。"""
+    global _GUI_MUTEX
+    try:
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        handle = k32.CreateMutexW(None, True, "Local\\task_manager_gui_singleton")
+        err = ctypes.get_last_error()
+        if not handle:
+            return True                     # 拿不到 mutex 也不要擋住使用者
+        if err == 183:                      # ERROR_ALREADY_EXISTS
+            k32.CloseHandle(handle)
+            return False
+        _GUI_MUTEX = handle                  # 保持存活，別讓 mutex 被釋放
+        return True
+    except Exception:
+        return True
+
+
+def _msgbox(text, title, flags=0x10):
+    try:
+        ctypes.windll.user32.MessageBoxW(None, text, title, flags)
+    except Exception:
+        pass
+
+
+def _fatal(text):
+    """啟動失敗：寫 log（優先 working\\，其次 %TEMP%）＋ 跳對話框。"""
+    body = f"{text}\n\n{traceback.format_exc()}"
+    logged = None
+    for d in (os.path.join(LOCAL_ROOT, "working"), tempfile.gettempdir()):
+        try:
+            os.makedirs(d, exist_ok=True)
+            path = os.path.join(d, "task_manager_gui_error.log")
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(f"\n=== {datetime.now().isoformat(timespec='seconds')} ===\n{body}\n")
+            logged = path
+            break
+        except Exception:
+            continue
+    hint = f"\n\n詳細錯誤已寫入：{logged}" if logged else ""
+    _msgbox(f"{text}{hint}\n\n{body}"[:3000], "任務管理 GUI 啟動失敗")
+
+
+def main():
+    _cleanup_legacy_lock()
+    if not _acquire_gui_singleton():
+        _msgbox(
+            "任務管理 GUI 已經在執行中（同一個 Windows 使用者只能開一個）。\n\n"
+            "請切換到既有的視窗；若真的看不到，請到「工作管理員」結束\n"
+            "pythonw.exe／python.exe 之後再開一次。",
+            "任務管理 GUI", 0x40)
+        return 0
+    TaskManagerGUI()
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except BaseException:
+        _fatal("GUI 無法啟動。常見原因：Python 缺 tkinter、config.py 匯入失敗、"
+               "或磁碟／權限問題。")
+        sys.exit(1)
