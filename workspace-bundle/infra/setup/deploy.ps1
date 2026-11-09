@@ -72,7 +72,9 @@ $TaskDefs = @(
     @{ Name = "ChannelWatcherDaily";        File = "channel_then_publish.bat"; Kind = "daily"; At = "22:30"; Only = @("pc1","pc2","pc3"); Desc = "頻道監控（22:30，掃完自動打包到 NAS；只裝在做掃描的產出機）" }
     # 2026-11-08 NAS 上線後：產出機打包 → NAS；notebook 收割＋備份
     @{ Name = "PublishOutboxDaily";         File = "publish_daily.bat";    Kind = "daily"; At = "22:50"; Only = @("pc1","pc2","pc3"); Desc = "打包 KB 產出 → NAS exchange\<machine>\outbox（NAS 不通 fallback 本機）" }
-    @{ Name = "HarvestPCDaily";             File = "harvest_daily.bat";    Kind = "daily"; At = "23:10"; Only = @("notebook");        Desc = "收割 NAS／各機 outbox → knowledge-base" }
+    # 2026-11-09：掃描移到 PC2 後，22:30 那輪常跑超過 40 分鐘（下載＋轉錄＋燒字幕＋筆記＋報告），
+    # 23:10 收割時包還沒進 NAS → 隔天才收得到。所以一天給兩個時間點（第二次機會）。
+    @{ Name = "HarvestPCDaily";             File = "harvest_daily.bat";    Kind = "daily"; At = "23:10"; Ats = @("23:10","00:40"); Only = @("notebook"); Desc = "收割 NAS／各機 outbox → knowledge-base（23:10、00:40 各一次；冪等）" }
     @{ Name = "NasBackupDaily";             File = "backup_daily.bat";     Kind = "daily"; At = "01:30"; Only = @("notebook");        Desc = "KB／finance.db／shared → NAS backup" }
 )
 
@@ -477,6 +479,9 @@ function Register-DeployTasks {
             $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).Date `
                 -RepetitionInterval (New-TimeSpan -Minutes $d.Minutes) `
                 -RepetitionDuration (New-TimeSpan -Days 9999)
+        } elseif ($d.ContainsKey("Ats") -and $d.Ats) {
+            # 同一個任務一天多個時間點（例：收割 23:10 + 00:40，掃描跑太久時第二次仍收得到）
+            $trigger = @($d.Ats | ForEach-Object { New-ScheduledTaskTrigger -Daily -At $_ })
         } else {
             $trigger = New-ScheduledTaskTrigger -Daily -At $d.At
         }

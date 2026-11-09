@@ -64,6 +64,53 @@ HARVESTABLE = {"youtube", "note", "summary", "video", "subtitle", "audio", "docu
 # 檔案「靜止」幾秒才允許打包（避免把正在寫入的檔案做成半成品送進 outbox）
 SETTLE_SECONDS = int(os.environ.get("OC_PUBLISH_SETTLE", "120"))
 
+
+def _pid_alive(pid):
+    """Windows：PID 還活著嗎（不開新 console、不依賴 psutil）。"""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        h = ctypes.windll.kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+        if not h:
+            return False
+        code = wintypes.DWORD()
+        ok = ctypes.windll.kernel32.GetExitCodeProcess(h, ctypes.byref(code))
+        ctypes.windll.kernel32.CloseHandle(h)
+        return bool(ok) and code.value == STILL_ACTIVE
+    except Exception:
+        return False
+
+
+_WORKER_ACTIVE = None
+
+
+def worker_active():
+    """本機此刻有沒有 worker 在跑（`working\\_worker_<machine>.lock` 的 PID 還活著）。
+
+    2026-11-09：靜止保護原本一律 120 秒，結果「掃描跑完立刻打包」時，
+    剛寫好的那一支一定被跳過 → 當晚最新影片要等到**隔天**才進 notebook。
+    掃描與打包是同一條鏈（掃完才打包），掃描結束後已無寫入者；
+    真正會同時寫 KB 的是 worker，所以只有「worker 在跑」時才需要等。
+    """
+    global _WORKER_ACTIVE
+    if _WORKER_ACTIVE is not None:
+        return _WORKER_ACTIVE
+    lock = PROJECT_ROOT / "working" / f"_worker_{config.MACHINE}.lock"
+    active = False
+    if lock.exists():
+        try:
+            info = json.loads(lock.read_text(encoding="utf-8"))
+            pid = info.get("pid")
+            active = bool(pid) and int(pid) != os.getpid() and _pid_alive(pid)
+        except Exception:
+            active = True  # 讀不到就當作有（保守）
+    _WORKER_ACTIVE = active
+    return active
+
+
 # 同一支影片的 youtube / note / summary 任務會指向同一個 stem，只打包一次
 SEEN_STEMS = set()
 
@@ -304,7 +351,8 @@ def publish_one(tid, info, out_root, kb_root, ledger, dry_run=False, force=False
     # 半成品一旦進 outbox，收割後本機會保留那份內容（同家族不覆蓋），錯的會留下來。
     # 因此「最近 SETTLE_SECONDS 內還有變動」的條目先跳過，下一輪再打包（成本幾乎為零）。
     newest = max(f.stat().st_mtime for f in files)
-    if not force and (time.time() - newest) < SETTLE_SECONDS:
+    settle = SETTLE_SECONDS if worker_active() else 0
+    if not force and settle and (time.time() - newest) < settle:
         return f"#{tid} 剛寫入（{int(time.time() - newest)} 秒前），本輪先不打包"
 
     if md_path.stem in SEEN_STEMS:
@@ -398,9 +446,15 @@ def main():
     kb_root = Path(args.kb) if args.kb else KB_ROOT
     ledger = {} if args.dry_run else (load_json(args.ledger or LEDGER, {}) or {})
     SEEN_STEMS.clear()
+    global _WORKER_ACTIVE
+    _WORKER_ACTIVE = None  # 每輪重判斷（同一個 process 可能被呼叫多次）
 
     log(f"機器 {config.MACHINE}｜KB {kb_root}")
     log(f"outbox {out_root}{'（dry-run）' if args.dry_run else ''}")
+    if worker_active():
+        log(f"⚠️ 偵測到 worker 在跑 → 套用 {SETTLE_SECONDS} 秒靜止保護（避免打包半成品）")
+    else:
+        log("無 worker 在跑 → 掃描完成的檔案直接打包（不等靜止時間）")
 
     errors, n_ok, n_skip = [], 0, 0
     for tid, info, status in iter_tasks():

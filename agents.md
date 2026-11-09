@@ -765,12 +765,20 @@ PC 永不寫 notebook 的 KB；notebook 只讀 PC。設計稿：`workspace-bundl
 ### 每日排程（已上線）
 | 機器 | 時間 | 工作 | 腳本 | 日誌 |
 |---|---|---|---|---|
-| PC1 | 22:50 | `PublishOutboxDaily` | `publish_daily.bat` | `logs\publish_outbox.log` |
-| notebook | 23:10 | `HarvestPCDaily` | `harvest_daily.bat` | `logs\harvest_pc.log` |
+| PC1／PC3 | 22:50 | `PublishOutboxDaily` | `publish_daily.bat` | `logs\publish_outbox.log` |
+| PC2（現行掃描機） | 22:30 | `ChannelWatcherDaily` | `channel_then_publish.bat`（掃完才打包） | `logs\channel_watcher.log` |
+| notebook | **23:10＋00:40** | `HarvestPCDaily` | `harvest_daily.bat` | `logs\harvest_pc.log` |
 
-- 順序刻意錯開：PC1 先打包，notebook 再來收（收割器只認 `manifest.json`，沒寫完就跳過，早收也安全）。
+- 順序刻意錯開：PC 先打包，notebook 再來收（收割器只認 `manifest.json`，沒寫完就跳過，早收也安全）。
+- **為何必收兩次（2026-11-09）**：22:30 那輪要下載＋轉錄＋燒字幕＋產筆記／直播報告，
+  常跑 30–60 分鐘，23:10 時包還沒進 NAS。一天兩個時間點，第二次（00:40）補收；
+  收割是冪等的，多跑一次成本近乎零（`fix_youtube_links` 約 0.4 秒）。
 - `harvest_daily.bat` 收完會接著跑 `fix_youtube_links.py --apply`（冪等），所以連結格式不會退回去。
 - 兩支 .bat 都可手動執行（雙擊或在專案根目錄跑）。
+- **打包的「靜止保護」只在有 worker 在跑時才生效（2026-11-09 改）**：
+  `publish_outbox.worker_active()` 會看 `working\_worker_<machine>.lock` 的 PID 是否還活著；
+  沒有 worker 就立刻打包。原本一律等 120 秒，導致「掃描剛寫完的那一支」當晚一定被跳過、
+  要隔天才進 notebook。
 
 ### SMB：`Everyone` 不等於「匿名可讀」（最容易誤判）
 - 症狀：`net view \\<ip>` → **系統發生 5 錯誤（存取被拒）**、`Test-Path` 一律 False，但 ping／445 都正常。
