@@ -813,6 +813,12 @@ PC 永不寫 notebook 的 KB；notebook 只讀 PC。設計稿：`workspace-bundl
    完整包 58→**64**（不是 65）。manifest 的 `created_at` 換新**不算衝突**，收割端只看檔案。
 5. 帳本：`working\harvest_ledger.json`（notebook）、`working\_outbox_published.json`（產出機）。
    重跑應全部 `skipped_same`，這是驗收冪等的標準動作。
+6. **收割只帶文字，影片不上 notebook（2026-11-09 使用者定案）**：條目裡的
+   `- 本機影片：…`／`- 燒字幕影片：…` 只對產出機有效，`publish_outbox` 打包時會把這兩行
+   **從打包副本移除**（產出機自己的 KB 不動；`--keep-local-paths` 可保留）。
+   要看影片就用條目裡的 `- YouTube 連結：https://…`（Obsidian 會自動變可點連結）。
+   ⇒ **不要**為了看片把 mp4 複製到 notebook（使用者明確要求省硬碟）；
+   ⇒ 也因此 notebook 端 `kb_query.py --open`（需要本機影片檔）對「PC2 產出的新條目」不適用。
 
 ### `--replace`：讓產出機版本覆蓋本機同名檔（2026-11-07）
 預設「同家族同名不同內容 → 保留 notebook 正本」，所以 **prompt 改版後在 PC 重生的摘要送到 notebook 只會 `skipped_same`，整趟白跑**。要用時明確指定：

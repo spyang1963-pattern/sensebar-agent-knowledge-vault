@@ -264,8 +264,23 @@ def net_video_for(md_path):
     return ""
 
 
-# ------------------------------------------------------------------ 主流程
-def publish_one(tid, info, out_root, kb_root, ledger, dry_run=False, force=False):
+# 條目裡只對「產出機」有效的影片路徑行（收割端沒有那些檔案 → 點不開的死結）
+PRODUCER_PATH_LINE = re.compile(r"^[ \t]*-\s*(?:本機影片|燒字幕影片)：[^\r\n]*(?:\r?\n)?", re.M)
+
+
+def strip_producer_paths(text):
+    """把打包副本裡的「本機影片／燒字幕影片」行拿掉（不改產出機自己的 KB）。
+
+    為什麼（2026-11-09）：收割只帶文字，影片留在產出機/YouTube。這兩行到 notebook
+    就變成指不到檔案的死路徑；使用者要的是「有網址就能看」——條目本來就有
+    `- YouTube 連結：https://...`（Obsidian 會自動變可點連結），留著死路徑只會誤導。
+    影片本來就在 YouTube，不需要在 notebook 存一份。
+    """
+    return PRODUCER_PATH_LINE.sub("", text)
+
+
+def publish_one(tid, info, out_root, kb_root, ledger, dry_run=False, force=False,
+                keep_paths=False):
     ttype = (info.get("type") or "").lower()
     if ttype not in HARVESTABLE:
         return "ignore"  # 不是要收割的型別，安靜跳過
@@ -323,7 +338,13 @@ def publish_one(tid, info, out_root, kb_root, ledger, dry_run=False, force=False
         rel_f = rel_in_pack(md_path, f)
         target = dest / rel_f
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(f, target)
+        if f.suffix.lower() == ".md" and not keep_paths:
+            # 只改「打包副本」：拿掉產出機才有效的影片路徑（收割端沒有那些檔案）。
+            # 走 bytes 以求原樣保留換行（KB 是 CRLF）與 BOM 有無；產出機自己的 KB 不動。
+            text = f.read_bytes().decode("utf-8", "replace")
+            target.write_bytes(strip_producer_paths(text).encode("utf-8"))
+        else:
+            shutil.copy2(f, target)
         manifest_files.append({"name": f.name, "rel": rel_f, "bytes": target.stat().st_size,
                                "sha256": sha256(target)})
 
@@ -362,6 +383,9 @@ def main():
     ap.add_argument("--outbox", help="覆寫 outbox 根（預設 shared/<machine>/outbox）")
     ap.add_argument("--kb", help="覆寫 knowledge-base 根（測試用）")
     ap.add_argument("--ledger", help="覆寫帳本路徑（測試用）")
+    ap.add_argument("--keep-local-paths", action="store_true",
+                    help="打包時保留「本機影片／燒字幕影片」行（預設移除；收割端沒有那些檔案，"
+                         "影片請用條目內的 YouTube 連結觀看）")
     args = ap.parse_args()
 
     if args.outbox:
@@ -385,7 +409,8 @@ def main():
         if status != "completed":
             continue
         r = publish_one(tid, info, out_root, kb_root, ledger,
-                        dry_run=args.dry_run, force=args.force)
+                        dry_run=args.dry_run, force=args.force,
+                        keep_paths=args.keep_local_paths)
         if r == "ok":
             n_ok += 1
         elif r in (None, "skip", "ignore"):

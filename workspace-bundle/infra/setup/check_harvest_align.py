@@ -68,7 +68,10 @@ def main():
     d = kb / SUB
     d.mkdir(parents=True)
     md = d / f"{STEM}.md"
-    md.write_text(f"# {STEM}\n\n## 影片資訊\n- YouTube 連結：https://www.youtube.com/watch?v={VID}\n\n"
+    md.write_text(f"# {STEM}\n\n## 影片資訊\n- YouTube 連結：https://www.youtube.com/watch?v={VID}\n"
+                  f"- 日期：2026-11-09\n"
+                  f"- 本機影片：D:\\YouTube_Videos\\{STEM}.mp4\n"
+                  f"- 燒字幕影片：D:\\YouTube_Videos\\{STEM}_字幕.mp4\n\n"
                   "---\n\n## 逐字稿\n\n（對齊測試用，非真實內容）\n", encoding="utf-8")
     (d / f"{STEM}.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\n測試\n", encoding="utf-8")
     (d / f"{STEM}.link.txt").write_text(f"https://www.youtube.com/watch?v={VID}\n", encoding="utf-8")
@@ -136,6 +139,17 @@ def main():
           "缺 " + ", ".join(sorted(missing_l)) if missing_l else f"{len(landed)} 檔")
     check("第二次 harvest 不重複（冪等）", rc2 == 0 and len(landed) == len(expect_landed),
           f"檔案數 {len(landed)}")
+
+    print("\n== 4.5 收割後的影片行（不該留下指不到的路徑）==")
+    landed_md = kbh / SUB / f"{STEM}.md"
+    body = landed_md.read_text(encoding="utf-8") if landed_md.exists() else ""
+    check("已移除「本機影片／燒字幕影片」行",
+          "本機影片：" not in body and "燒字幕影片：" not in body,
+          "殘留" if ("本機影片：" in body or "燒字幕影片：" in body) else "乾淨")
+    check("保留可點的 YouTube 連結", f"youtube.com/watch?v={VID}" in body, "有")
+    src_body = md.read_text(encoding="utf-8")
+    check("產出機自己的 KB 不被改動",
+          "本機影片：" in src_body and "燒字幕影片：" in src_body, "原樣保留")
 
     print("\n== 5. 清理 ==")
     if keep:
