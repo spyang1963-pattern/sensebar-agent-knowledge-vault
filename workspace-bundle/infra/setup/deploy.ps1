@@ -72,9 +72,10 @@ $TaskDefs = @(
     @{ Name = "ChannelWatcherDaily";        File = "channel_then_publish.bat"; Kind = "daily"; At = "22:30"; Only = @("pc1","pc2","pc3"); Desc = "頻道監控（22:30，掃完自動打包到 NAS；只裝在做掃描的產出機）" }
     # 2026-11-08 NAS 上線後：產出機打包 → NAS；notebook 收割＋備份
     @{ Name = "PublishOutboxDaily";         File = "publish_daily.bat";    Kind = "daily"; At = "22:50"; Only = @("pc1","pc2","pc3"); Desc = "打包 KB 產出 → NAS exchange\<machine>\outbox（NAS 不通 fallback 本機）" }
-    # 2026-11-09：掃描移到 PC2 後，22:30 那輪常跑超過 40 分鐘（下載＋轉錄＋燒字幕＋筆記＋報告），
-    # 23:10 收割時包還沒進 NAS → 隔天才收得到。所以一天給兩個時間點（第二次機會）。
-    @{ Name = "HarvestPCDaily";             File = "harvest_daily.bat";    Kind = "daily"; At = "23:10"; Ats = @("23:10","00:40"); Only = @("notebook"); Desc = "收割 NAS／各機 outbox → knowledge-base（23:10、00:40 各一次；冪等）" }
+    # 2026-11-09：掃描移到 PC2 後，22:30 那輪要下載＋轉錄＋燒字幕＋筆記＋報告，
+    # 一支 2 小時的直播燒字幕就可能跑 1–2 小時 → 包進 NAS 的時間不固定。
+    # 與其猜一個時間，乾脆 23:10 起每 30 分鐘收一次（收割冪等、每次只花幾秒）。
+    @{ Name = "HarvestPCDaily";             File = "harvest_daily.bat";    Kind = "daily"; At = "23:10"; Ats = @("23:10","23:40","00:10","00:40","01:10"); Only = @("notebook"); Desc = "收割 NAS／各機 outbox → knowledge-base（23:10~01:10 每 30 分一次；冪等）" }
     @{ Name = "NasBackupDaily";             File = "backup_daily.bat";     Kind = "daily"; At = "01:30"; Only = @("notebook");        Desc = "KB／finance.db／shared → NAS backup" }
 )
 

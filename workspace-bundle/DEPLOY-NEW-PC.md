@@ -158,7 +158,7 @@ tailscale ip -4         # 記下這台的 100.x
 | 任務 | 時間 | 機器 | 指令 | 用途 |
 |---|---|---|---|---|
 | `PublishOutboxDaily` | 22:50 | pc1/pc2/pc3 | `publish_daily.bat` | 打包 → NAS `exchange\<machine>\outbox`（自動偵測機器；LAN 不通改用 tailnet；兩條都不通才 fallback 本機） |
-| `HarvestPCDaily` | **23:10＋00:40** | **notebook** | `harvest_daily.bat` | 收割 NAS（pc1；pc2/pc3 未上 NAS 前仍走各機）→ `knowledge-base\`。兩次是因為 22:30 那輪常跑超過 23:10 |
+| `HarvestPCDaily` | **23:10 起每 30 分（到 01:10）** | **notebook** | `harvest_daily.bat` | 收割 NAS（pc1；pc2/pc3 未上 NAS 前仍走各機）→ `knowledge-base\`。一晚五次是因為 22:30 那輪（含燒字幕）多久跑完無法預測 |
 | `NasBackupDaily` | 01:30 | **notebook** | `backup_daily.bat` | KB／finance.db／shared → NAS `backup\` |
 | `ChannelWatcherDaily` | 22:30 | **一台產出機（現行 PC2）** | `channel_then_publish.bat` | 頻道掃描（單一寫入者）＋**掃完才打包** |
 | `FinanceNews_*` | 每 30 分／07:00／19:00 | 一台（現行 PC3） | `pipeline.py …` | 金融線（單一寫入者；報告／儀表板留在 PC3，不收割） |

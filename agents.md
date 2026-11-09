@@ -767,12 +767,13 @@ PC 永不寫 notebook 的 KB；notebook 只讀 PC。設計稿：`workspace-bundl
 |---|---|---|---|---|
 | PC1／PC3 | 22:50 | `PublishOutboxDaily` | `publish_daily.bat` | `logs\publish_outbox.log` |
 | PC2（現行掃描機） | 22:30 | `ChannelWatcherDaily` | `channel_then_publish.bat`（掃完才打包） | `logs\channel_watcher.log` |
-| notebook | **23:10＋00:40** | `HarvestPCDaily` | `harvest_daily.bat` | `logs\harvest_pc.log` |
+| notebook | **23:10 起每 30 分（到 01:10）** | `HarvestPCDaily` | `harvest_daily.bat` | `logs\harvest_pc.log` |
 
 - 順序刻意錯開：PC 先打包，notebook 再來收（收割器只認 `manifest.json`，沒寫完就跳過，早收也安全）。
-- **為何必收兩次（2026-11-09）**：22:30 那輪要下載＋轉錄＋燒字幕＋產筆記／直播報告，
-  常跑 30–60 分鐘，23:10 時包還沒進 NAS。一天兩個時間點，第二次（00:40）補收；
-  收割是冪等的，多跑一次成本近乎零（`fix_youtube_links` 約 0.4 秒）。
+- **為何一晚收五次（2026-11-09）**：22:30 那輪要下載＋轉錄＋燒字幕＋產筆記／直播報告，
+  一支 2 小時直播光是燒字幕就可能 1–2 小時，包進 NAS 的時間無法預測。
+  23:10／23:40／00:10／00:40／01:10 各收一次，收割冪等、每次幾秒（`fix_youtube_links` 約 0.4 秒），
+  收過就 `帳本相符` 直接跳過。`01:30` 的備份刻意排在最後一次收割之後。
 - `harvest_daily.bat` 收完會接著跑 `fix_youtube_links.py --apply`（冪等），所以連結格式不會退回去。
 - 兩支 .bat 都可手動執行（雙擊或在專案根目錄跑）。
 - **打包的「靜止保護」只在有 worker 在跑時才生效（2026-11-09 改）**：
