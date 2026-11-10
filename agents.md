@@ -344,6 +344,7 @@ watched_channels:
   行尾 UNC 與 .lnk 目標一起換新）；`.lnk` 遺失／`_targets.json` 對不上也會自動重建。
   `--force` 只供無條件重建（一般不必）。
   歷史條目回補：`backfill_video_links.py`（補行）→ `fix_video_links.py`（換成可點的 .lnk）。
+  **完整處理記錄（根因矩陣／實作／SOP／排錯）：`docs/incidents/2026-11-10_點播lnk捷徑_處理記錄.md`**。
 - **換手 SOP（掃描機 PC2 ⇄ 備便機 PC1，半自動；2026-11-10）**：① 舊機 `Disable-ScheduledTask -TaskName ChannelWatcherDaily`；② 舊機把游標推到 NAS：`copy shared\watched_channels_state.json \\192.168.1.121\exchange\<machine>\watched_channels_state.json`（在外用 tailnet IP `100.65.113.20`；權限擋住就改用 USB／筆記中轉）；③ 新機匯入：`python -X utf8 channel_watcher.py --seed-state \\100.65.113.20\exchange\<machine>\watched_channels_state.json`，再 `--status` 核對各來源「最近 ID」與舊機一致；④ 新機 `deploy.ps1 -Machine pcN -SkipSetup -RegisterTasks -Tasks ChannelWatcherDaily`。新機接手前必須先有：deno、Groq key、NAS producer 憑證、YouTube_Videos 唯讀分享（點播用），缺一樣就先補。
 - **固定 22:30**，不改成其他時間；排程設定（2026-11-03）：
   - `StartWhenAvailable = true` → 22:30 若關機／休眠而錯過，開機後**補跑一次**
