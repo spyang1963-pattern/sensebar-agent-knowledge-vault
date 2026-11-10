@@ -53,8 +53,43 @@ def kb_basename(title, date_prefix=None):
     safe = safe_filename(title)
     return f"{date_prefix}_{safe}" if date_prefix else safe
 
-# 影片日期快取（避免同一支重複呼叫 yt-dlp）
-_VIDEO_DATE_CACHE = {}
+# 影片 metadata 快取（日期＋直播狀態；避免同一支重複呼叫 yt-dlp）
+_VIDEO_META_CACHE = {}
+
+
+def _fetch_video_meta(video_id):
+    """單次 yt-dlp 呼叫同時取「日期＋直播狀態」，結果快取；get_video_date／get_video_live_status 共用。
+    （日期與直播狀態來自同一份 metadata，拆兩次呼叫只是浪費時間。）"""
+    if video_id in _VIDEO_META_CACHE:
+        return _VIDEO_META_CACHE[video_id]
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    meta = {"date": None, "live": ""}
+    try:
+        r = subprocess.run(
+            ["yt-dlp", "--no-update", "--skip-download", "--no-warnings",
+             *yt_cookies_args(),
+             "--print", "%(timestamp)s|%(release_date)s|%(upload_date)s|%(live_status)s", url],
+            capture_output=True, text=False, timeout=120,
+        )
+        line = r.stdout.decode("utf-8", errors="replace").strip().splitlines()
+        if line:
+            parts = (line[0].split("|") + ["", "", "", ""])[:4]
+            ts, rel, up, live = parts
+            if rel and re.match(r"^\d{8}$", rel):
+                meta["date"] = f"{rel[:4]}-{rel[4:6]}-{rel[6:8]}"
+            elif ts and ts not in ("NA", "None"):
+                tw = datetime.fromtimestamp(int(ts), timezone(timedelta(hours=8)))
+                meta["date"] = tw.strftime("%Y-%m-%d")
+            elif up and re.match(r"^\d{8}$", up):
+                meta["date"] = f"{up[:4]}-{up[4:6]}-{up[6:8]}"
+            if live and live not in ("NA", "None"):
+                meta["live"] = live
+        log(f"  [日期] {video_id} → {meta['date']}（live_status={meta['live'] or 'N/A'}）")
+    except Exception as e:
+        log(f"  [日期] 取得失敗 {video_id}: {e}")
+    _VIDEO_META_CACHE[video_id] = meta
+    return meta
+
 
 def get_video_date(video_id):
     """取得影片日期（Asia/Taipei）→ 'YYYY-MM-DD' 或 None。
@@ -62,33 +97,14 @@ def get_video_date(video_id):
     2026-11-02 事故：首播影片的 timestamp 仍停在原本排定的 2026-10-26，但實際首播／發布日是
     release_date=2026-11-02，導致產出檔名前綴錯誤。因此 release_date 必須優先。
     """
-    if video_id in _VIDEO_DATE_CACHE:
-        return _VIDEO_DATE_CACHE[video_id]
-    url = f"https://www.youtube.com/watch?v={video_id}"
-    date = None
-    try:
-        r = subprocess.run(
-            ["yt-dlp", "--no-update", "--skip-download", "--no-warnings",
-             *yt_cookies_args(),
-             "--print", "%(timestamp)s|%(release_date)s|%(upload_date)s", url],
-            capture_output=True, text=False, timeout=120,
-        )
-        line = r.stdout.decode("utf-8", errors="replace").strip().splitlines()
-        if line:
-            parts = (line[0].split("|") + ["", "", ""])[:3]
-            ts, rel, up = parts
-            if rel and re.match(r"^\d{8}$", rel):
-                date = f"{rel[:4]}-{rel[4:6]}-{rel[6:8]}"
-            elif ts and ts not in ("NA", "None"):
-                tw = datetime.fromtimestamp(int(ts), timezone(timedelta(hours=8)))
-                date = tw.strftime("%Y-%m-%d")
-            elif up and re.match(r"^\d{8}$", up):
-                date = f"{up[:4]}-{up[4:6]}-{up[6:8]}"
-        log(f"  [日期] {video_id} → {date}")
-    except Exception as e:
-        log(f"  [日期] 取得失敗 {video_id}: {e}")
-    _VIDEO_DATE_CACHE[video_id] = date
-    return date
+    return _fetch_video_meta(video_id)["date"]
+
+
+def get_video_live_status(video_id):
+    """yt-dlp 的 live_status：'is_live'＝直播中、'is_upcoming'＝排定尚未開始、
+    'post_live'＝剛下播（VOD 可能還沒好）、'was_live'/'not_live'＝一般影片。
+    掃描撞到 is_live/is_upcoming 時要「不處理也不推進游標」，等下次掃描再收。"""
+    return _fetch_video_meta(video_id)["live"]
 
 _VIDEO_TITLE_CACHE = {}
 
@@ -716,13 +732,25 @@ def make_summary_for_md(title, md_path, out_dir=None):
 
 # ── 核心邏輯 ──
 
-def process_has_subs(video_id, title, langs, kb_dir, burn_subs=False, format_spec=None, save_to_kb=True):
+def process_has_subs(video_id, title, langs, kb_dir, format_spec=None, save_to_kb=True):
     """有字幕路徑：下載字幕 → KB 條目。成功回傳 md_path，失敗回傳 None。
-    burn_subs=True：即使有官方字幕，也下載影片並把字幕燒進去（依頻道規則）。
-    format_spec：燒字幕時的下載格式（None=預設 1080p）。
-    save_to_kb=False：只處理（必要時燒字幕）不寫入 KB，成功回傳 True。"""
+
+    使用者原則（2026-11-10 重申，勿再改回）：**有 YouTube 字幕的影片不下載影片檔**——
+    要看片就點條目裡的 YouTube 連結（字幕 YouTube 本來就有）；只有「無字幕」的影片才
+    下載到 D:\\YouTube_Videos 並燒字幕（見 process_no_subs）。因此本函式完全不碰影片檔，
+    也沒有 burn_subs 參數。
+    save_to_kb=False：只抓字幕不寫入 KB，成功回傳 True。"""
     temp_dir = WORKING / "channel-watcher-temp"
     temp_dir.mkdir(parents=True, exist_ok=True)
+
+    # 直播中／尚未開始：處理必然失敗（VOD 還沒好），先擋下來。
+    # 掃描端看到這個失敗「不推進游標」，下次掃描（隔天）再收。
+    live = get_video_live_status(video_id)
+    if live in ("is_live", "is_upcoming"):
+        why = "直播進行中" if live == "is_live" else "排定直播尚未開始"
+        log(f"  [直播] {why}（live_status={live}），本次不處理，等直播結束後再收")
+        _note_fail("直播中", f"{why}（live_status={live}）")
+        return None
 
     srt_path = download_yt_sub(video_id, langs, temp_dir)
     if not srt_path:
@@ -733,15 +761,6 @@ def process_has_subs(video_id, title, langs, kb_dir, burn_subs=False, format_spe
 
     date_prefix = get_video_date(video_id)
 
-    burned_path = None
-    if burn_subs:
-        log("  [燒字幕] 依規則下載搭配影片並燒字幕...")
-        video_path = download_yt_video(video_id, title, format_spec=format_spec or YT_DL_FORMAT, date_prefix=date_prefix)
-        if video_path:
-            bp = Path(video_path).with_name(Path(video_path).stem + "_字幕.mp4")
-            if burn_subtitles(video_path, srt_path, bp):
-                burned_path = bp
-
     if not save_to_kb:
         try:
             srt_path.unlink()
@@ -749,7 +768,7 @@ def process_has_subs(video_id, title, langs, kb_dir, burn_subs=False, format_spe
             pass
         return True
 
-    md_path = create_kb_entry(video_id, title, transcript, srt_path, None, kb_dir, burned_path=burned_path, date_prefix=date_prefix)
+    md_path = create_kb_entry(video_id, title, transcript, srt_path, None, kb_dir, date_prefix=date_prefix)
 
     # 清理
     srt_path.unlink()
@@ -759,7 +778,17 @@ def process_has_subs(video_id, title, langs, kb_dir, burn_subs=False, format_spe
 def process_no_subs(video_id, title, langs, kb_dir, format_spec=None, save_to_kb=True, burn_subs=True):
     """無字幕路徑：下載影片 → Pipeline → 燒字幕 → KB 條目。成功回傳 md_path，失敗回傳 None
     save_to_kb=False：只處理（下載＋轉錄＋燒字幕）不寫入 KB，成功回傳影片路徑。
-    burn_subs=False：跳過燒字幕（一條 2 小時的直播要多花 1–2 小時與數百 MB）。"""
+
+    使用者原則（2026-11-10 重申）：無字幕影片一律下載到 D:\\YouTube_Videos 並燒字幕——
+    「_字幕.mp4」是知識庫條目的可點播版本（publish_outbox 打包時改寫成 UNC 點播路徑）。
+    burn_subs=False 只是除錯逃生口，正式流程請保持預設 True。"""
+    live = get_video_live_status(video_id)
+    if live in ("is_live", "is_upcoming"):
+        why = "直播進行中" if live == "is_live" else "排定直播尚未開始"
+        log(f"  [轉錄] {why}（live_status={live}），本次不處理，等直播結束後再收")
+        _note_fail("直播中", f"{why}（live_status={live}）")
+        return None
+
     log("  [轉錄] 無 YouTube 字幕，啟動離線 Pipeline...")
 
     date_prefix = get_video_date(video_id)
@@ -881,16 +910,23 @@ def record_harvest_task(video_id, title, md_path, channel_name=""):
         log(f"  ⚠️ 登記收割任務失敗（收成不受影響）：{e}")
 
 
-def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未知頻道", burn_subs=False, note=False, summary=False, format_spec=None, dedup=True):
+def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未知頻道", note=False, summary=False, format_spec=None, dedup=True):
     """掃描單一播放清單，處理新影片
     source: playlist_id 或 YouTube URL
     max_initial: 初次掃描最多處理幾支
     channel_name: 頻道名稱（供通知明細使用）
-    burn_subs: 即使有官方字幕也下載影片並燒字幕
     note: 收成後自動產生課程筆記（預設關）
     summary: 收成後自動產生摘要報告（預設關；摘要優先，需要時再補詳細筆記）
-    format_spec: 燒字幕影片下載格式（None=預設 1080p）
+    format_spec: 無字幕影片下載格式（None=預設 1080p；有字幕的影片一律不下載）
     dedup: 同一 video_id 已在 KB 任一目錄即略過（防止直播/清單重複收成，預設開）
+
+    游標規則（2026-11-10 根因修正，勿改回）：
+    - 只有「處理成功」或「去重略過」的影片會推進游標。
+    - 處理失敗（含直播中、下載失敗）**不推進游標**並停止本輪——下次掃描會重試同一支。
+      11-08 三師爸直播 V56PcjmqbWg 就是「失敗仍推進游標」被永久跳過的。
+    - 同一支連續失敗 SCAN_GIVE_UP_FAILS 次（預設 5，約 5 天）→ 放棄並推進游標，
+      讓後面的新片進得來（私人片/刪片這種永遠不會成功的才會走到這）。
+    - 失敗計數存在 state[source]["fails"]，成功後清除。
     """
     global _last_scan_details
     label = source[:40] if "youtube.com" in source else source
@@ -939,6 +975,19 @@ def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未
     # 處理新影片
     processed = 0
     notes_made = 0
+    SCAN_GIVE_UP_FAILS = 5  # 同支連續失敗幾次後放棄（每天掃一次 ≈ 5 天）
+    fails = dict((state.get(state_key, {}) or {}).get("fails") or {})
+
+    def _save_cursor(cursor_vid):
+        """游標推進到 cursor_vid（處理成功／去重／放棄時呼叫）；保存失敗計數。"""
+        state[state_key] = {
+            "last_video_id": cursor_vid,
+            "last_check": datetime.now().isoformat(),
+            "last_process_time": datetime.now().isoformat(),
+            "fails": fails,
+        }
+        save_channel_state(state)
+
     for entry in new_entries:
         vid = entry.get("id", "")
         title = entry.get("title", vid)
@@ -959,15 +1008,11 @@ def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未
                 "kb": existing,
             })
             # 仍須推進游標並存檔（不可用 continue 略過存檔，否則下次又當新片掃）
-            state[state_key] = {
-                "last_video_id": vid,
-                "last_check": datetime.now().isoformat(),
-                "last_process_time": datetime.now().isoformat(),
-            }
-            save_channel_state(state)
+            fails.pop(vid, None)
+            _save_cursor(vid)
             continue
 
-        md_path = process_has_subs(vid, title, langs, kb_dir, burn_subs=burn_subs, format_spec=format_spec)
+        md_path = process_has_subs(vid, title, langs, kb_dir, format_spec=format_spec)
         if md_path:
             processed += 1
             index[vid] = str(md_path)  # 即時更新索引：同批其他清單也遇同支即去重
@@ -981,8 +1026,7 @@ def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未
                 "kb": str(md_path),
             })
         else:
-            md_path = process_no_subs(vid, title, langs, kb_dir, format_spec=format_spec,
-                                      burn_subs=burn_subs)
+            md_path = process_no_subs(vid, title, langs, kb_dir, format_spec=format_spec)
             if md_path:
                 processed += 1
                 record_harvest_task(vid, title, md_path, channel_name)
@@ -995,22 +1039,38 @@ def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未
                     "kb": str(md_path),
                 })
             else:
-                log(f"  ❌ 處理失敗")
+                # 【2026-11-10 根因修正】處理失敗絕不推進游標：直播中／下載失敗都會
+                # 落到這裡，游標一推這支就永久消失（11-08 V56PcjmqbWg 的死因）。
+                fails[vid] = fails.get(vid, 0) + 1
+                give_up = fails[vid] >= SCAN_GIVE_UP_FAILS
+                if give_up:
+                    log(f"  ❌ 處理失敗（連續 {fails[vid]} 次）→ 放棄這支，游標推進讓後面的新片進來")
+                    result = f"❌ 處理失敗（連續 {fails[vid]} 次，已放棄不重試）"
+                else:
+                    log(f"  ❌ 處理失敗 → 游標不推進，下次掃描重試（已失敗 {fails[vid]} 次）")
+                    result = f"❌ 處理失敗（下次掃描自動重試，已失敗 {fails[vid]} 次）"
                 _last_scan_details.append({
                     "channel": channel_name,
                     "title": title,
                     "video_id": vid,
-                    "result": "❌ 處理失敗",
+                    "result": result,
                     "kb": "",
                 })
+                if give_up:
+                    _save_cursor(vid)  # 放棄這支：游標推進，繼續處理後面的
+                    continue
+                # 游標維持在上一支成功（迴圈內已保存），只保存失敗計數，停止本輪
+                state[state_key] = {
+                    "last_video_id": (state.get(state_key, {}) or {}).get("last_video_id", ""),
+                    "last_check": datetime.now().isoformat(),
+                    "fails": fails,
+                }
+                save_channel_state(state)
+                break  # 更新的影片等這支成功／放棄後下一輪再收，避免游標越過失敗那支
 
-        # 每完成一支立即保存狀態進度，被中斷時不致全部重跑
-        state[state_key] = {
-            "last_video_id": vid,
-            "last_check": datetime.now().isoformat(),
-            "last_process_time": datetime.now().isoformat(),
-        }
-        save_channel_state(state)
+        # 每完成一支立即保存狀態進度，被中斷時不致全部重跑（成功才會走到這）
+        fails.pop(vid, None)  # 這支成功了，清掉它的失敗計數
+        _save_cursor(vid)
 
         # 20VTA 直播 → 自動產生 AI 重點摘要報告（存「直播報告」資料夾）
         if md_path and (kb_dir.name == "直播" or channel_name == "20VTA 波段王子"):
@@ -1042,12 +1102,8 @@ def scan_playlist(source, kb_dir, langs, state, max_initial=3, channel_name="未
             except Exception as e:
                 log(f"  ⚠️ 摘要產生失敗: {e}")
 
-    state[state_key] = {
-        "last_video_id": entries[0].get("id", ""),
-        "last_check": datetime.now().isoformat(),
-        "last_process_time": datetime.now().isoformat(),
-    }
-
+    # 【根因修正】結尾不再無條件把游標推到最新一支：處理成功／去重／放棄都已在
+    # 迴圈內保存游標；中途失敗時游標必須停在原地（推到最新＝把失敗那支永久跳過）。
     return processed
 
 
@@ -1109,8 +1165,8 @@ def scan_all_channels():
             if not source:
                 continue
             try:
+                # burn_subs 已廢除（2026-11-10）：有字幕的影片不下載；無字幕的一律下載＋燒字幕
                 n = scan_playlist(source, kb_dir, langs, state, max_initial=max_init, channel_name=name,
-                                   burn_subs=pl.get("burn_subs", ch.get("burn_subs", False)),
                                    note=pl.get("note", ch.get("note", False)),
                                    summary=pl.get("summary", ch.get("summary", False)),
                                    format_spec=fmt)
@@ -1229,7 +1285,9 @@ def process_youtube_video(video_id, title, langs=None, kb_dir=None, burn_subs=Fa
                           save_to_kb=True, format_spec=None):
     """處理單一 YouTube 影片（供佇列 worker／GUI 使用）。
 
-    優先使用 YouTube 字幕；無字幕則下載影片跑離線 Pipeline（皆會依需求燒字幕）。
+    優先使用 YouTube 字幕（**有字幕就不下載影片**——使用者原則 2026-11-10）；
+    無字幕則下載影片跑離線 Pipeline 並燒字幕（無字幕影片一律燒，與頻道掃描同一套行為）。
+    burn_subs 參數保留只為舊任務欄位相容，已無任何作用（有字幕路徑本來就不下載影片）。
     save_to_kb=True 時寫入 KB 條目（kb_dir 預設 knowledge-base/youtube-clips）。
 
     Returns:
@@ -1251,7 +1309,7 @@ def process_youtube_video(video_id, title, langs=None, kb_dir=None, burn_subs=Fa
     try:
         md_path = process_has_subs(
             video_id, title, langs, kb_dir,
-            burn_subs=burn_subs, format_spec=format_spec, save_to_kb=save_to_kb,
+            format_spec=format_spec, save_to_kb=save_to_kb,
         )
         if md_path is None:
             md_path = process_no_subs(

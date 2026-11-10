@@ -92,6 +92,11 @@ def main():
     os.environ["OC_PUBLISH_SETTLE"] = "0"
     import publish_outbox as po
 
+    # 模擬「產出機」身分：機器名＋tailnet IP 用假值，才能驗證影片行「改寫」分支
+    import config as _cfg
+    _cfg.MACHINE = "aligncheck"
+    _cfg.TAILSCALE_IPS = dict(_cfg.TAILSCALE_IPS, aligncheck="100.99.99.99")
+
     po.PROJECT_ROOT = tmp
     po.SHARED_ROOT = shared
     po.KB_ROOT = kb
@@ -140,12 +145,17 @@ def main():
     check("第二次 harvest 不重複（冪等）", rc2 == 0 and len(landed) == len(expect_landed),
           f"檔案數 {len(landed)}")
 
-    print("\n== 4.5 收割後的影片行（不該留下指不到的路徑）==")
+    print("\n== 4.5 收割後的影片行（改寫成「機器註記＋UNC 點播」，不是剝除）==")
     landed_md = kbh / SUB / f"{STEM}.md"
     body = landed_md.read_text(encoding="utf-8") if landed_md.exists() else ""
-    check("已移除「本機影片／燒字幕影片」行",
-          "本機影片：" not in body and "燒字幕影片：" not in body,
-          "殘留" if ("本機影片：" in body or "燒字幕影片：" in body) else "乾淨")
+    hit = next((l for l in body.splitlines() if "點播" in l), "（找不到影片行）")
+    check("影片行已改寫成可點播（file URI＋UNC）",
+          "[▶ 點播](file:////100.99.99.99/YouTube_Videos/" in body
+          and "（在 ALIGNCHECK）" in body and "\\\\100.99.99.99\\YouTube_Videos" in body,
+          hit[:110])
+    check("沒殘留產出機本機路徑（D:\\…）",
+          "D:\\YouTube_Videos" not in body,
+          "殘留" if "D:\\YouTube_Videos" in body else "乾淨")
     check("保留可點的 YouTube 連結", f"youtube.com/watch?v={VID}" in body, "有")
     src_body = md.read_text(encoding="utf-8")
     check("產出機自己的 KB 不被改動",

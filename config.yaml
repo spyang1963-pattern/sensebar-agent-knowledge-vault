@@ -65,9 +65,8 @@ watched_channels:
       - url: "https://www.youtube.com/@sensebar/streams"
         kb_dir: "人工智慧/AI agent-三師爸/直播"
         max_initial: 4
-        # 2026-11-09：收割不再帶影片、看片一律用條目裡的 YouTube 連結，
-        # 燒字幕只是多花 1–2 小時與數百 MB（原始 mp4 仍留在產出機，需要時可再燒）。
-        burn_subs: false
+        # 2026-11-10 burn_subs 已廢除（使用者原則）：有字幕的影片不下載；
+        # 無字幕的一律下載到 D:\YouTube_Videos 並燒字幕（條目會帶 UNC 點播路徑）。
         format: "720"
 
   - name: "20VTA 波段王子"
@@ -82,6 +81,4 @@ watched_channels:
       - url: "https://www.youtube.com/@20VTA/streams"
         kb_dir: "20VTA 頻道/直播"
         max_initial: 2
-        # 2026-11-09：同上——不燒字幕（直播 2 小時燒字幕要 1–2 小時），
-        # 今晚要看就用 YouTube 連結；逐字稿／筆記／報告照常產出。
-        burn_subs: false
+        # 2026-11-10 burn_subs 已廢除：有字幕不下載；無字幕一律下載＋燒字幕（同三師爸）。

@@ -37,6 +37,7 @@ import shutil
 import sys
 import time
 from pathlib import Path
+from urllib.parse import quote
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -302,28 +303,52 @@ def local_video_for(md_path):
     return ""
 
 
-def net_video_for(md_path):
-    r"""notebook 點的網路影片路徑（\\<ip>\YouTube_Videos\...）。"""
-    local = local_video_for(md_path)
+def to_net_path(local_path):
+    r"""產出機的本機影片路徑 → 收割端可點播的 UNC（\\<tailnet-ip>\YouTube_Videos\...）。
+    影片統一放 D:\YouTube_Videos；其他位置／本機沒有 tailnet IP → 回 ""（沒有可用網路路徑）。"""
     ip = (config.TAILSCALE_IPS or {}).get(config.MACHINE)
-    if local and ip and local.startswith("D:\\YouTube_Videos"):
-        return local.replace("D:\\YouTube_Videos", f"\\\\{ip}\\YouTube_Videos", 1)
+    s = str(local_path or "")
+    if ip and s.startswith(r"D:\YouTube_Videos"):
+        rest = s[len(r"D:\YouTube_Videos"):].lstrip("\\/")
+        return f"\\\\{ip}\\YouTube_Videos\\{rest}"
     return ""
 
 
-# 條目裡只對「產出機」有效的影片路徑行（收割端沒有那些檔案 → 點不開的死結）
-PRODUCER_PATH_LINE = re.compile(r"^[ \t]*-\s*(?:本機影片|燒字幕影片)：[^\r\n]*(?:\r?\n)?", re.M)
+def net_video_for(md_path):
+    r"""notebook 點的網路影片路徑（\\<ip>\YouTube_Videos\...）。"""
+    return to_net_path(local_video_for(md_path))
 
 
-def strip_producer_paths(text):
-    """把打包副本裡的「本機影片／燒字幕影片」行拿掉（不改產出機自己的 KB）。
+def file_uri_for(net_path):
+    """UNC 路徑 → file:// URI（Obsidian 筆記裡可點擊，點了用預設播放器直接播放）。"""
+    rest = str(net_path).lstrip("\\").replace("\\", "/")
+    return "file:////" + quote(rest, safe="/:")
 
-    為什麼（2026-11-09）：收割只帶文字，影片留在產出機/YouTube。這兩行到 notebook
-    就變成指不到檔案的死路徑；使用者要的是「有網址就能看」——條目本來就有
-    `- YouTube 連結：https://...`（Obsidian 會自動變可點連結），留著死路徑只會誤導。
-    影片本來就在 YouTube，不需要在 notebook 存一份。
+
+# 條目裡的影片路徑行：影片檔留在產出機（D:\YouTube_Videos），打包時改寫成
+# 「機器註記＋UNC 點播路徑」，notebook 從影片存放位置直接播放（不複製檔案、不浪費硬碟）。
+PRODUCER_PATH_LINE = re.compile(r"^([ \t]*-[ \t]*)(本機影片|燒字幕影片)：([^\r\n]*?)(\r?\n|$)", re.M)
+
+
+def rewrite_producer_paths(text):
+    """把打包副本裡的「本機影片／燒字幕影片」行改寫成「（在 PCX）＋ UNC 點播路徑」。
+
+    2026-11-10 使用者定案（取代 11-09 的「直接剝除」）：
+    - 影片永遠留在產出機的 D:\\YouTube_Videos，**不複製到 notebook／NAS**（省硬碟）。
+    - notebook 端從網路路徑直接點播：條目內提供可點的 file:// 連結＋可複製的 UNC 路徑。
+    - 算不出 UNC（影片不在 YouTube_Videos 或這台沒 tailnet IP）→ 仍標機器名＋原路徑。
+    產出機自己的 KB 不動（它的本機路徑本來就是對的）。
     """
-    return PRODUCER_PATH_LINE.sub("", text)
+    machine = (config.MACHINE or "?").upper()
+
+    def _rw(m):
+        prefix, label, raw, nl = m.group(1), m.group(2), m.group(3).strip(), m.group(4)
+        net = to_net_path(raw)
+        if net:
+            return f"{prefix}{label}（在 {machine}）：[▶ 點播]({file_uri_for(net)})｜{net}{nl}"
+        return f"{prefix}{label}（在 {machine}）：{raw}{nl}"
+
+    return PRODUCER_PATH_LINE.sub(_rw, text)
 
 
 def publish_one(tid, info, out_root, kb_root, ledger, dry_run=False, force=False,
@@ -387,10 +412,11 @@ def publish_one(tid, info, out_root, kb_root, ledger, dry_run=False, force=False
         target = dest / rel_f
         target.parent.mkdir(parents=True, exist_ok=True)
         if f.suffix.lower() == ".md" and not keep_paths:
-            # 只改「打包副本」：拿掉產出機才有效的影片路徑（收割端沒有那些檔案）。
+            # 只改「打包副本」：把產出機的本機影片路徑改寫成「機器註記＋UNC 點播路徑」
+            # （收割端沒有那些檔案，但可以從網路路徑直接點播，不必複製檔案）。
             # 走 bytes 以求原樣保留換行（KB 是 CRLF）與 BOM 有無；產出機自己的 KB 不動。
             text = f.read_bytes().decode("utf-8", "replace")
-            target.write_bytes(strip_producer_paths(text).encode("utf-8"))
+            target.write_bytes(rewrite_producer_paths(text).encode("utf-8"))
         else:
             shutil.copy2(f, target)
         manifest_files.append({"name": f.name, "rel": rel_f, "bytes": target.stat().st_size,
@@ -432,8 +458,8 @@ def main():
     ap.add_argument("--kb", help="覆寫 knowledge-base 根（測試用）")
     ap.add_argument("--ledger", help="覆寫帳本路徑（測試用）")
     ap.add_argument("--keep-local-paths", action="store_true",
-                    help="打包時保留「本機影片／燒字幕影片」行（預設移除；收割端沒有那些檔案，"
-                         "影片請用條目內的 YouTube 連結觀看）")
+                    help="打包時保留原始「本機影片／燒字幕影片」行不改寫"
+                         "（預設改寫成「（在 PCX）＋UNC 點播路徑」；收割端從網路路徑直接播放）")
     args = ap.parse_args()
 
     if args.outbox:
