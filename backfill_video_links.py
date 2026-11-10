@@ -32,6 +32,7 @@
 ----
     python -X utf8 backfill_video_links.py --dry-run    # 預覽
     python -X utf8 backfill_video_links.py              # 正式
+    python -X utf8 fix_video_links.py                   # 接著跑：新行的 URI 點不開，要換成 .lnk 捷徑
     python -X utf8 backfill_video_links.py --report working\\my_report.txt
 
 前提：產出機要先開 YouTube_Videos 唯讀分享（workspace-bundle\\infra\\setup\\setup_video_share.ps1），

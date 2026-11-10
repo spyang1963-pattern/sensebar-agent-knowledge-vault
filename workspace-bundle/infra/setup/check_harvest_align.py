@@ -161,6 +161,25 @@ def main():
     check("產出機自己的 KB 不被改動",
           "本機影片：" in src_body and "燒字幕影片：" in src_body, "原樣保留")
 
+    print("\n== 4.6 fix_video_links（URI 點不開 → 換成 .lnk 捷徑）==")
+    import fix_video_links as fvl
+    links = tmp / "links"
+    rc_f = fvl.run(kb_root=kbh, links_dir=links, report=tmp / "fvl_report.txt")
+    body2 = landed_md.read_text(encoding="utf-8") if landed_md.exists() else ""
+    hit2 = next((l for l in body2.splitlines() if "點播" in l), "（找不到影片行）")
+    expect_uri = (links / f"{VID}_burned.lnk").as_uri()
+    check("fix_video_links rc=0", rc_f == 0, f"rc={rc_f}")
+    check("連結已換成 .lnk 捷徑（ASCII 檔名，點了會開）",
+          f"[▶ 點播]({expect_uri})" in body2, hit2[:110])
+    check("行尾保留原 UNC 路徑（可複製貼上）",
+          "\\\\100.99.99.99\\YouTube_Videos" in body2, "有")
+    made = {n for n in (f"{VID}_video.lnk", f"{VID}_burned.lnk") if (links / n).exists()}
+    check(".lnk 捷徑檔已建立", made == {f"{VID}_video.lnk", f"{VID}_burned.lnk"},
+          ", ".join(sorted(made)))
+    rc_f2 = fvl.run(kb_root=kbh, links_dir=links)
+    body3 = landed_md.read_text(encoding="utf-8") if landed_md.exists() else ""
+    check("fix_video_links 冪等（重跑不變）", rc_f2 == 0 and body3 == body2, "rc=0")
+
     print("\n== 5. 清理 ==")
     if keep:
         print(f"  （--keep）暫存目錄保留：{tmp}")

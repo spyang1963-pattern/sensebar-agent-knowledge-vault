@@ -12,3 +12,8 @@ python -X utf8 harvest_pc.py --prefer-nas >> logs\harvest_pc.log 2>&1
 echo [%date% %time%] harvest rc=%ERRORLEVEL% >> logs\harvest_pc.log
 python -X utf8 fix_youtube_links.py --apply >> logs\harvest_pc.log 2>&1
 echo [%date% %time%] links rc=%ERRORLEVEL% >> logs\harvest_pc.log
+rem 2026-11-10: file:// URIs with percent-encoded CJK don't open (ShellExecute
+rem never decodes %XX). fix_video_links swaps them for ASCII-named .lnk shortcuts
+rem in knowledge-base\_video_links\ that point at the local/UNC video path.
+python -X utf8 fix_video_links.py >> logs\harvest_pc.log 2>&1
+echo [%date% %time%] vidlinks rc=%ERRORLEVEL% >> logs\harvest_pc.log

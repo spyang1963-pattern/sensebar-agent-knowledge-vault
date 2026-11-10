@@ -288,11 +288,10 @@ watched_channels:
       - url: "https://www.youtube.com/@sensebar/streams" # 直播：必填，漏了就不會掃直播
         kb_dir: "人工智慧/AI agent-三師爸/直播"
         max_initial: 4        # 首次掃描處理支數（= 要補的支數 + 1~2 緩衝）
-        burn_subs: true       # 有字幕也下載影片並燒字幕
-        format: "720"         # 影片下載解析度預設（1080／720）；只影響要燒字幕的下載
+        format: "720"         # 影片下載解析度預設（1080／720）；只影響無字幕時的下載
 ```
 
-**必知**：`channel_url` 目前**沒有任何作用**，真正被掃的只有 `playlists`（`id` 或 `url` 皆可）。`kb_dir.name == "直播"` 的來源會**自動**呼叫直播報告產生器；`format` 只供燒字幕下載用（預設 1080p H.264，`YT_DL_FORMAT_720` 為 720p）。
+**必知**：`channel_url` 目前**沒有任何作用**，真正被掃的只有 `playlists`（`id` 或 `url` 皆可）。`kb_dir.name == "直播"` 的來源會**自動**呼叫直播報告產生器；`format` 只供燒字幕下載用（預設 1080p H.264，`YT_DL_FORMAT_720` 為 720p）。**影片原則（2026-11-10 定案，`burn_subs` 概念已廢除）**：有字幕 → 只下載字幕、**不下載影片**；無字幕 → 一律下載到 `D:\YouTube_Videos` 並燒 `_字幕.mp4`（`process_no_subs` 的 burn 參數留作除錯逃生口）。`burn_subs` 欄位在 worker／queue_youtube／GUI 保留相容但**已無作用**，不要再加回設定。
 
 ### 自動排程（現況：2026-11-09 掃描移到 PC2）
 
@@ -328,6 +327,24 @@ watched_channels:
   `deploy.ps1 -Machine pc2 -SkipSetup -RegisterTasks -Tasks ChannelWatcherDaily`
 - **notebook 端要停用**（同一任務只能一台跑）：`Disable-ScheduledTask -TaskName ChannelWatcherDaily`。
   確認 PC2 已成功掃過一次再停 notebook，避免中間漏一天。
+- **漏片根因已修（2026-11-10，勿改回）**：`scan_playlist` 處理失敗（直播中／下載失敗）**不推進游標**、停止本輪，下次掃描重試同一支；同支連續失敗 5 次（`SCAN_GIVE_UP_FAILS`）才放棄推進（失敗計數存 `state[source]["fails"]`，成功／去重清除）。直播偵測 `_fetch_video_meta()` 單次 yt-dlp 同取日期＋`live_status`（快取共用），`is_live`／`is_upcoming` 先擋下，直播結束變 `was_live` 才收。11-08 的 V56PcjmqbWg 就是「撞到直播中 → 失敗 → 游標照推進 → 永久跳過」這個 bug。
+- **影片點播（2026-11-10 使用者定案；同日改版為「.lnk 捷徑」，file:// URI 直接點不開，勿改回）**：
+  影片永遠留在**產出機**的 `D:\YouTube_Videos`，不複製到 notebook／NAS。鏈路三段：
+  ① 產出機 `publish_outbox.rewrite_producer_paths()` 打包時把影片行改寫成
+     `（在 PCX）：[▶ 點播](file://<ip>/YouTube_Videos/…)｜\\<ip>\YouTube_Videos\…`
+     （`--keep-local-paths` 保留原行；產出機自己的 KB 不動。行尾 UNC 是給人複製用的，
+     **URI 只是位置標記**——percent-encoded 中文路徑 ShellExecute／Obsidian 都不會解碼 %XX，
+     直接點一定 WinError 2）。
+  ② notebook 端 `harvest_daily.bat` 收割後接著跑 `fix_video_links.py`（冪等）：為每支影片建
+     **全 ASCII 檔名**的 Windows 捷徑（`knowledge-base\_video_links\<video_id>_video|burned.lnk`）
+     指向本機／UNC 原路徑，條目連結改指捷徑 → 點了開預設播放器（2026-11-10 實測可播）。
+     純路徑雖可開但**含空白**，放進 Markdown 會被切斷——這就是必須用 .lnk 的原因。
+  ③ 產出機要開 `YouTube_Videos` 唯讀 SMB 分享＋建 `harvest` 帳號，notebook 存該機 cmdkey。
+  產出機**換 tailnet IP**：每晚自動對時（「（在 PCX）」對照 `config.TAILSCALE_IPS` 現值，
+  行尾 UNC 與 .lnk 目標一起換新）；`.lnk` 遺失／`_targets.json` 對不上也會自動重建。
+  `--force` 只供無條件重建（一般不必）。
+  歷史條目回補：`backfill_video_links.py`（補行）→ `fix_video_links.py`（換成可點的 .lnk）。
+- **換手 SOP（掃描機 PC2 ⇄ 備便機 PC1，半自動；2026-11-10）**：① 舊機 `Disable-ScheduledTask -TaskName ChannelWatcherDaily`；② 舊機把游標推到 NAS：`copy shared\watched_channels_state.json \\192.168.1.121\exchange\<machine>\watched_channels_state.json`（在外用 tailnet IP `100.65.113.20`；權限擋住就改用 USB／筆記中轉）；③ 新機匯入：`python -X utf8 channel_watcher.py --seed-state \\100.65.113.20\exchange\<machine>\watched_channels_state.json`，再 `--status` 核對各來源「最近 ID」與舊機一致；④ 新機 `deploy.ps1 -Machine pcN -SkipSetup -RegisterTasks -Tasks ChannelWatcherDaily`。新機接手前必須先有：deno、Groq key、NAS producer 憑證、YouTube_Videos 唯讀分享（點播用），缺一樣就先補。
 - **固定 22:30**，不改成其他時間；排程設定（2026-11-03）：
   - `StartWhenAvailable = true` → 22:30 若關機／休眠而錯過，開機後**補跑一次**
   - `DisallowStartIfOnBatteries = false`、`StopIfGoingOnBatteries = false` → 未插電也會在 22:30 正常跑，跑到一半拔電也不會被中止
@@ -822,12 +839,12 @@ PC 永不寫 notebook 的 KB；notebook 只讀 PC。設計稿：`workspace-bundl
    完整包 58→**64**（不是 65）。manifest 的 `created_at` 換新**不算衝突**，收割端只看檔案。
 5. 帳本：`working\harvest_ledger.json`（notebook）、`working\_outbox_published.json`（產出機）。
    重跑應全部 `skipped_same`，這是驗收冪等的標準動作。
-6. **收割只帶文字，影片不上 notebook（2026-11-09 使用者定案）**：條目裡的
-   `- 本機影片：…`／`- 燒字幕影片：…` 只對產出機有效，`publish_outbox` 打包時會把這兩行
-   **從打包副本移除**（產出機自己的 KB 不動；`--keep-local-paths` 可保留）。
-   要看影片就用條目裡的 `- YouTube 連結：https://…`（Obsidian 會自動變可點連結）。
-   ⇒ **不要**為了看片把 mp4 複製到 notebook（使用者明確要求省硬碟）；
-   ⇒ 也因此 notebook 端 `kb_query.py --open`（需要本機影片檔）對「PC2 產出的新條目」不適用。
+6. **收割只帶文字，影片不上 notebook（2026-11-09 定案；2026-11-10 點播改 .lnk 捷徑）**：
+   影片檔**永遠留在產出機**的 `D:\YouTube_Videos`——**不複製 mp4**（使用者明確要求省硬碟）。
+   打包副本的影片行由 `rewrite_producer_paths()` 改寫成「（在 PCX）＋UNC」；notebook 收割後
+   `harvest_daily.bat` 會接著跑 `fix_video_links.py` 把連結換成 `_video_links\*.lnk` 捷徑
+   （細節見 watched_channels 段「影片點播」）。沒開分享時點播連結開不了，條目仍有 YouTube
+   連結可看；`kb_query.py --open` 對 PC 產出的條目不適用（本機沒有影片檔），改點條目內捷徑連結。
 
 ### `--replace`：讓產出機版本覆蓋本機同名檔（2026-11-07）
 預設「同家族同名不同內容 → 保留 notebook 正本」，所以 **prompt 改版後在 PC 重生的摘要送到 notebook 只會 `skipped_same`，整趟白跑**。要用時明確指定：
