@@ -258,15 +258,25 @@ def make_report(md_path: Path, out_dir: Path | None = None) -> Path | None:
 
 
 def scan_all_missing():
-    if not LIVE_DIR.exists():
-        print(f"[ERR] 找不到直播目錄：{LIVE_DIR}")
-        return
-    missing = []
-    for md in sorted(LIVE_DIR.glob("*.md")):
-        out = md.parent / "直播報告" / f"{safe_filename(md.stem)}.docx"
-        if not out.exists():
-            missing.append(md)
-    print(f"逐字稿 {len(list(LIVE_DIR.glob('*.md')))} 支，缺報告 {len(missing)} 支")
+    """補做缺報告的掃描範圍：**所有**「直播」目錄（2026-11-10 前只掃 20VTA，
+    經 worker/queue_youtube 補收的直播會被 --all 漏掉）。
+    排除「金融交易」老師語料（政策：不自動產產品）與 _harvest_/_archive 備份目錄。"""
+    kb = PROJECT_ROOT / "knowledge-base"
+    missing, total = [], 0
+    for live_dir in sorted(kb.glob("**/直播")):
+        s = str(live_dir)
+        if "金融交易" in s or "_harvest_" in s or "_archive" in s:
+            continue
+        # 只認逐字稿：課程筆記／摘要／重點整理是「產品」，不為它們另產直播報告
+        # （不過濾的話 --all 會為每份筆記再多生一份誤導的報告 docx）
+        mds = [md for md in sorted(live_dir.glob("*.md"))
+               if not md.stem.endswith((" 課程筆記", " 摘要", " 重點整理"))]
+        total += len(mds)
+        for md in mds:
+            out = md.parent / "直播報告" / f"{safe_filename(md.stem)}.docx"
+            if not out.exists():
+                missing.append(md)
+    print(f"逐字稿 {total} 支（所有「直播」目錄），缺報告 {len(missing)} 支")
     return missing
 
 
