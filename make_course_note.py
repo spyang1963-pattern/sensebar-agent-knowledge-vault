@@ -408,6 +408,35 @@ def build_docx(markdown: str, out_path: Path, template: Path | None = None):
     return out_path
 
 
+_VID_RE = re.compile(r"(?:v=|youtu\.be/|/shorts/|/live/|/embed/)([A-Za-z0-9_-]{11})")
+
+
+def source_youtube_urls(md_sources):
+    """從來源逐字稿取出 YouTube URL（去重、保序；找得到幾支給幾支）。
+
+    查法與 fix_youtube_links.video_id_of 一致：同名 `.link.txt`（channel_watcher 產生）
+    優先，其次逐字稿前 60 行。2026-11-11 新增：產品 md 從出生就帶「原始影片」連結行，
+    同時建出的 docx 才會有真超連結——事後補 md 行的方式 docx 永遠跟不上
+    （fix_youtube_links 只改 md，不重建 docx）。
+    """
+    urls = []
+    for m in md_sources:
+        p = Path(m)
+        if p.with_suffix(".link.txt").exists():
+            head = p.with_suffix(".link.txt").read_text(encoding="utf-8", errors="replace")
+        else:
+            try:
+                head = "\n".join(p.read_text(encoding="utf-8", errors="replace").splitlines()[:60])
+            except OSError:
+                continue
+        hit = _VID_RE.search(head)
+        if hit:
+            url = f"https://www.youtube.com/watch?v={hit.group(1)}"
+            if url not in urls:
+                urls.append(url)
+    return urls
+
+
 def generate_note(title, md_sources, out_dir, template=None, chunk_chars=0,
                   preview=0, progress=None):
     """逐字稿 md（可多支，依時間序）→ 課程筆記 (.md + .docx)。
@@ -483,6 +512,9 @@ def generate_note(title, md_sources, out_dir, template=None, chunk_chars=0,
         _p(f"        ✓ 完成（{len(note):,} 字元）")
 
     lines = [f"# {title}", ""]
+    # 2026-11-11：從出生就帶原始影片連結（docx 同步有真超連結；fix_youtube_links 對此會跳過）
+    for u in source_youtube_urls(md_sources):
+        lines.append(f"> 原始影片：[YouTube]({u})")
     lines.append("> 課程筆記（整理自課堂逐字稿，依時間順序）。")
     lines.append(f"> 整理日期：{datetime.now().strftime('%Y-%m-%d')}")
     lines.append("")
@@ -644,6 +676,9 @@ def generate_summary(title, md_sources, out_dir, template=None, chunk_chars=8000
         _p(f"        ✓ {Path(mdp).name} 完成（{len(segs)} 段）")
 
     lines = [f"# {title}", ""]
+    # 2026-11-11：從出生就帶原始影片連結（docx 同步有真超連結；fix_youtube_links 對此會跳過）
+    for u in source_youtube_urls(md_sources):
+        lines.append(f"> 原始影片：[YouTube]({u})")
     lines.append("> 摘要（整理自逐字稿，供快速掌握重點；需要細節時可另產「課程筆記」）。")
     lines.append(f"> 整理日期：{datetime.now().strftime('%Y-%m-%d')}")
     # 版本標記：regen_summaries.py 用它判斷「這篇是否已是目前 prompt 產出」，

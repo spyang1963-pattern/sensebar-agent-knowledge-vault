@@ -396,8 +396,11 @@ watched_channels:
      卻因為「跳過」統計看起來像合規（假合規）。回報「找不到 video_id」的 XQ／海龜學院舊條目
      是**本質限制**（來源無 YouTube URL），不可亂補。
    - **產品 docx 的連結也要可點**（2026-11-11）：`make_course_note.build_docx` 已支援
-     `[文字](url)` → 真超連結（hyperlink，引言行／內文／列表都通）；舊 docx 是純文字，
-     重建方式照 `working/_rebuild_all_docx.py`（從對應 md 重建，worker 同款樣板）。
+     `[文字](url)` → 真超連結（hyperlink，引言行／內文／列表都通）。
+     **`generate_note`／`generate_summary` 從出生就帶「原始影片」行**（`source_youtube_urls()`：
+     `.link.txt` 優先、其次來源前 60 行；多來源多行；XQ 等無 URL 不加行不報錯）——
+     md＋docx 同時有連結，`fix_youtube_links` 對新產品自然跳過。**只有 11-11 之前的舊產品**
+     docx 是純文字，重建方式照 `working/_rebuild_all_docx.py`（從對應 md 重建，worker 同款樣板）。
      **完整處理記錄（三真因矩陣／驗收方法）：`docs/incidents/2026-11-11_YouTube連結不可點_處理記錄.md`**。
 
 4. **新影片加字幕**
@@ -625,7 +628,7 @@ python -X utf8 queue_youtube.py --url "..." --include-failed      # 連 failed �
   2. 沒有版本標記但「同一天產生且 ≥700 字元」→ 視為已是新版（v4 實測最短 819；v3 短版都 <600）。
   3. `--if-shorter-than N`：現有摘要 ≥ N 字元就跳過；缺摘要一定納入。
   4. `--force`：全部重做。
-  產物直接覆寫 `{stem} 摘要.md/.docx`（檔名、H1 沿用 stem，不會產生重複條目）。**重生後要再跑一次 `fix_youtube_links.py --apply`**：新寫的摘要沒有 `> 原始影片：[YouTube](...)` 那行，補連結的動作是那支腳本做的（收割排程本來就會跑，手動重生時要自己補）。
+  產物直接覆寫 `{stem} 摘要.md/.docx`（檔名、H1 沿用 stem，不會產生重複條目）。**重生後要再跑一次 `fix_youtube_links.py --apply`**：新寫的摘要沒有 `> 原始影片：[YouTube](...)` 那行，補連結的動作是那支腳本做的（收割排程本來就會跑，手動重生時要自己補）。2026-11-11 起 `generate_summary` 從出生就帶該行（md＋docx 同時有連結），這步變成保險而非必要。
   **2026-11-07 全庫完成（勿再重跑）**：最終狀態 `摘要 131｜v4 標記 131｜<600 4（皆為 1 分鐘 Shorts，426～549 字）｜中位數 1200`，
   0 失敗、小節重複 0、摘要都含 `> 原始影片：[YouTube](...)`。三段實跑：
   ① notebook 本批 44 支 308 → 1214 字元（5.3 分鐘）；
