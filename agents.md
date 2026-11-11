@@ -400,7 +400,8 @@ watched_channels:
      **`generate_note`／`generate_summary` 從出生就帶「原始影片」行**（`source_youtube_urls()`：
      `.link.txt` 優先、其次來源前 60 行；多來源多行；XQ 等無 URL 不加行不報錯）——
      md＋docx 同時有連結，`fix_youtube_links` 對新產品自然跳過。**只有 11-11 之前的舊產品**
-     docx 是純文字，重建方式照 `working/_rebuild_all_docx.py`（從對應 md 重建，worker 同款樣板）。
+     docx 是純文字，用 `rebuild_product_docx.py` 重建（從 md 重建、worker 同款樣板、
+     重建後自我驗證「md 有原始影片行的 docx 必含 youtube.com 超連結」；產出機也可用，git 有）。
      **完整處理記錄（三真因矩陣／驗收方法）：`docs/incidents/2026-11-11_YouTube連結不可點_處理記錄.md`**。
 
 4. **新影片加字幕**
