@@ -344,6 +344,10 @@ watched_channels:
   行尾 UNC 與 .lnk 目標一起換新）；`.lnk` 遺失／`_targets.json` 對不上也會自動重建。
   `--force` 只供無條件重建（一般不必）。
   歷史條目回補：`backfill_video_links.py`（補行）→ `fix_video_links.py`（換成可點的 .lnk）。
+  **XQ 逐字稿例外（2026-11-11）**：`XQ直播_Videos` 是 `# YouTube Metadata` 格式（`## 影片`
+  下是裸路徑行），`backfill_video_links.py` 只認 `- 本機影片：/- 燒字幕影片：` 前綴、永遠補不到
+  → 用 `working\_backfill_xq_video_links.py`（冪等；`_字幕.mp4` 已不存在時自動 fallback
+  同名原片）補成標準影片行，再跑 `fix_video_links.py` 換 .lnk。
   **完整處理記錄（根因矩陣／實作／SOP／排錯）：`docs/incidents/2026-11-10_點播lnk捷徑_處理記錄.md`**。
 - **換手 SOP（掃描機 PC2 ⇄ 備便機 PC1，半自動；2026-11-10）**：① 舊機 `Disable-ScheduledTask -TaskName ChannelWatcherDaily`；② 舊機把游標推到 NAS：`copy shared\watched_channels_state.json \\192.168.1.121\exchange\<machine>\watched_channels_state.json`（在外用 tailnet IP `100.65.113.20`；權限擋住就改用 USB／筆記中轉）；③ 新機匯入：`python -X utf8 channel_watcher.py --seed-state \\100.65.113.20\exchange\<machine>\watched_channels_state.json`，再 `--status` 核對各來源「最近 ID」與舊機一致；④ 新機 `deploy.ps1 -Machine pcN -SkipSetup -RegisterTasks -Tasks ChannelWatcherDaily`。新機接手前必須先有：deno、Groq key、NAS producer 憑證、YouTube_Videos 唯讀分享（點播用），缺一樣就先補。
 - **固定 22:30**，不改成其他時間；排程設定（2026-11-03）：
@@ -386,6 +390,15 @@ watched_channels:
    - 批次修正：`python -X utf8 fix_youtube_links.py --apply`（預設只預覽；逐字稿把裸 URL 改成連結，
      摘要／課程筆記在 H1 後補 `> 原始影片：[YouTube](...)`；可重跑，已改的會跳過）。
      **收割後建議跑一次**（產出機的 KB 不會自動改，notebook 正本才要合規）。
+     **2026-11-11 修正（勿改回）**：預設＝**全 KB 遞迴**（`iter_md()` 用 `rglob`，排除
+     `_harvest_overwritten`／`_harvest_conflicts`／`_video_links` 等內部目錄；`--subdir` 可限縮）。
+     舊版只掃 `youtube-clips` 且不遞迴 → 20VTA／三師爸／XQ 的產品**從未被補過連結**，
+     卻因為「跳過」統計看起來像合規（假合規）。回報「找不到 video_id」的 XQ／海龜學院舊條目
+     是**本質限制**（來源無 YouTube URL），不可亂補。
+   - **產品 docx 的連結也要可點**（2026-11-11）：`make_course_note.build_docx` 已支援
+     `[文字](url)` → 真超連結（hyperlink，引言行／內文／列表都通）；舊 docx 是純文字，
+     重建方式照 `working/_rebuild_all_docx.py`（從對應 md 重建，worker 同款樣板）。
+     **完整處理記錄（三真因矩陣／驗收方法）：`docs/incidents/2026-11-11_YouTube連結不可點_處理記錄.md`**。
 
 4. **新影片加字幕**
    - 自動化：跑 `python auto_update.py`（會自動處理）
@@ -621,7 +634,7 @@ python -X utf8 queue_youtube.py --url "..." --include-failed      # 連 failed �
   **v4 的已知誤判（1/106）**：純方法論內容（例：「問題意識的五個構件」）可能被判成 A 投資類，
   只吐「操作策略與條件／關鍵結論」兩節且偏短。重生一次通常會修正；別為單篇反覆重跑。
 - 收成報告：`harvest_report.py` 產「任務總覽＋失敗清單＋KB 待補課程筆記清單」（排除 `知識庫\金融交易` 老師語料；`--kb-only` 只看待補；輸出 `working\harvest_report_YYYY-MM-DD.md`）。
-- 批量回補：`backfill_products.py` 掃 KB 待補逐字稿（排除 `金融交易` 語料）產摘要/筆記，**可複選**（`--summary`/`--note`，預設兩者）、`--subtree` 限子目錄、`--dry-run` 預覽；與 channel_watcher 共用 `.note_quota.json` 每日 20 筆配額，達上限即停、隔日重跑續補，skip-if-exists。**`--dry-run` 絕不扣配額**（陷阱：`produce()` 曾把 `quota_take()` 放在 `dry_run` 判斷之前，預覽一次偷扣 12 筆配額，2026-10-13 修正）。**每次配額消耗記錄於 `knowledge-base\.note_quota_log.tsv`（時間／累計／來源），供查核「配額何時、被誰用掉」**（backfill 與 channel_watcher 共用）。**陷阱（2026-10-13 實踩）：JSON 設定檔（如 `.note_quota.json`）絕不可用 PowerShell `Set-Content -Encoding UTF8` 產生——PS 5.1 會加 UTF-8 BOM，`json.loads` 遇 BOM 抛錯→被 try/except 吞掉→配額恆讀 0 且 `quota_take()` 不再累加。改法：①程式讀取一律 `encoding="utf-8-sig"` 容錯；②手動改檔用 `[System.IO.File]::WriteAllText(path, text, (New-Object System.Text.UTF8Encoding($false)))` 寫無 BOM，或交給程式寫（`write_text(..., encoding="utf-8")`）。**GUI 亦有「◈ 產品回補」對話視窗（任務頁按鈕）：選範圍（全部知識庫／任一子目錄）→ 列出待補清單（含缺摘要/缺筆記標記）→ 勾選產品（摘要報告／詳細筆記，複選）→ 「回補選取（可多選）」或「批量回補全部」（背景執行、日誌區即時顯示、當日配額用完即停）。**長時任務 UI 必備回饋**：按下立即 disable 執行鈕＋日誌「▶ 開始」＋狀態列「執行中…（x/N）」＋逐項「⏳／✓」，完成才 re-enable；避免使用者因無回饋而連點重複下命令（重複下命令的代價：重複扣 Gemini 配額）。**`generate_note`/`generate_summary` 為分段呼叫 Gemini，單筆需數分鐘**，故回饋（進行中狀態）是必要而非加分。**課程筆記（L2）與摘要不同**：其 prompt 本就要求「寧可詳盡、不要精簡」且不限字數，故無摘要那種過度簡化的問題；但筆記同樣是「多 chunk 直接串接、無合併步驟」，長逐字稿在不同 chunk 交界處**可能出現重複標題或主題微幅重疊**（內容不漏，僅結構重複）——若日後要求更高，可為筆記加類似的合併/接續步驟。**陷阱（2026-10-13 實踩）：GUI 是長駐程序，改完 `task_manager_gui.py` 後既有視窗仍跑舊碼，必須關閉重開才會載入新功能（當時舊視窗無回饋，使用者以為沒產出，其實成品數分鐘後才落地）。** 另 `backfill_products.py` 支援單檔回補：`--file <相對路徑子字串>`。
+- 批量回補：`backfill_products.py` 掃 KB 待補逐字稿（排除 `金融交易` 語料）產摘要/筆記，**可複選**（`--summary`/`--note`，預設兩者）、`--subtree` 限子目錄、`--dry-run` 預覽；與 channel_watcher 共用 `.note_quota.json` 每日 20 筆配額，達上限即停、隔日重跑續補，skip-if-exists。**`--no-quota`（2026-11-11）：使用者明確下令的一次性全量補做不吃每日配額**（同 regen_summaries 原則——配額只為節流「沒人看著」的自動路徑；11-11 用此旗標一次補 131 筆）。同日 KB_EXCLUDE 擴充：`_harvest_overwritten`／`_harvest_conflicts`／`_video_links` 等內部目錄也排除（曾把收割覆蓋備份掃進待補清單、產生重複產品）。**`--dry-run` 絕不扣配額**（陷阱：`produce()` 曾把 `quota_take()` 放在 `dry_run` 判斷之前，預覽一次偷扣 12 筆配額，2026-10-13 修正）。**每次配額消耗記錄於 `knowledge-base\.note_quota_log.tsv`（時間／累計／來源），供查核「配額何時、被誰用掉」**（backfill 與 channel_watcher 共用）。**陷阱（2026-10-13 實踩）：JSON 設定檔（如 `.note_quota.json`）絕不可用 PowerShell `Set-Content -Encoding UTF8` 產生——PS 5.1 會加 UTF-8 BOM，`json.loads` 遇 BOM 抛錯→被 try/except 吞掉→配額恆讀 0 且 `quota_take()` 不再累加。改法：①程式讀取一律 `encoding="utf-8-sig"` 容錯；②手動改檔用 `[System.IO.File]::WriteAllText(path, text, (New-Object System.Text.UTF8Encoding($false)))` 寫無 BOM，或交給程式寫（`write_text(..., encoding="utf-8")`）。**GUI 亦有「◈ 產品回補」對話視窗（任務頁按鈕）：選範圍（全部知識庫／任一子目錄）→ 列出待補清單（含缺摘要/缺筆記標記）→ 勾選產品（摘要報告／詳細筆記，複選）→ 「回補選取（可多選）」或「批量回補全部」（背景執行、日誌區即時顯示、當日配額用完即停）。**長時任務 UI 必備回饋**：按下立即 disable 執行鈕＋日誌「▶ 開始」＋狀態列「執行中…（x/N）」＋逐項「⏳／✓」，完成才 re-enable；避免使用者因無回饋而連點重複下命令（重複下命令的代價：重複扣 Gemini 配額）。**`generate_note`/`generate_summary` 為分段呼叫 Gemini，單筆需數分鐘**，故回饋（進行中狀態）是必要而非加分。**課程筆記（L2）與摘要不同**：其 prompt 本就要求「寧可詳盡、不要精簡」且不限字數，故無摘要那種過度簡化的問題；但筆記同樣是「多 chunk 直接串接、無合併步驟」，長逐字稿在不同 chunk 交界處**可能出現重複標題或主題微幅重疊**（內容不漏，僅結構重複）——若日後要求更高，可為筆記加類似的合併/接續步驟。**陷阱（2026-10-13 實踩）：GUI 是長駐程序，改完 `task_manager_gui.py` 後既有視窗仍跑舊碼，必須關閉重開才會載入新功能（當時舊視窗無回饋，使用者以為沒產出，其實成品數分鐘後才落地）。** 另 `backfill_products.py` 支援單檔回補：`--file <相對路徑子字串>`。
 - **陷阱（2026-10-12 實踩）：Gemini 續傳快取 `_parts_{title}` 原寫在 out_dir（＝KB 目錄）→ 汙染知識庫。修正：一律放 `working\_note_parts\`（`course\`＝make_course_note、`dir\`＝make_dir_notes），**任何快取都不可寫進 out_dir/KB**。既有 117 個已移至 `working\_note_parts_backup\`（保留相對路徑）。
 
 ### 實例：選擇權實驗室--外資期貨成本的計算方法.docx

@@ -266,6 +266,10 @@ def build_docx(markdown: str, out_path: Path, template: Path | None = None):
     from docx.shared import Pt, RGBColor
     from docx.oxml.ns import qn
     from docx.oxml import OxmlElement
+    from docx.opc.constants import RELATIONSHIP_TYPE
+
+    # markdown inline 連結（2026-11-11：docx 產品的 YouTube 連結原本是純文字點不動）
+    INLINE_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)")
 
     num_id = None
     if template and Path(template).exists():
@@ -306,11 +310,48 @@ def build_docx(markdown: str, out_path: Path, template: Path | None = None):
         return p
 
     def add_rich_line(text, base_bold=False, size=12):
-        """支援 **粗體** inline 標記"""
+        """支援 **粗體** 與 [文字](url) inline 標記（連結輸出 docx 真超連結）"""
         p = doc.add_paragraph()
         p.paragraph_format.space_after = Pt(3)
-        tokens = re.split(r"(\*\*.+?\*\*)", text)
-        for tok in tokens:
+        _add_inline(p, text, base_bold, size)
+        return p
+
+    def add_hyperlink(p, text, url, size=12):
+        """[文字](url) → docx 真超連結（python-docx 無原生 API，走 oxml）。
+        失敗時退回純文字，不讓整份 docx 建構中斷。"""
+        try:
+            r_id = p.part.relate_to(url, RELATIONSHIP_TYPE.HYPERLINK, is_external=True)
+        except Exception:
+            r = p.add_run(text)
+            _set_font(r, size=size)
+            return
+        hl = OxmlElement("w:hyperlink")
+        hl.set(qn("r:id"), r_id)
+        r = OxmlElement("w:r")
+        rPr = OxmlElement("w:rPr")
+        rFonts = OxmlElement("w:rFonts")
+        for attr in ("w:ascii", "w:hAnsi", "w:eastAsia"):
+            rFonts.set(qn(attr), FONT)
+        rPr.append(rFonts)
+        sz = OxmlElement("w:sz")
+        sz.set(qn("w:val"), str(int(size * 2)))
+        rPr.append(sz)
+        color = OxmlElement("w:color")
+        color.set(qn("w:val"), "0563C1")
+        rPr.append(color)
+        u = OxmlElement("w:u")
+        u.set(qn("w:val"), "single")
+        rPr.append(u)
+        r.append(rPr)
+        t = OxmlElement("w:t")
+        t.set(qn("xml:space"), "preserve")
+        t.text = text
+        r.append(t)
+        hl.append(r)
+        p._p.append(hl)
+
+    def _add_bold_runs(p, text, bold, size):
+        for tok in re.split(r"(\*\*.+?\*\*)", text):
             if not tok:
                 continue
             if tok.startswith("**") and tok.endswith("**"):
@@ -318,8 +359,18 @@ def build_docx(markdown: str, out_path: Path, template: Path | None = None):
                 _set_font(r, size=size, bold=True)
             else:
                 r = p.add_run(tok)
-                _set_font(r, size=size, bold=base_bold)
-        return p
+                _set_font(r, size=size, bold=bold)
+
+    def _add_inline(p, text, base_bold=False, size=12):
+        """行內解析：[文字](url) 連結 → 真超連結；其餘段落做 **粗體**。"""
+        pos = 0
+        for m in INLINE_LINK_RE.finditer(text):
+            if m.start() > pos:
+                _add_bold_runs(p, text[pos:m.start()], base_bold, size)
+            add_hyperlink(p, m.group(1), m.group(2), size)
+            pos = m.end()
+        if pos < len(text):
+            _add_bold_runs(p, text[pos:], base_bold, size)
 
     for raw in markdown.splitlines():
         line = raw.rstrip()
@@ -347,16 +398,7 @@ def build_docx(markdown: str, out_path: Path, template: Path | None = None):
                     numId = OxmlElement("w:numId"); numId.set(qn("w:val"), num_id)
                     numPr.append(ilvl); numPr.append(numId)
                     pPr.insert(0, numPr)
-                tokens = re.split(r"(\*\*.+?\*\*)", content.strip())
-                for tok in tokens:
-                    if not tok:
-                        continue
-                    if tok.startswith("**") and tok.endswith("**"):
-                        r = p.add_run(tok[2:-2])
-                        _set_font(r, bold=True)
-                    else:
-                        r = p.add_run(tok)
-                        _set_font(r)
+                _add_inline(p, content.strip(), False, BASE_SIZE)
             else:
                 add_rich_line(line)
 

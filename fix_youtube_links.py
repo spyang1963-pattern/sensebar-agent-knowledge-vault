@@ -43,6 +43,11 @@ MD_LINK_RE = re.compile(r"\[YouTube\]\(https?://[^)]+\)")
 
 SUFFIXES = (" 摘要", " 課程筆記")
 
+# 內部作業目錄不處理（與 fix_video_links.py 排除集一致；
+# _harvest_overwritten 是收割覆蓋備份，補連結只會污染備份）
+EXCLUDE_DIRS = {"_harvest_conflicts", "_harvest_overwritten", "_video_links",
+                "_archive_no_transcript", "_harvest_align_test"}
+
 
 def log(msg):
     print(msg, flush=True)
@@ -107,43 +112,60 @@ def fix_product(path, vid):
     return new, "補上原始影片連結"
 
 
+def iter_md(kb, subdirs):
+    """yield KB 內（或指定子目錄內）所有待檢 md，遞迴、排除內部作業目錄。
+
+    2026-11-11 修正：原本預設只掃 knowledge-base/youtube-clips 且 glob 不遞迴，
+    導致 20VTA／三師爸／XQ 等其他資料夾的摘要／課程筆記從未被補過
+    「原始影片」連結行（使用者回報：有網址但點不動）。預設改為全 KB 遞迴。
+    """
+    roots = [kb / s for s in subdirs] if subdirs else [kb]
+    for root in roots:
+        if not root.is_dir():
+            log(f"⚠ 目錄不存在：{root}")
+            continue
+        for path in sorted(root.rglob("*.md")):
+            try:
+                rel = path.relative_to(kb)
+            except ValueError:
+                rel = path
+            if any(part in EXCLUDE_DIRS for part in rel.parts):
+                continue
+            yield path
+
+
 def main():
     ap = argparse.ArgumentParser(description="把 KB 的 YouTube 連結改成 [YouTube](...) 可點格式")
     ap.add_argument("--apply", action="store_true", help="實際寫入（預設只預覽）")
     ap.add_argument("--dry-run", action="store_true", help="只預覽（預設行為，保留此旗標方便沿用）")
     ap.add_argument("--kb", help="覆寫 KB 根（測試用）")
-    ap.add_argument("--subdir", action="append", help="只處理指定子目錄（可重複）")
+    ap.add_argument("--subdir", action="append", help="只處理指定子目錄（可重複；預設＝全 KB 遞迴）")
     args = ap.parse_args()
 
     kb = Path(args.kb) if args.kb else KB_ROOT
-    dirs = [kb / s for s in args.subdir] if args.subdir else [kb / "youtube-clips"]
     changed, skipped, warned = [], [], []
 
-    for d in dirs:
-        if not d.is_dir():
-            log(f"⚠ 目錄不存在：{d}")
+    for path in iter_md(kb, args.subdir):
+        stem = path.stem
+        is_product = stem.endswith(SUFFIXES)
+        base_stem = next((stem[: -len(s)] for s in SUFFIXES if stem.endswith(s)), stem)
+
+        if is_product:
+            vid = video_id_of(path.parent, base_stem)
+            new, note = fix_product(path, vid)
+        else:
+            vid = video_id_of(path.parent, stem)
+            new, note = fix_transcript(path, vid)
+
+        if new is None:
+            (warned if note.startswith("⚠") else skipped).append((path.name, note))
             continue
-        for path in sorted(d.glob("*.md")):
-            stem = path.stem
-            is_product = stem.endswith(SUFFIXES)
-            base_stem = next((stem[: -len(s)] for s in SUFFIXES if stem.endswith(s)), stem)
-
-            if is_product:
-                vid = video_id_of(d, base_stem)
-                new, note = fix_product(path, vid)
-            else:
-                vid = video_id_of(d, stem)
-                new, note = fix_transcript(path, vid)
-
-            if new is None:
-                (warned if note.startswith("⚠") else skipped).append((path.name, note))
-                continue
-            changed.append((path, note))
-            if args.apply:
-                tmp = path.with_suffix(path.suffix + ".tmp")
-                with io.open(tmp, "w", encoding="utf-8", newline="") as f:
-                    f.write(new)
-                tmp.replace(path)
+        changed.append((path, note))
+        if args.apply:
+            tmp = path.with_suffix(path.suffix + ".tmp")
+            with io.open(tmp, "w", encoding="utf-8", newline="") as f:
+                f.write(new)
+            tmp.replace(path)
 
     mode = "已寫入" if args.apply else "將修改"
     log(f"{mode} {len(changed)} 檔｜跳過 {len(skipped)}｜需人工 {len(warned)}")

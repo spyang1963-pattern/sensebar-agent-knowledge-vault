@@ -29,7 +29,10 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 ROOT = Path(__file__).parent
 KB = ROOT / "knowledge-base"
-KB_EXCLUDE = ("金融交易",)   # 老師全集語料，不回補（與 harvest_report 一致）
+# 老師全集語料不回補（與 harvest_report 一致）；其餘為內部作業／備份目錄
+# （2026-11-11：_harvest_overwritten 曾被掃進待補清單——那是收割覆蓋備份，補了會產生重複產品）
+KB_EXCLUDE = ("金融交易", "_harvest_overwritten", "_harvest_conflicts",
+              "_video_links", "_archive_no_transcript", "_harvest_align_test")
 QUOTA_FILE = KB / ".note_quota.json"
 QUOTA_LOG_FILE = KB / ".note_quota_log.tsv"
 MAX_PRODUCTS_PER_DAY = 20    # 與 channel_watcher MAX_NOTES_PER_DAY 一致
@@ -118,14 +121,14 @@ def collect_pending(subtree=None, kinds=("summary", "note")):
     return rows
 
 
-def produce(p, kind, dry_run) -> str:
+def produce(p, kind, dry_run, no_quota=False) -> str:
     safe = re.sub(r'[\\/:*?"<>|]', "_", p.stem)
     product = p.parent / f"{safe} {PRODUCTS[kind][0]}"
     if product.exists():
         return "skip-exists"
     if dry_run:
         return "todo"          # dry-run 不扣配額、不產出
-    if not quota_take(f"backfill {kind}:{p.name}"):
+    if not no_quota and not quota_take(f"backfill {kind}:{p.name}"):
         return "no-quota"
     from make_course_note import generate_note, generate_summary
     fn = generate_summary if kind == "summary" else generate_note
@@ -140,6 +143,9 @@ def main():
     ap.add_argument("--subtree", default=None, help="只處理 KB 下某子目錄（相對 knowledge-base/）")
     ap.add_argument("--file", default=None, help="只處理相對路徑含此字串的逐字稿（單檔回補）")
     ap.add_argument("--dry-run", action="store_true", help="只列出待補，不實際產出")
+    ap.add_argument("--no-quota", action="store_true",
+                    help="明確指定的批次：不吃每日 20 筆自動配額（與 regen_summaries 同原則；"
+                         "適用於使用者明確下令的一次性全量補做）")
     args = ap.parse_args()
 
     if args.summary and args.note:
@@ -157,14 +163,15 @@ def main():
     print(f"待補清單：{len(rows)} 筆（種類：{'>'.join(kinds)}）"
           + (f"，子目錄：{args.subtree}" if args.subtree else "")
           + (f"，檔名字串：{args.file}" if args.file else "")
-          + f"，今日已用配額 {today_quota_used()}/{MAX_PRODUCTS_PER_DAY}")
+          + (f"，今日已用配額 {today_quota_used()}/{MAX_PRODUCTS_PER_DAY}"
+             if not args.no_quota else "，模式：明確批次（--no-quota，不計每日配額）"))
 
     stats = {"ok": 0, "todo": 0, "no-quota": 0, "skip": 0, "error": 0}
     remaining = 0
     for p, kind in rows:
         label = f"[{kind}] {p.relative_to(KB)}"
         try:
-            r = produce(p, kind, args.dry_run)
+            r = produce(p, kind, args.dry_run, no_quota=args.no_quota)
         except Exception as e:
             r = "error"
             print(f"  ✗ {label} 失敗：{e}")
