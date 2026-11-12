@@ -331,24 +331,18 @@ PRODUCER_PATH_LINE = re.compile(r"^([ \t]*-[ \t]*)(本機影片|燒字幕影片)
 
 
 def rewrite_producer_paths(text):
-    """把打包副本裡的「本機影片／燒字幕影片」行改寫成「（在 PCX）＋ UNC 點播路徑」。
+    """把打包副本裡的影片行改寫成「（在 PCX）＋可用的 UNC 路徑」。
 
-    2026-11-10 使用者定案（取代 11-09 的「直接剝除」）：
-    - 影片永遠留在產出機的 D:\\YouTube_Videos，**不複製到 notebook／NAS**（省硬碟）。
-    - notebook 端從網路路徑直接點播：條目內提供可點的 file:// 連結＋可複製的 UNC 路徑。
-    - 算不出 UNC（影片不在 YouTube_Videos 或這台沒 tailnet IP）→ 仍標機器名＋原路徑。
-    產出機自己的 KB 不動（它的本機路徑本來就是對的）。
+    2026-11-10 使用者定案：影片永遠留在產出機，不複製到 notebook／NAS。
+    2026-11-12 改由 video_links.pack_text() 統一處理（含 `## 影片` 裸路徑），
+    不再各工具自己拼格式。產出機自己的 KB 不動。
     """
-    machine = (config.MACHINE or "?").upper()
-
-    def _rw(m):
-        prefix, label, raw, nl = m.group(1), m.group(2), m.group(3).strip(), m.group(4)
-        net = to_net_path(raw)
-        if net:
-            return f"{prefix}{label}（在 {machine}）：[▶ 點播]({file_uri_for(net)})｜{net}{nl}"
-        return f"{prefix}{label}（在 {machine}）：{raw}{nl}"
-
-    return PRODUCER_PATH_LINE.sub(_rw, text)
+    try:
+        import video_links
+        return video_links.pack_text(text)
+    except Exception as e:
+        log(f"  [警告] 影片行改寫失敗（保留原樣）：{e}")
+        return text
 
 
 def publish_one(tid, info, out_root, kb_root, ledger, dry_run=False, force=False,

@@ -266,6 +266,11 @@ def main() -> int:
             md_out, docx_out = generate_summary(
                 stem, [str(src)], kb_dir, progress=lambda m: log(f"    {m}")
             )
+            try:
+                import video_links
+                video_links.normalize_file(md_out, quiet=True)
+            except Exception as e:
+                log(f"    [警告] 影片位置標記失敗（稍後可重跑 video_links.py）：{e}")
             new_len = len(Path(md_out).read_text(encoding="utf-8-sig", errors="ignore"))
             log(f"  ✓ 完成 {Path(md_out).name}（{old_len} → {new_len} 字元）")
             ok += 1

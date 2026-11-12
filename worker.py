@@ -521,6 +521,7 @@ def process_note_task(task):
         generate_note(title, [source_md], out_dir, template=template,
                       chunk_chars=chunk_chars, progress=_progress)
 
+        _normalize_video_links(md_out)
         log(f"  完成: {md_out}")
         task_queue.update_task_status(tid, "completed")
         _write_task_progress(tid, status="completed", type="note", stage="完成")
@@ -591,6 +592,7 @@ def process_summary_task(task):
         generate_summary(title, [source_md], out_dir, template=template,
                          chunk_chars=chunk_chars, progress=_progress)
 
+        _normalize_video_links(md_out)
         log(f"  完成: {md_out}")
         task_queue.update_task_status(tid, "completed")
         _write_task_progress(tid, status="completed", type="summary", stage="完成")
@@ -671,6 +673,15 @@ def process_document_task(task):
     _write_task_progress(tid, status="failed", type=doctype, message=msg)
     timer.finish(success=False, error=msg)
     return False
+
+
+def _normalize_video_links(md_path):
+    """產品（摘要／課程筆記）產生後補 `> 影片位置：…`（2026-11-12 單一權威 video_links）。"""
+    try:
+        import video_links
+        video_links.normalize_file(md_path, quiet=True)
+    except Exception as e:
+        log(f"  [警告] 影片位置標記失敗（稍後可重跑 video_links.py）：{e}")
 
 
 def _read_harvested_kb_md(tid):

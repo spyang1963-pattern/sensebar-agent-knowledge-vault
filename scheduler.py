@@ -549,6 +549,12 @@ def harvest():
                 with open(dst_md, 'w', encoding="utf-8") as f:
                     f.write(full_md)
                 copied += 1
+                # 影片行標準化（2026-11-12）：## 影片 裸路徑 → 「（在 哪一台）＋可點 .lnk」
+                try:
+                    import video_links
+                    video_links.normalize_file(dst_md, quiet=True)
+                except Exception as e:
+                    print(f"  [警告] 影片連結標準化失敗（稍後可重跑 video_links.py）：{e}")
 
             # 標記已收成：更新 shared + local
             ti["harvested"] = True

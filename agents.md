@@ -349,6 +349,9 @@ watched_channels:
   → 用 `working\_backfill_xq_video_links.py`（冪等；`_字幕.mp4` 已不存在時自動 fallback
   同名原片）補成標準影片行，再跑 `fix_video_links.py` 換 .lnk。
   **完整處理記錄（根因矩陣／實作／SOP／排錯）：`docs/incidents/2026-11-10_點播lnk捷徑_處理記錄.md`**。
+  **2026-11-12 起上述整段改由 `video_links.py` 統一處理**（`fix_video_links.py` 只剩 shim）：
+  誕生／收成／產品／打包／收割全部呼叫同一支，會標「（在 哪一台）」、把 `## 影片` 裸路徑
+  改成標準行、產品補 `> 影片位置：`。詳見「知識庫『影片在哪一台』：單一權威 video_links.py」。
 - **換手 SOP（掃描機 PC2 ⇄ 備便機 PC1，半自動；2026-11-10）**：① 舊機 `Disable-ScheduledTask -TaskName ChannelWatcherDaily`；② 舊機把游標推到 NAS：`copy shared\watched_channels_state.json \\192.168.1.121\exchange\<machine>\watched_channels_state.json`（在外用 tailnet IP `100.65.113.20`；權限擋住就改用 USB／筆記中轉）；③ 新機匯入：`python -X utf8 channel_watcher.py --seed-state \\100.65.113.20\exchange\<machine>\watched_channels_state.json`，再 `--status` 核對各來源「最近 ID」與舊機一致；④ 新機 `deploy.ps1 -Machine pcN -SkipSetup -RegisterTasks -Tasks ChannelWatcherDaily`。新機接手前必須先有：deno、Groq key、NAS producer 憑證、YouTube_Videos 唯讀分享（點播用），缺一樣就先補。
 - **固定 22:30**，不改成其他時間；排程設定（2026-11-03）：
   - `StartWhenAvailable = true` → 22:30 若關機／休眠而錯過，開機後**補跑一次**
@@ -788,6 +791,60 @@ yt-dlp --simulate --no-warnings "https://www.youtube.com/watch?v=<VIDEO_ID>"
 - ❌ 把 `cookies.txt` commit／放進 `shared\`（等於把自己的 YouTube 帳號送給每台機器）。
 
 
+## 知識庫「影片在哪一台」：單一權威 `video_links.py`（2026-11-12 定案）
+
+**為什麼要有這支**：以前影片行有 4 種寫法（channel_watcher 的 `- 本機影片：`、
+run_pipeline＋scheduler 的 `## 影片` 裸路徑、publish 改寫的 UNC 行、舊混搭），
+補救腳本又只認其中一種 → 新條目必然漏掉、有的點得開有的要猜。現在**只有一個出口**：
+
+| 時機 | 呼叫點 | 做什麼 |
+|---|---|---|
+| 誕生 | `channel_watcher.create_kb_entry()` | 寫完 md 後 `video_links.normalize_file()` |
+| 收成 | `scheduler.harvest()` | 寫完 md 後 `normalize_file()` |
+| 產品 | `worker.process_note_task/process_summary_task` | 產完 `.md` 後 `normalize_file()`（補 `> 影片位置：`） |
+| 打包 | `publish_outbox.rewrite_producer_paths()` | 改用 `video_links.pack_text()`（含 `## 影片`、`> 影片位置：`） |
+| 收割 | `harvest_daily.bat` | 收完跑 `python -X utf8 video_links.py` |
+| 補救 | `fix_video_links.py` | **已是 shim**，直接轉呼叫 `video_links.main()` |
+
+**標準行**（本機與遠端都長一樣，只有機器名與路徑不同）：
+
+```
+- 本機影片（在 notebook）：[▶ 點播](file:///…/_video_links/<id>_video.lnk)｜D:\XQ直播_Videos\…
+- 燒字幕影片（在 PC2）：[▶ 點播](file:///…/_video_links/<id>_burned.lnk)｜\\100.113.234.81\YouTube_Videos\…
+```
+
+- **機器判定順序**：本機存在 → 本機；UNC → `config.TAILSCALE_IPS` 反查；歷史條目 →
+  `working/harvest_ledger.json` 回推；再不行才探測各機 SMB 分享；仍未知 →
+  `（在 未確認）`＋保留原路徑（**不猜**），並列進 `working\video_links_report.txt`。
+- **備份／內部目錄一律不處理**：`_harvest_overwritten`、`_harvest_conflicts`、
+  `_archive_no_transcript`、`_video_links`、任何 `backup_*`。使用者明確要求「備份檔的知識庫不要再處理」。
+- **冪等**：第二次跑應顯示「需改寫 0」；`.lnk` 目標沒變就不重建（`_video_links\_targets.json` 對時，
+  產出機換 tailnet IP 會自動換新）。
+- `.lnk` 命名沿用舊規則（`<video_id>_video/_burned.lnk`；無 id 用 `sha1(目標)[:12]`），
+  同名不同目標會補 `sha1[:6]` 消歧；一次 PowerShell 只建 300 個（避免逾時）。
+- **`.lnk` 產生器是 `IShellLinkW`（C# `Add-Type`），不可改回 `WScript.Shell`（2026-11-12 實踩）**：
+  `WScript.Shell.TargetPath` 只吃系統 ANSI 碼頁（本機 Big5/cp950），PC1 收割的**簡體字檔名**
+  （`恶`U+6076、`学`U+5B66、`众`U+4F17）會丟 `E_INVALIDARG`，**卻仍留下 80 bytes 空殼 `.lnk`**
+  而且不報錯（第一版因此產生 205 個點不開的捷徑）。另外 `IPersistFile::Save` **只吃絕對路徑**，
+  給相對路徑一律 `E_INVALIDARG`（`SetPath` 反而正常，極易誤判）→ Python 端 `make_shortcuts()`
+  與 C# 端 `Path.GetFullPath()` 兩邊都要絕對化。
+  - 空殼判定：`lnk_ok()`＝存在且 `size >= 200`（正常 300~2300 bytes）。`_write_links()` 用它決定重建，
+    所以空殼會自動被重寫。
+  - `python -X utf8 video_links.py --verify`：回讀全部 `.lnk` 與 `_targets.json` 比對
+    （`\..\` 會正規化，用 `ntpath.normpath`），有空殼／缺檔／不符就 `rc=1`。**改 `.lnk` 相關程式後必跑**。
+  - 副作用：`WScript` 會把 Big5「同碼不同字」換掉（`•`U+2022 → `‧`U+2027，cp950 都是 `A150`），
+    7 個舊捷徑因此指向不存在的檔名；`--force` 全部重建已歸零。
+  - `setup_video_shares.ps1` **必須存 UTF-8 with BOM**：PS 5.1 讀無 BOM 的 `.ps1` 會用 cp950 解碼，
+    內文中文路徑（`D:\!!!!!理周學院老師`）直接變亂碼。
+- **PC 端要開唯讀影片分享**，notebook 才點得開：在影片所在機器以管理員跑
+  `powershell -ExecutionPolicy Bypass -File setup_video_shares.ps1`（先 `-DryRun` 看）。
+  沒開分享的條目仍會標機器名＋原路徑（誠實），列在報告的「no-share」區。
+  2026-11-12 現況：PC1 的 `YouTube_Videos`、`CMoney_直播` 已開（使用者手動建立），
+  notebook `Test-Path \\100.84.223.110\YouTube_Videos` = True；no-share 已歸零。
+- **未確認的 784 筆是歷史資料本質限制**（`H:\…` 611 筆、`D:\!!!!!理周學院老師` 部分已刪、
+  `C:\Users\…\4K Video Downloader` 等），全部確認過「路徑真的不存在」，不是程式漏判。
+- **完整處理記錄（根因矩陣、實作、驗收、排錯）：`docs/incidents/2026-11-12_影片位置單一權威_處理記錄.md`**
+
 ## 跨機收割（Step 7）落地與陷阱（2026-11-06）
 
 ### 架構（單向）
@@ -859,9 +916,10 @@ PC 永不寫 notebook 的 KB；notebook 只讀 PC。設計稿：`workspace-bundl
    重跑應全部 `skipped_same`，這是驗收冪等的標準動作。
 6. **收割只帶文字，影片不上 notebook（2026-11-09 定案；2026-11-10 點播改 .lnk 捷徑）**：
    影片檔**永遠留在產出機**的 `D:\YouTube_Videos`——**不複製 mp4**（使用者明確要求省硬碟）。
-   打包副本的影片行由 `rewrite_producer_paths()` 改寫成「（在 PCX）＋UNC」；notebook 收割後
-   `harvest_daily.bat` 會接著跑 `fix_video_links.py` 把連結換成 `_video_links\*.lnk` 捷徑
-   （細節見 watched_channels 段「影片點播」）。沒開分享時點播連結開不了，條目仍有 YouTube
+   打包副本的影片行由 `rewrite_producer_paths()`（內部呼叫 `video_links.pack_text()`）
+   改寫成「（在 PCX）＋UNC」；notebook 收割後 `harvest_daily.bat` 會接著跑
+   `python -X utf8 video_links.py` 把連結換成 `_video_links\*.lnk` 捷徑
+   （細節見「知識庫『影片在哪一台』：單一權威 video_links.py」）。沒開分享時點播連結開不了，條目仍有 YouTube
    連結可看；`kb_query.py --open` 對 PC 產出的條目不適用（本機沒有影片檔），改點條目內捷徑連結。
 
 ### `--replace`：讓產出機版本覆蓋本機同名檔（2026-11-07）

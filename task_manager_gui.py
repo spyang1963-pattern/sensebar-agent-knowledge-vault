@@ -1780,10 +1780,17 @@ class TaskManagerGUI:
                     except Exception:
                         continue
 
-                    vm = re.search(r'^## 影片\s*\n(.+)', md_text, re.MULTILINE)
-                    if not vm:
+                    # 2026-11-12：影片行有 4 種歷史寫法（## 影片 裸路徑、- 本機影片、
+                    # （在 PCX）＋UNC…），統一由 video_links.first_video_path 解析。
+                    try:
+                        import video_links
+                        video_path = video_links.first_video_path(md_text)
+                    except Exception:
+                        vm = re.search(r'^## 影片\s*\n(.+)', md_text, re.MULTILINE)
+                        video_path = vm.group(1).strip() if vm else ""
+                    if not video_path:
                         continue
-                    video_path = os.path.normpath(vm.group(1).strip())
+                    video_path = os.path.normpath(video_path)
                     if not os.path.isfile(video_path):
                         continue
 

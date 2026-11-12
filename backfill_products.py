@@ -133,6 +133,12 @@ def produce(p, kind, dry_run, no_quota=False) -> str:
     from make_course_note import generate_note, generate_summary
     fn = generate_summary if kind == "summary" else generate_note
     fn(p.stem, [str(p)], p.parent, progress=lambda m: print(f"    {m}"))
+    # 補 `> 影片位置：…`（2026-11-12 單一權威 video_links）
+    try:
+        import video_links
+        video_links.normalize_file(product, quiet=True)
+    except Exception as e:
+        print(f"    [警告] 影片位置標記失敗（稍後可重跑 video_links.py）：{e}")
     return "ok"
 
 

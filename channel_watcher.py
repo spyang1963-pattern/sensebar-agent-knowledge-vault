@@ -638,6 +638,14 @@ def create_kb_entry(video_id, title, transcript, srt_path, video_path, kb_dir, b
         encoding="utf-8",
     )
 
+    # 影片行標準化（2026-11-12）：補「（在 哪一台）」＋可點 .lnk。
+    # 唯一權威是 video_links.py，其他工具不再各自拼格式。
+    try:
+        import video_links
+        video_links.normalize_file(md_path, quiet=False)
+    except Exception as e:
+        log(f"  [警告] 影片連結標準化失敗（條目已建立，稍後可重跑 video_links.py）：{e}")
+
     return md_path
 
 
