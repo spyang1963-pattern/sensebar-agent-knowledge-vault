@@ -1,0 +1,6 @@
+# 2026-11-13：Windows 批次檔一定要 CRLF。
+# 事故：harvest_daily.bat 曾以 LF-only 提交，cmd.exe 解析失敗 → 每晚收割 rc=255，
+# PC1 的產出整晚沒進 notebook（log 停在兩天前）。`text eol=crlf` 讓任何機器 checkout
+# 都是 CRLF，不必再靠各機的 core.autocrlf 設定。
+*.bat text eol=crlf
+*.cmd text eol=crlf

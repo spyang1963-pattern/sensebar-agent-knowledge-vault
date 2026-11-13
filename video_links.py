@@ -359,6 +359,35 @@ def _resolve_ref(label, path, hint, resolver):
     return machine, "", path, False
 
 
+def burned_of(path, override=None):
+    """同一支影片的燒字幕檔（真的存在才回傳，避免寫出點不開的連結）。
+
+    override：{原影片路徑: 燒字幕路徑}。燒字幕輸出目錄不一定和影片同層
+    （worker 的 subtitle 任務可指定 output_dir），這時由呼叫端明確給。
+    """
+    if not path:
+        return ""
+    if override:
+        norm = os.path.normcase(path)
+        for k, v in override.items():
+            if not v or os.path.normcase(k) != norm:
+                continue
+            try:
+                return v if os.path.exists(v) else ""
+            except OSError:
+                return ""
+    try:
+        cand = str(Path(path).with_name(Path(path).stem + "_字幕.mp4"))
+    except (OSError, ValueError):
+        return ""
+    if cand == path:
+        return ""
+    try:
+        return cand if os.path.exists(cand) else ""
+    except OSError:
+        return ""
+
+
 def normalize_text(text, ctx, hint=""):
     """把一段 md 內所有影片寫法改成標準行；回傳 (new_text, changed, stats, targets, issues)。
 
@@ -371,6 +400,26 @@ def normalize_text(text, ctx, hint=""):
     targets = {}        # lnk 名 → 目標
     issues = []         # (kind, label, machine, path)
     in_video = False
+    has_burned_line = "燒字幕影片" in text
+
+    def append_burned(path, pre, nl, hint_):
+        """在「本機影片」行後面補「燒字幕影片」行。
+
+        2026-11-13：以前只「改寫既有行」，燒字幕完成後條目沒有那行就永遠補不上
+        （PC1/PC2 的 type=video 條目就是這樣全缺）。現在檔案真的存在就主動補。
+        """
+        nonlocal changed, has_burned_line
+        if has_burned_line:
+            return
+        burned = burned_of(path, ctx.get("burned_map"))
+        if not burned:
+            return
+        new = handle(pre, "燒字幕影片", burned, hint_)
+        if new is None:
+            return
+        out.append(new + nl)
+        has_burned_line = True
+        changed = True
 
     def handle(pre, label, path, hint=""):
         nonlocal changed
@@ -415,6 +464,9 @@ def normalize_text(text, ctx, hint=""):
             if new != line:
                 changed = True
             out.append(new)
+            # 燒字幕完成後條目沒有那行 → 這裡主動補（檔案真的存在才補）
+            if m.group("label") == "本機影片":
+                append_burned(path, m.group("pre"), m.group("nl"), line_hint)
             continue
 
         if in_video and _looks_like_path(stripped):
@@ -429,6 +481,7 @@ def normalize_text(text, ctx, hint=""):
             if new != line:
                 changed = True
             out.append(new)
+            append_burned(path, indent + "- ", nl, hint)
             in_video = False
             continue
 
@@ -972,7 +1025,7 @@ def _write_links(targets, links_dir, force=False):
     return len(todo), len(todo)
 
 
-def normalize_file(md_path, links_dir=None, dry_run=False, quiet=True):
+def normalize_file(md_path, links_dir=None, dry_run=False, quiet=True, burned_map=None):
     """誕生／收成時就地標準化「單一」md（給 channel_watcher、scheduler 呼叫）。
 
     只處理這一篇（不掃整庫），成本固定。回傳 1=有改寫、0=沒變。
@@ -993,7 +1046,8 @@ def normalize_file(md_path, links_dir=None, dry_run=False, quiet=True):
     resolver = Resolver(hints, probe=True)
     m = VID_RE.search(orig)
     ctx = {"resolver": resolver, "links_dir": links_dir,
-           "vid": m.group(1) if m else "", "make_link": True}
+           "vid": m.group(1) if m else "", "make_link": True,
+           "burned_map": burned_map or {}}
     hint = hints.get(md_path.stem, "")
 
     if md_path.name.endswith(PRODUCT_SUFFIXES):
@@ -1034,6 +1088,57 @@ def normalize_file(md_path, links_dir=None, dry_run=False, quiet=True):
     return 1
 
 
+def normalize_by_video(video_path, burned_path=None, kb_root=None, links_dir=None,
+                       quiet=True):
+    """燒字幕完成後：找出引用這支影片的 KB 條目並就地補「燒字幕影片」行。
+
+    為什麼需要：`type=video` 的任務是 `scheduler.harvest()` 先建條目（當時還沒有
+    `_字幕.mp4`），燒字幕是之後另一個任務做的。舊版沒有任何一步回頭補那行，
+    所以 PC1／PC2 的本機條目幾乎全都缺「燒字幕影片」。
+
+    burned_path：燒字幕輸出（worker 可指定 output_dir，未必和影片同層）。
+    只處理「真的引用這支影片」的條目（比對完整路徑，其次比對資料夾＋檔名），
+    不會掃整庫亂改。回傳實際改寫的篇數。
+    """
+    video_path = str(video_path or "")
+    if not video_path or not os.path.exists(video_path):
+        return 0
+    burned = burned_path or burned_of(video_path)
+    if not burned or not os.path.exists(burned):
+        return 0                      # 燒字幕檔不存在就沒什麼好補
+    kb_root = Path(kb_root or KB_ROOT)
+    links_dir = Path(links_dir).absolute() if links_dir else kb_root / "_video_links"
+    burned_map = {video_path: str(burned)}
+
+    def variants(p):
+        p = str(p)
+        out = {p, p.replace("/", "\\")}
+        try:
+            out.add(str(Path(p)))
+        except (OSError, ValueError):
+            pass
+        return {v for v in out if v}
+
+    needles = variants(video_path) | variants(burned)
+    parent = Path(video_path).parent.name
+
+    changed = 0
+    for md in iter_md(kb_root):
+        try:
+            text = md.read_bytes().decode("utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if "燒字幕影片" in text:
+            continue
+        if not any(n in text for n in needles):
+            # 收割改寫過的條目可能只剩 UNC／資料夾名，用「資料夾＋檔名」再確認一次
+            if not (parent and parent in text and Path(video_path).name in text):
+                continue
+        changed += normalize_file(md, links_dir=links_dir, quiet=quiet,
+                                  burned_map=burned_map)
+    return changed
+
+
 def first_video_path(text):
     """從條目文字取第一個影片的實際路徑（GUI／工具用；支援新舊格式）。"""
     ctx = {"resolver": Resolver({}, probe=False), "links_dir": Path("."),
@@ -1042,14 +1147,14 @@ def first_video_path(text):
     return ref[3] if ref else ""
 
 
-def render_pack_line(label, path, machine=None, net_path=""):
+def render_pack_line(label, path, machine=None, net_path="", pre="- "):
     r"""打包副本用：只標機器名＋可用的網路路徑，不帶產出機自己的 .lnk。"""
     machine = (machine or config.MACHINE).lower()
     display = net_path or path
-    return f"- {label}（在 {machine_display(machine)}）：{display}"
+    return f"{pre}{label}（在 {machine_display(machine)}）：{display}"
 
 
-def pack_text(text, machine=None):
+def pack_text(text, machine=None, burned_map=None):
     """publish_outbox 打包時呼叫：把產出機的影片行改成「（在 PCX）＋UNC／原路徑」。
 
     不建 .lnk（那是收割端的事），也不改產出機自己的 KB。
@@ -1058,6 +1163,22 @@ def pack_text(text, machine=None):
     resolver = Resolver({}, probe=False)
     out, changed = [], False
     in_video = False
+    has_burned = "燒字幕影片" in text
+
+    def append_burned(label, path, pre, nl):
+        """打包副本也補「燒字幕影片」行（產出機端才看得到本機檔案）。"""
+        nonlocal changed, has_burned
+        if has_burned or label != "本機影片":
+            return
+        burned = burned_of(path, burned_map)
+        if not burned:
+            return
+        net = resolver.net_path_for(burned, machine)
+        out.append(pre + render_pack_line("燒字幕影片", burned, machine, net,
+                                          pre="") + nl)
+        has_burned = True
+        changed = True
+
     for line in text.splitlines(keepends=True):
         stripped = line.strip()
         if HEADING_RE.match(stripped):
@@ -1075,6 +1196,7 @@ def pack_text(text, machine=None):
             new = render_pack_line(m.group("label"), path, machine, net) + m.group("nl")
             changed |= new != line
             out.append(new)
+            append_burned(m.group("label"), path, m.group("pre"), m.group("nl"))
             continue
         if in_video and _looks_like_path(stripped):
             indent = line[: len(line) - len(line.lstrip())]
@@ -1084,6 +1206,7 @@ def pack_text(text, machine=None):
             new = indent + render_pack_line("本機影片", path, machine, net) + nl
             changed |= new != line
             out.append(new)
+            append_burned("本機影片", path, indent + "- ", nl)
             in_video = False
             continue
         # 產品（摘要／課程筆記）的「> 影片位置：」也要改成產出機的機器名＋UNC

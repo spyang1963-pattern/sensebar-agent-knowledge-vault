@@ -357,6 +357,18 @@ def process_subtitle_task(task):
         burn_subtitles(video_path, srt_path, output_path, font_size, position, margin_v, font_family)
         timer.step_done("burn_subtitles")
 
+        # 燒完字幕 → 已收成的條目要補「燒字幕影片」行（2026-11-13）
+        # type=video 是 scheduler.harvest() 先建條目、之後才另建 subtitle 任務燒字幕，
+        # 建條目當下沒有 _字幕.mp4，所以舊版條目幾乎全缺這行。
+        try:
+            import video_links
+            fixed = video_links.normalize_by_video(video_path, burned_path=output_path,
+                                                   quiet=True)
+            if fixed:
+                log(f"  [KB] 已補「燒字幕影片」行（{fixed} 篇）")
+        except Exception as e:
+            log(f"  [警告] 補「燒字幕影片」行失敗（可重跑 video_links.py）：{e}")
+
         # 完成
         log(f"  完成: {output_path}")
         task_queue.update_task_status(tid, "completed")

@@ -801,8 +801,9 @@ run_pipeline＋scheduler 的 `## 影片` 裸路徑、publish 改寫的 UNC 行�
 |---|---|---|
 | 誕生 | `channel_watcher.create_kb_entry()` | 寫完 md 後 `video_links.normalize_file()` |
 | 收成 | `scheduler.harvest()` | 寫完 md 後 `normalize_file()` |
+| 燒字幕 | `worker.process_subtitle_task()` | 燒完呼叫 `video_links.normalize_by_video()`（補「燒字幕影片」行） |
 | 產品 | `worker.process_note_task/process_summary_task` | 產完 `.md` 後 `normalize_file()`（補 `> 影片位置：`） |
-| 打包 | `publish_outbox.rewrite_producer_paths()` | 改用 `video_links.pack_text()`（含 `## 影片`、`> 影片位置：`） |
+| 打包 | `publish_outbox.rewrite_producer_paths()` | 改用 `video_links.pack_text()`（含 `## 影片`、`> 影片位置：`、補燒字幕行） |
 | 收割 | `harvest_daily.bat` | 收完跑 `python -X utf8 video_links.py` |
 | 補救 | `fix_video_links.py` | **已是 shim**，直接轉呼叫 `video_links.main()` |
 
@@ -820,6 +821,15 @@ run_pipeline＋scheduler 的 `## 影片` 裸路徑、publish 改寫的 UNC 行�
   `_archive_no_transcript`、`_video_links`、任何 `backup_*`。使用者明確要求「備份檔的知識庫不要再處理」。
 - **冪等**：第二次跑應顯示「需改寫 0」；`.lnk` 目標沒變就不重建（`_video_links\_targets.json` 對時，
   產出機換 tailnet IP 會自動換新）。
+- **「燒字幕影片」行會主動補（2026-11-13，勿改回只改寫）**：`type=video` 是
+  `scheduler.harvest()` 先建條目、之後才另建 `subtitle` 任務燒 `_字幕.mp4`，建條目當下
+  根本沒有那個檔 → 舊版只「改寫既有行」，所以 PC1／PC2 的條目幾乎全缺這行。
+  現在 `normalize_text()` 遇到「本機影片」行（含 `## 影片` 裸路徑）時，**檔案真的存在**
+  且條目還沒有那行就主動補；`pack_text()` 打包副本同步補；`worker` 燒完再呼叫
+  `normalize_by_video(video_path, burned_path=...)` 回頭補已收成的條目
+  （燒字幕輸出可能在 `output_dir`，所以用 `burned_map` 明確對照，不靠同層猜）。
+- **PC1／PC2 換版後要各跑一次**（notebook 對它們的分享是唯讀，無法遠端代跑）：
+  `git pull` → `python -X utf8 video_links.py --dry-run` → `python -X utf8 video_links.py` → `--verify`。
 - `.lnk` 命名沿用舊規則（`<video_id>_video/_burned.lnk`；無 id 用 `sha1(目標)[:12]`），
   同名不同目標會補 `sha1[:6]` 消歧；一次 PowerShell 只建 300 個（避免逾時）。
 - **`.lnk` 產生器是 `IShellLinkW`（C# `Add-Type`），不可改回 `WScript.Shell`（2026-11-12 實踩）**：
@@ -867,6 +877,12 @@ PC 永不寫 notebook 的 KB；notebook 只讀 PC。設計稿：`workspace-bundl
   23:10／23:40／00:10／00:40／01:10 各收一次，收割冪等、每次幾秒（`fix_youtube_links` 約 0.4 秒），
   收過就 `帳本相符` 直接跳過。`01:30` 的備份刻意排在最後一次收割之後。
 - `harvest_daily.bat` 收完會接著跑 `fix_youtube_links.py --apply`（冪等），所以連結格式不會退回去。
+- **`.bat` 一定要 CRLF（2026-11-13 事故，勿改回 LF）**：`harvest_daily.bat` 曾以 **LF-only**
+  進 repo，`cmd.exe` 解析失敗 → `HarvestPCDaily` 每晚回 **255**、`logs\harvest_pc.log` 完全不成長，
+  PC1 已打包好的 `outbox\348`（凡人修仙）整晚沒進 notebook。已加 `.gitattributes`
+  （`*.bat`／`*.cmd` = `text eol=crlf`）並把全部 `.bat` 轉 CRLF。
+  症狀是「排程 rc=255、日誌停住」，手動雙擊卻可能正常 → 別誤判成網路問題。
+  驗收：每支 `.bat` 的 `CRLF == LF`；`cmd /c harvest_daily.bat` 回 0。
 - 兩支 .bat 都可手動執行（雙擊或在專案根目錄跑）。
 - **打包的「靜止保護」只在有 worker 在跑時才生效（2026-11-09 改）**：
   `publish_outbox.worker_active()` 會看 `working\_worker_<machine>.lock` 的 PID 是否還活著；
