@@ -44,3 +44,6 @@ cookies.txt
 
 # root-level runtime logs (bat/py append here; not source)
 logs/
+
+# 子專案自己管版控（2026-11-17）：奇狐有自己的 .git，根 repo 不追蹤
+奇狐-XQ程式程式生成與轉換系統/
