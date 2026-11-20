@@ -478,6 +478,20 @@ notebook 23:10 收割＋01:30 備份。**不做跨機任務分配。**
   ⇒ **不收割到 notebook**（所以 PC3 不需要 `PublishOutboxDaily`）。
   動 PC3 的東西前先記得這點：它不是「少一份產出」，而是刻意留在本機的整套金融線。
 
+### 跨機踩雷同步 SOP（2026-11-20 新增）
+
+各機獨立執行 ≠ 各機各修各的程式。**程式修護只做一次，由 notebook 統一 commit + push，
+其他機只 pull**；本機資料（KB 副本／任務進度／進度檔）的修正留在各機、不進 git。
+
+- 完整 SOP（回報格式／定性表／pull 被擋怎麼辦／紅線／PC2 具體指令）：
+  `docs/incidents/2026-11-20_跨機踩雷同步SOP.md`
+- 踩雷機先把本機 diff 存到 `working/`（gitignored）再 `git checkout -- <file>`，
+  否則 `git pull` 會被 "local changes would be overwritten" 擋下；pull 後要**關閉重開 GUI**。
+- ❌ 不要 `git add task_status.json`／`task_tracker.json`／`shared/tasks/*.json`／`knowledge-base/*`。
+- ❌ 不要在每台各改一份；notebook 對各機分享是唯讀，也無法遠端代跑。
+- 近期實例：PC2 事件 A（日期誤植，本機修正）／B（Gemini 無 timeout 卡 1.6h，本機重設任務）／
+  C（`make_course_note.py` 加 180 秒 timeout＋通訊錯誤重試，notebook 統一 push）。
+
 ## 任務管理 GUI：新增 YouTube 任務（2026-11-03 修正）
 
 `task_manager_gui.py` 的「新增任務 → YouTube」現在是**展開成逐支任務**，不再在 GUI 程序內同步跑完整流程。

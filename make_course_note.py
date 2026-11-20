@@ -23,6 +23,13 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 MAX_OUTPUT_TOKENS = 20000
 
+# 2026-11-20（PC2 事件 B/C）：Gemini 的 generate_content() 在 SDK 2.16.0 預設**沒有**
+# HTTP timeout（get_timeout_in_seconds(None) → httpx 無 timeout）。Google 端連上後
+# 不回應時，TCP 一直 Established、CPU 幾乎 0，任務可以卡幾小時且不觸發任何重試。
+# 實例：任務 36 卡 1.6 小時（CPU 僅 1.44 秒）。統一在 client 建立處設 180 秒，
+# 並把 timeout／斷線類錯誤納入重試（見 _is_retryable）。
+GEMINI_TIMEOUT_MS = 180000
+
 ROOT = Path(os.path.dirname(os.path.abspath(__file__)))
 # 續傳快取一律放 working/（gitignored），不可寫進 out_dir（避免污染知識庫）
 NOTE_PARTS_DIR = ROOT / "working" / "_note_parts" / "course"
@@ -39,6 +46,17 @@ def load_gemini_key() -> str:
     if kf.exists():
         return kf.read_text(encoding="utf-8").strip()
     sys.exit("[ERR] 找不到 Gemini API Key（~/.gemini_api_key）")
+
+
+def _new_gemini_client(api_key):
+    """唯一的 Gemini client 出口：**一定要帶 timeout**（見 GEMINI_TIMEOUT_MS）。
+
+    2026-11-20 前有三處直接 `genai.Client(api_key=...)`，全部漏掉 timeout。
+    新增呼叫點請一律走這裡，不要再直接建 client。
+    """
+    from google import genai
+    return genai.Client(api_key=api_key,
+                        http_options={"timeout": GEMINI_TIMEOUT_MS})
 
 
 def strip_meta(md_text: str) -> str:
@@ -77,9 +95,6 @@ def split_body(body: str, chunk_chars: int) -> list:
 
 
 def gemini_note(transcript: str, api_key: str) -> str:
-    from google import genai
-    from google.genai import types
-
     system = "你是專業的教學共筆編輯，擅長把課程的語音逐字稿整理成結構完整、內容詳盡、深入淺出的課程筆記；目標是讓沒上到課的學習者也能讀懂每個觀念的內涵。"
     user = f"""這是某堂課程某一部分的逐字稿。請整理成「詳細課程筆記」，重點是**把細節講清楚、講透**，而不是只列大綱或重點摘要。
 
@@ -104,14 +119,31 @@ def gemini_note(transcript: str, api_key: str) -> str:
 ===== 逐字稿 =====
 {transcript}
 ====="""
-    client = genai.Client(api_key=api_key)
+    client = _new_gemini_client(api_key)
     resp = _gemini_call(client, system, user, MAX_OUTPUT_TOKENS)
     return (resp.text or "").strip()
 
 
+# 重試分類（內層 _gemini_call 與外層 _retry_llm 共用）。
+# 2026-11-20 補 timeout／斷線類：加了 180 秒 timeout 之後，原本「不回也不錯」的
+# 懸置會變成 ReadTimeout／ConnectError；若不列為暫時性錯誤，反而會直接 failed。
+LLM_RETRYABLE = (
+    "503", "429", "RESOURCE_EXHAUSTED", "UNAVAILABLE", "overloaded", "high demand",
+    "timed out", "timeout", "deadline exceeded",
+    "disconnected", "connection reset", "connection aborted",
+    "remote end closed", "read operation timed out",
+)
+
+
+def _is_retryable(exc):
+    """暫時性錯誤判定：看 exception 訊息，也看 class 名稱（httpx.ReadTimeout 等）。"""
+    msg = (str(exc) + " " + type(exc).__name__).lower()
+    return any(t in msg for t in LLM_RETRYABLE)
+
+
 def _gemini_call(client, system: str, user: str, max_tokens: int):
-    """呼叫 Gemini；503（高需求）與 429/RESOURCE_EXHAUSTED（免費層每分鐘額度）
-    時額外重試，等待逐次加長（最多 6 輪、最長等 150 秒）。"""
+    """呼叫 Gemini；503／429 與 timeout／斷線類錯誤重試，等待逐次加長
+    （最多 6 輪、最長等 150 秒）。client 必須由 _new_gemini_client() 建立。"""
     from google.genai import types as _types
     import time as _t
     last = None
@@ -126,13 +158,10 @@ def _gemini_call(client, system: str, user: str, max_tokens: int):
                 ),
             )
         except Exception as e:
-            msg = str(e)
-            is_retryable = ("503" in msg) or ("429" in msg) or ("RESOURCE_EXHAUSTED" in msg)
-            if is_retryable and attempt < 5:
-                _t.sleep(min(30 * (attempt + 1), 150))
-                last = e
-                continue
-            raise
+            if not _is_retryable(e) or attempt == 5:
+                raise
+            last = e
+            _t.sleep(min(30 * (attempt + 1), 150))
     raise last if last else RuntimeError("gemini retry exhausted")
 
 
@@ -141,7 +170,6 @@ def _gemini_call(client, system: str, user: str, max_tokens: int):
 # 因此再加一層（3 輪、輪間等 2~5 分鐘）：單段最多容忍約 25 分鐘的模型過載。
 LLM_OUTER_ROUNDS = 3
 LLM_OUTER_WAIT = (120, 300)
-LLM_RETRYABLE = ("503", "429", "RESOURCE_EXHAUSTED", "UNAVAILABLE", "overloaded", "high demand")
 
 
 def _retry_llm(fn, label="", progress=None, rounds=LLM_OUTER_ROUNDS):
@@ -153,8 +181,7 @@ def _retry_llm(fn, label="", progress=None, rounds=LLM_OUTER_ROUNDS):
             return fn()
         except Exception as e:
             last = e
-            msg = str(e)
-            if not any(t in msg for t in LLM_RETRYABLE) or r == rounds - 1:
+            if not _is_retryable(e) or r == rounds - 1:
                 raise
             wait = LLM_OUTER_WAIT[min(r, len(LLM_OUTER_WAIT) - 1)]
             if progress:
@@ -542,8 +569,6 @@ def generate_note(title, md_sources, out_dir, template=None, chunk_chars=0,
 
 def gemini_summary(transcript: str, api_key: str) -> str:
     """逐字稿段落 → 結構化重點摘要（依內容類型自選小節；投資類務必逐檔保留個股）"""
-    from google import genai
-
     system = ("你是專業的課程內容編輯，擅長從語音逐字稿精準提取重點。"
               "你會先判斷內容類型：投資／交易類走「個股與族群」導向結構，"
               "其他主題（哲學、思維、AI 工具、教學、自我成長…）走「觀點與方法」導向結構。")
@@ -588,15 +613,13 @@ def gemini_summary(transcript: str, api_key: str) -> str:
 ===== 逐字稿 =====
 {transcript}
 ======"""
-    client = genai.Client(api_key=api_key)
+    client = _new_gemini_client(api_key)
     resp = _gemini_call(client, system, user, 8000)
     return (resp.text or "").strip()
 
 
 def gemini_summary_merge(parts_text: str, api_key: str) -> str:
     """多段／多來源摘要草稿 → 合併收斂成單一份結構化重點摘要"""
-    from google import genai
-
     system = ("你是專業的課程內容編輯，擅長把多段草稿合併成一份連貫、不重複、"
               "資訊完整的重點摘要；會依內容類型保留對應的小節結構。")
     user = f"""以下同一份內容（可能因長度被切成多段，或由多支逐字稿）各自產出的重點摘要草稿。這些草稿之間**有大量重複**。請合併成**唯一一份**結構化重點摘要，繁體中文、全形標點。
@@ -617,7 +640,7 @@ def gemini_summary_merge(parts_text: str, api_key: str) -> str:
 ===== 各段摘要草稿 =====
 {parts_text}
 ======"""
-    client = genai.Client(api_key=api_key)
+    client = _new_gemini_client(api_key)
     resp = _gemini_call(client, system, user, 8000)
     return (resp.text or "").strip()
 
