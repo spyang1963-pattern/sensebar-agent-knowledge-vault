@@ -458,7 +458,7 @@ Clipping/
 
 **每一台（PC1／PC2／PC3）都是獨立執行機**：在自己的 GUI 建任務 → 自己跑 worker 執行 →
 產出落在**本機** `knowledge-base\` → 22:50 `publish_daily.bat` 打包到 NAS →
-notebook 23:10 收割＋01:30 備份。**不做跨機任務分配。**
+notebook 23:10 起收割（05:00 補收）＋01:30 備份。**不做跨機任務分配。**
 
 - 舊的「三機分工／中央佇列」模式（`assigned_to`、`scheduler.py --redistribute`、
   `sync_shared.bat`、`shared\tasks` 互相同步）**很複雜且常出問題，已被取代**，不要依賴。
@@ -883,13 +883,17 @@ PC 永不寫 notebook 的 KB；notebook 只讀 PC。設計稿：`workspace-bundl
 |---|---|---|---|---|
 | PC1／PC3 | 22:50 | `PublishOutboxDaily` | `publish_daily.bat` | `logs\publish_outbox.log` |
 | PC2（現行掃描機） | 22:30 | `ChannelWatcherDaily` | `channel_then_publish.bat`（掃完才打包） | `logs\channel_watcher.log` |
-| notebook | **23:10 起每 30 分（到 01:10）** | `HarvestPCDaily` | `harvest_daily.bat` | `logs\harvest_pc.log` |
+| notebook | **23:10 起每 30 分（到 01:10）＋05:00 補收** | `HarvestPCDaily` | `harvest_daily.bat` | `logs\harvest_pc.log` |
 
 - 順序刻意錯開：PC 先打包，notebook 再來收（收割器只認 `manifest.json`，沒寫完就跳過，早收也安全）。
-- **為何一晚收五次（2026-11-09）**：22:30 那輪要下載＋轉錄＋燒字幕＋產筆記／直播報告，
-  一支 2 小時直播光是燒字幕就可能 1–2 小時，包進 NAS 的時間無法預測。
+- **為何一晚收五次＋清晨補收一次（2026-11-09／11-20）**：22:30 那輪要下載＋轉錄＋燒字幕＋
+  產筆記／直播報告，一支 2 小時直播光是燒字幕就可能 1–2 小時，包進 NAS 的時間無法預測。
   23:10／23:40／00:10／00:40／01:10 各收一次，收割冪等、每次幾秒（`fix_youtube_links` 約 0.4 秒），
   收過就 `帳本相符` 直接跳過。`01:30` 的備份刻意排在最後一次收割之後。
+  **2026-11-20 再加 05:00 補收**：凌晨才包進 NAS／01:10 之後才完成的產出不必空等到隔晚 23:10；
+  05:00 仍在 01:30 備份之後，不影響備份的一致性。改時程要同步改
+  `workspace-bundle/infra/setup/deploy.ps1` 的 `HarvestPCDaily.Ats`（單一來源），
+  再用 `deploy.ps1 -Machine notebook -SkipSetup -RegisterTasks -Tasks HarvestPCDaily` 註冊。
 - `harvest_daily.bat` 收完會接著跑 `fix_youtube_links.py --apply`（冪等），所以連結格式不會退回去。
 - **`.bat` 一定要 CRLF（2026-11-13 事故，勿改回 LF）**：`harvest_daily.bat` 曾以 **LF-only**
   進 repo，`cmd.exe` 解析失敗 → `HarvestPCDaily` 每晚回 **255**、`logs\harvest_pc.log` 完全不成長，

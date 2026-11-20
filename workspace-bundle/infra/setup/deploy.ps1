@@ -75,7 +75,9 @@ $TaskDefs = @(
     # 2026-11-09：掃描移到 PC2 後，22:30 那輪要下載＋轉錄＋燒字幕＋筆記＋報告，
     # 一支 2 小時的直播燒字幕就可能跑 1–2 小時 → 包進 NAS 的時間不固定。
     # 與其猜一個時間，乾脆 23:10 起每 30 分鐘收一次（收割冪等、每次只花幾秒）。
-    @{ Name = "HarvestPCDaily";             File = "harvest_daily.bat";    Kind = "daily"; At = "23:10"; Ats = @("23:10","23:40","00:10","00:40","01:10"); Only = @("notebook"); Desc = "收割 NAS／各機 outbox → knowledge-base（23:10~01:10 每 30 分一次；冪等）" }
+    # 2026-11-20 再加 05:00 補收一次：深夜才包進 NAS／01:10 之後才完成的產出，
+    # 不必空等到隔晚 23:10；仍與 01:30 的 NasBackupDaily 錯開（備份先跑完）。
+    @{ Name = "HarvestPCDaily";             File = "harvest_daily.bat";    Kind = "daily"; At = "23:10"; Ats = @("23:10","23:40","00:10","00:40","01:10","05:00"); Only = @("notebook"); Desc = "收割 NAS／各機 outbox → knowledge-base（23:10~01:10 每 30 分一次＋05:00 補收；冪等）" }
     @{ Name = "NasBackupDaily";             File = "backup_daily.bat";     Kind = "daily"; At = "01:30"; Only = @("notebook");        Desc = "KB／finance.db／shared → NAS backup" }
 )
 
