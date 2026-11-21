@@ -232,6 +232,14 @@ class Resolver:
                     return m
             return hint or ""      # 不認得的機器：標未確認，不亂取名
         if ABS_RE.match(path):
+            # 2026-11-21：收割帳本的來源機（hint）優先於「本機存在」判斷。
+            # 實踩：notebook 上常有「已轉存到 PC1/PC2、準備砍掉」的本機影片副本，
+            # 若讓 os.path.exists() 優先，會把從 PC2 收割回來的影片誤標成 notebook
+            # （並建立指向即將砍掉副本的 .lnk）；同時違反「原片與燒字幕永不拆機」。
+            # 只有「沒有可靠 hint」或「hint 就是本機」時，才用本機存在判斷；
+            # notebook 自己執行的任務不會出現在 harvest ledger → hint 為空 → 仍標 notebook。
+            if hint and hint.lower() != config.MACHINE.lower():
+                return hint
             if os.path.exists(path):
                 return config.MACHINE
             if hint:
@@ -359,11 +367,18 @@ def _resolve_ref(label, path, hint, resolver):
     return machine, "", path, False
 
 
-def burned_of(path, override=None):
-    """同一支影片的燒字幕檔（真的存在才回傳，避免寫出點不開的連結）。
+def burned_of(path, override=None, allow_remote=False):
+    """同一支影片的燒字幕檔。
 
     override：{原影片路徑: 燒字幕路徑}。燒字幕輸出目錄不一定和影片同層
     （worker 的 subtitle 任務可指定 output_dir），這時由呼叫端明確給。
+
+    allow_remote=False（預設，產出機打包/worker 燒完呼叫）：本機真的存在才回傳，
+      避免寫出點不開的連結。
+    allow_remote=True（收割端 normalize_text 用）：燒字幕檔在來源機（PC1/PC2），
+      notebook 本機沒有是常態，不能因此不補行；改回傳推導路徑，由 handle() 用
+      「原影片同一個來源機」解析機器並建立 .lnk（沒分享會誠實保留路徑、不假裝可點）。
+      符合「原片與燒字幕永不拆機」規則。
     """
     if not path:
         return ""
@@ -372,6 +387,8 @@ def burned_of(path, override=None):
         for k, v in override.items():
             if not v or os.path.normcase(k) != norm:
                 continue
+            if allow_remote:
+                return v
             try:
                 return v if os.path.exists(v) else ""
             except OSError:
@@ -382,6 +399,8 @@ def burned_of(path, override=None):
         return ""
     if cand == path:
         return ""
+    if allow_remote:
+        return cand
     try:
         return cand if os.path.exists(cand) else ""
     except OSError:
@@ -411,10 +430,17 @@ def normalize_text(text, ctx, hint=""):
         nonlocal changed, has_burned_line
         if has_burned_line:
             return
-        burned = burned_of(path, ctx.get("burned_map"))
+        # 2026-11-21：只有「從 PC 收割回來（ledger 有遠端來源機）」的條目才容許
+        # 燒字幕檔不在本機；本機/歷史條目維持「本機真的存在才補」，避免在 KB 裡
+        # 補出一堆點不開的燒字幕路徑（實踩：allow_remote 全開會誤改 2127 篇）。
+        src = (hint or "").lower()                     # normalize_text 的 ledger hint（可靠）
+        remote = bool(src and src != config.MACHINE.lower()
+                      and src not in ("未確認", "unknown", "?"))
+        burned = burned_of(path, ctx.get("burned_map"), allow_remote=remote)
         if not burned:
             return
-        new = handle(pre, "燒字幕影片", burned, hint_)
+        # 用可靠的 ledger hint，不用 line_hint（後者可能被舊的錯誤機器標記污染）
+        new = handle(pre, "燒字幕影片", burned, hint or hint_)
         if new is None:
             return
         out.append(new + nl)
@@ -455,7 +481,10 @@ def normalize_text(text, ctx, hint=""):
         m = LINE_RE.match(line)
         if m:
             _, path, _ = split_rest(m.group("rest"))
-            line_hint = parse_mach_tag(m.group("mach")) or hint
+            # 2026-11-21：ledger 來源機 hint 優先於行內機器標記。
+            # 行內舊標記可能是錯的（PC2 收割條目被誤標「（在 notebook）」），
+            # 若讓它優先會蓋掉正確的 ledger hint，machine_of 又誤判回 notebook。
+            line_hint = hint or parse_mach_tag(m.group("mach"))
             new = handle(m.group("pre"), m.group("label"), path, line_hint)
             if new is None:
                 out.append(line)
