@@ -828,9 +828,16 @@ run_pipeline＋scheduler 的 `## 影片` 裸路徑、publish 改寫的 UNC 行�
 - 燒字幕影片（在 PC2）：[▶ 點播](file:///…/_video_links/<id>_burned.lnk)｜\\100.113.234.81\YouTube_Videos\…
 ```
 
-- **機器判定順序**：本機存在 → 本機；UNC → `config.TAILSCALE_IPS` 反查；歷史條目 →
-  `working/harvest_ledger.json` 回推；再不行才探測各機 SMB 分享；仍未知 →
-  `（在 未確認）`＋保留原路徑（**不猜**），並列進 `working\video_links_report.txt`。
+- **機器判定順序（2026-11-21 修正，勿改回）**：
+  ① **收割來源機 hint（`working/harvest_ledger.json` 的 machine，或行內可信標記）優先**；
+  ② UNC → `config.TAILSCALE_IPS` 反查；
+  ③ 沒有可靠 hint 時，本機存在的絕對路徑 → 本機；
+  ④ 再不行才探測各機 SMB 分享；仍未知 → `（在 未確認）`＋保留原路徑（**不猜**），
+  並列進 `working\video_links_report.txt`。
+  **關鍵陷阱**：notebook 上常有「已轉存到 PC1/PC2、準備砍掉」的本機影片副本，
+  若讓 `os.path.exists()` 排在 hint 前，會把收割條目誤標 notebook（還建立指向待砍副本的 .lnk）。
+  notebook 自己執行的任務不出現在 harvest ledger → hint 為空 → 仍正確標 notebook（不受影響）。
+  `line_hint` 也要 `hint or parse_mach_tag(...)`（ledger 優先），避免行內舊錯誤標記蓋掉來源機。
 - **備份／內部目錄一律不處理**：`_harvest_overwritten`、`_harvest_conflicts`、
   `_archive_no_transcript`、`_video_links`、任何 `backup_*`。使用者明確要求「備份檔的知識庫不要再處理」。
 - **冪等**：第二次跑應顯示「需改寫 0」；`.lnk` 目標沒變就不重建（`_video_links\_targets.json` 對時，
@@ -838,10 +845,13 @@ run_pipeline＋scheduler 的 `## 影片` 裸路徑、publish 改寫的 UNC 行�
 - **「燒字幕影片」行會主動補（2026-11-13，勿改回只改寫）**：`type=video` 是
   `scheduler.harvest()` 先建條目、之後才另建 `subtitle` 任務燒 `_字幕.mp4`，建條目當下
   根本沒有那個檔 → 舊版只「改寫既有行」，所以 PC1／PC2 的條目幾乎全缺這行。
-  現在 `normalize_text()` 遇到「本機影片」行（含 `## 影片` 裸路徑）時，**檔案真的存在**
-  且條目還沒有那行就主動補；`pack_text()` 打包副本同步補；`worker` 燒完再呼叫
-  `normalize_by_video(video_path, burned_path=...)` 回頭補已收成的條目
-  （燒字幕輸出可能在 `output_dir`，所以用 `burned_map` 明確對照，不靠同層猜）。
+  現在 `normalize_text()` 遇到「本機影片」行（含 `## 影片` 裸路徑）時，條目還沒有那行就主動補；
+  `pack_text()` 打包副本同步補；`worker` 燒完再呼叫 `normalize_by_video(video_path, burned_path=...)`
+  回頭補已收成的條目（燒字幕輸出可能在 `output_dir`，所以用 `burned_map` 明確對照，不靠同層猜）。
+  **2026-11-21 修正（勿改回）**：`burned_of()` 新增 `allow_remote`，只在「該條目 ledger hint 是遠端
+  來源機（從 PC1/PC2 收割）」時才容許燒字幕檔不在本機（本機沒有是常態，在來源機上）；
+  本機／歷史條目仍要求本機真的存在才補，避免補出點不開的路徑（`allow_remote` 全開曾誤改 2127 篇）。
+  燒字幕沿用原影片同一台來源機。完整處理記錄：`docs/incidents/2026-11-21_PC2收割影片歸屬誤判_處理記錄.md`。
 - **PC1／PC2 換版後要各跑一次**（notebook 對它們的分享是唯讀，無法遠端代跑）：
   `git pull` → `python -X utf8 video_links.py --dry-run` → `python -X utf8 video_links.py` → `--verify`。
 - `.lnk` 命名沿用舊規則（`<video_id>_video/_burned.lnk`；無 id 用 `sha1(目標)[:12]`），
