@@ -443,6 +443,61 @@ def publish_one(tid, info, out_root, kb_root, ledger, dry_run=False, force=False
     return "ok"
 
 
+# ------------------------------------------------------------------ worker 完成後自動打包
+# 2026-11-21：三機獨立模型下，手動下任務後若只等 22:50 的 publish排程，
+# 收割端會「收不到 → 回頭查問題」。改成 worker 做完就自動打包，人不用記得跑 publish_daily.bat。
+NAS_OUTBOX_HOSTS = ("192.168.1.121", "100.65.113.20")
+NAS_LEDGER_NAME = "_outbox_published_nas.json"   # 與 publish_daily.bat 用同一份，避免兩份帳本打架
+
+
+def resolve_nas_root(machine=None):
+    """與 publish_daily.bat 相同的 NAS 選路：LAN → tailnet，都讀不到回 None。"""
+    machine = machine or config.MACHINE
+    for host in NAS_OUTBOX_HOSTS:
+        root = Path(rf"\\{host}\exchange\{machine}\outbox")
+        try:
+            if root.is_dir():
+                return root
+        except OSError:
+            pass
+    return None
+
+
+def publish_auto():
+    """worker 完成任務後呼叫：立刻把完成的 KB 產出打包到 NAS outbox。
+
+    - 與 publish_daily.bat 同選路（NAS 優先）＋同 ledger，避免兩份帳本打架
+    - worker 自己呼叫時 worker_active() 排除自身 → settle=0 → 立即打包剛寫好的檔
+    - 任何例外都吞掉：打包失敗不該讓已成功的任務變成失敗
+    回傳打包包數（0 也正常，代表沒有新變動）。
+    """
+    try:
+        out_root = resolve_nas_root()
+        if out_root is None:
+            out_root = (Path(config.OUTBOX_ROOT) if getattr(config, "OUTBOX_ROOT", "")
+                        else SHARED_ROOT / config.MACHINE / "outbox")
+        ledger_path = PROJECT_ROOT / "working" / NAS_LEDGER_NAME
+        ledger = load_json(ledger_path, {}) or {}
+        SEEN_STEMS.clear()
+        global _WORKER_ACTIVE
+        _WORKER_ACTIVE = None   # worker 進程內重新判斷（排除自己）
+        n_ok = 0
+        for tid, info, status in iter_tasks():
+            if status != "completed":
+                continue
+            r = publish_one(tid, info, out_root, KB_ROOT, ledger,
+                            dry_run=False, force=False, keep_paths=False)
+            if r == "ok":
+                n_ok += 1
+        save_json(ledger_path, ledger)
+        if n_ok:
+            log(f"  📤 自動打包 {n_ok} 包 → {out_root}（備便收割）")
+        return n_ok
+    except Exception as e:
+        log(f"  ⚠ 自動打包失敗（不影響任務結果）：{e}")
+        return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description="把完成的 KB 產出打包到 outbox")
     ap.add_argument("--task", help="只處理指定 task id")

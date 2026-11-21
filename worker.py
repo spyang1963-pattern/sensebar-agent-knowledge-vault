@@ -1594,6 +1594,15 @@ def main():
         log(f"\n{'='*50}")
         log(f"執行完畢: 成功 {success} / 失敗 {failed}")
         log(f"D 槽剩: {get_free_space_gb('D:\\'):.1f} GB")
+
+        # 2026-11-21：做完就自動打包送到 NAS，不必等人記得跑 publish_daily.bat。
+        # publish_auto() 與排程同選路／同 ledger，內部吞例外，失敗不影響任務結果。
+        if success > 0:
+            try:
+                import publish_outbox
+                publish_outbox.publish_auto()
+            except Exception as e:
+                log(f"  ⚠ 自動打包呼叫失敗（不影響任務結果）：{e}")
         
         if args.once:
             break

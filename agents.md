@@ -457,8 +457,15 @@ Clipping/
 ## 三機運作模型：各自獨立執行（2026-11-09 使用者確認）
 
 **每一台（PC1／PC2／PC3）都是獨立執行機**：在自己的 GUI 建任務 → 自己跑 worker 執行 →
-產出落在**本機** `knowledge-base\` → 22:50 `publish_daily.bat` 打包到 NAS →
+產出落在**本機** `knowledge-base\` → **worker 做完自動打包到 NAS** →
 notebook 23:10 起收割（05:00 補收）＋01:30 備份。**不做跨機任務分配。**
+
+- **做完就自動打包（2026-11-21 定案，勿改回靠人記）**：`worker.py` 每批任務結束（含 GUI 的
+  `--once`）只要 `success > 0`，就呼叫 `publish_outbox.publish_auto()` 立即把完成的 KB 打包
+  送到 NAS outbox（與 `publish_daily.bat` 同選路／同 ledger，冪等；`worker_active()` 排除自身
+  → 不套靜止延遲；打包失敗吞掉不影響任務結果）。**目的**：手動下任務不必再記得跑
+  `publish_daily.bat`，成果隨時備便收割，避免「收不到→回頭查問題」浪費時間。
+  22:50 排程／`channel_then_publish.bat` 保留為備援（補漏打包、處理排程路徑）。
 
 - 舊的「三機分工／中央佇列」模式（`assigned_to`、`scheduler.py --redistribute`、
   `sync_shared.bat`、`shared\tasks` 互相同步）**很複雜且常出問題，已被取代**，不要依賴。
