@@ -411,6 +411,29 @@ watched_channels:
    - 自動化：跑 `python auto_update.py`（會自動處理）
    - 手動：從 raw/ 找影片用 `run_pipeline.py` 處理
 
+## 受控分享：僅供點閱、不下載（2026-11-22）
+
+要把 KB 產出給「自己人」點閱又不希望外流時，用 `export_restricted.py`（單支影片）：
+
+```powershell
+python -X utf8 export_restricted.py --stem "2026-11-21_凡人修仙4-期貨-週六直播-2100" `
+  --kb-subdir CMoney_直播 --viewer "內部同仁" --days 7 --out working/share_sample
+```
+
+產出（`working/` 已 gitignore）：燒浮水印的字幕影片 ＋ 移除內網行的摘要／課程筆記 `.docx` ＋ README。
+**絕對不帶**：逐字稿 `.md`／`.srt`、`.lnk`、`_video_links`、任何憑證。敏感掃描直接查 docx 的 zip XML／rels
+（不要用 `para.text`，它看不到 hyperlink 內的 URL）。
+
+- **技術現實（勿誤判）**：這不是 DRM。能播放就能翻拍、能看就能截圖；「不能下載／不能分享」**只能靠平台**
+  （雲端「僅指定人可檢視＋不可下載／列印＋到期日」）與合約約束。浮水印功能是「外流可追責」，不是阻擋。
+- **智財紅線**：無明確授權的別人內容（如 CMoney／凡人修仙直播），僅限信任的內部對象，不對外散布。
+  要給更廣的人先取得原作者授權。
+- **YouTube 連結迷思**：連結是影片上傳 YouTube 時平台發的，不是我們「做」出來的；把私人影片連結寫進
+  KB／分享包也不會讓它變公開（但點了也看不到）。想給 PC 上的影片生 YouTube 連結＝要上傳，那會碰版權，
+  不是「單純分享」的解法。KB 裡 `# YouTube Metadata` 只是 historical 欄位名，不代表真有網址。
+- **已知正常現象**：收割後 `video_links.py` 只改 `.md`、不重建 `.docx`，所以 docx 本來就沒有影片位置行
+  → 工具顯示「移除 0 行」是正常的，不是漏改。
+
 ## Obsidian 整理 Clipping 目錄
 
 ### 重要規則
