@@ -28,7 +28,7 @@ MAX_OUTPUT_TOKENS = 20000
 # 不回應時，TCP 一直 Established、CPU 幾乎 0，任務可以卡幾小時且不觸發任何重試。
 # 實例：任務 36 卡 1.6 小時（CPU 僅 1.44 秒）。統一在 client 建立處設 180 秒，
 # 並把 timeout／斷線類錯誤納入重試（見 _is_retryable）。
-GEMINI_TIMEOUT_MS = 180000
+GEMINI_TIMEOUT_MS = 300000
 
 ROOT = Path(os.path.dirname(os.path.abspath(__file__)))
 # 續傳快取一律放 working/（gitignored），不可寫進 out_dir（避免污染知識庫）
@@ -128,8 +128,10 @@ def gemini_note(transcript: str, api_key: str) -> str:
 # 2026-11-20 補 timeout／斷線類：加了 180 秒 timeout 之後，原本「不回也不錯」的
 # 懸置會變成 ReadTimeout／ConnectError；若不列為暫時性錯誤，反而會直接 failed。
 LLM_RETRYABLE = (
-    "503", "429", "RESOURCE_EXHAUSTED", "UNAVAILABLE", "overloaded", "high demand",
-    "timed out", "timeout", "deadline exceeded",
+    "503", "429", "504", "RESOURCE_EXHAUSTED", "UNAVAILABLE", "overloaded", "high demand",
+    # 504 的SDK 訊息是「Deadline expired before operation could complete.」
+    # （不是 deadline exceeded），過去沒列出 → 504 被當成不可重試直接 failed。
+    "timed out", "timeout", "deadline exceeded", "deadline_exceeded", "deadline expired",
     "disconnected", "connection reset", "connection aborted",
     "remote end closed", "read operation timed out",
 )
